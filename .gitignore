@@ -5,11 +5,15 @@
 ## User settings
 xcuserdata/
 *.xcuserstate
+.DS_Store
 
 ## Xcode build output
 build/
 DerivedData/
 Release-xcframework/
+
+# SAP landscape configuration is local and can contain tenant-specific values.
+mobileFacilityApp/ConfigurationProvider.plist
 
 ## Obj-C/Swift specific
 *.hmap
