@@ -4,6 +4,7 @@ import Observation
 @MainActor
 @Observable
 final class FacilityDemoViewModel {
+    let isDemoMode: Bool
     var selection: AppDestination = .overview
     var selectedNotificationID: String?
     var selectedTechnicalPlaceID: String?
@@ -12,6 +13,10 @@ final class FacilityDemoViewModel {
     var drafts = MockFacilityData.drafts
     let technicalPlaces = MockFacilityData.technicalPlaces
     let forms = MockFacilityData.forms
+
+    init(isDemoMode: Bool = true) {
+        self.isDemoMode = isDemoMode
+    }
 
     var selectedNotification: MaintenanceNotification? {
         notifications.first { $0.id == selectedNotificationID }
