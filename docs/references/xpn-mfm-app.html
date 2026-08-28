@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>.XPN Mobile Facility Management App (MFM APP)</title>
+<style>
+  :root{
+    --bg:#f2f2f7;--card:#ffffff;--ink:#1c1c1e;--ink2:#6e6e73;--ink3:#aeaeb2;
+    --sep:rgba(60,60,67,.12);--accent:#0e9f6e;--accent-dark:#0b7d57;--accent-soft:#e6f6f0;
+    --navy:#0b1f33;--blue:#007aff;--red:#ff3b30;--orange:#ff9500;
+    --yellow-soft:#fff4e0;--red-soft:#ffeceb;--blue-soft:#eaf3ff;--purple-soft:#f0ecfd;--purple:#5e5ce6;
+    --radius:18px;--shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(11,31,51,.06);
+    --shadow-lg:0 24px 60px rgba(11,31,51,.22);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:#dfe3e8;color:var(--ink);overflow:hidden;-webkit-font-smoothing:antialiased}
+  .stage{height:100vh;display:flex;align-items:center;justify-content:center;padding:18px;
+    background:radial-gradient(1200px 700px at 70% -10%, #e9f8f1 0%, transparent 55%),
+               radial-gradient(900px 600px at 0% 110%, #e3ecf5 0%, transparent 60%), #dde2e7;}
+  .ipad{width:min(1320px,100%);aspect-ratio:4/3;max-height:96vh;background:#0a0a0c;border-radius:38px;padding:16px;box-shadow:var(--shadow-lg);position:relative}
+  @media (max-aspect-ratio:1/1){ .ipad{aspect-ratio:auto;height:96vh} }
+  .screen{width:100%;height:100%;background:var(--bg);border-radius:24px;overflow:hidden;position:relative;display:flex;flex-direction:column}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:12.5px;font-weight:600;flex:none}
+  .statusbar .right{display:flex;align-items:center;gap:7px}
+  /* ---- login ---- */
+  #login{position:absolute;inset:0;z-index:60;background:linear-gradient(160deg, rgba(11,31,51,.92) 0%, rgba(14,72,58,.9) 100%);
+    display:flex;align-items:center;justify-content:center;border-radius:24px;transition:opacity .45s ease, visibility .45s}
+  #login.hidden{opacity:0;visibility:hidden}
+  .login-card{width:420px;max-width:90%;background:rgba(255,255,255,.97);border-radius:26px;padding:38px 36px;box-shadow:var(--shadow-lg);text-align:center}
+  .brand-badge{display:inline-flex;align-items:center;justify-content:center;background:var(--navy);color:#fff;font-weight:800;letter-spacing:.5px;border-radius:14px;padding:10px 18px;font-size:22px}
+  .login-card h1{font-size:21px;font-weight:700;margin:18px 0 4px}
+  .login-card p{font-size:13.5px;color:var(--ink2);margin-bottom:22px}
+  .role-list{display:flex;flex-direction:column;gap:10px;margin-bottom:22px}
+  .role{display:flex;align-items:center;gap:13px;padding:12px 14px;border:1.5px solid var(--sep);border-radius:16px;cursor:pointer;text-align:left;background:#fff;transition:all .18s}
+  .role .avatar{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;background:var(--accent-soft)}
+  .role b{display:block;font-size:14.5px}
+  .role small{font-size:12px;color:var(--ink2)}
+  .role.sel{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 0 0 3px rgba(14,159,110,.15)}
+  .btn{border:none;cursor:pointer;font-family:inherit;font-size:15px;font-weight:600;border-radius:14px;padding:13px 22px;transition:transform .12s, opacity .15s}
+  .btn:active{transform:scale(.97)}
+  .btn-primary{background:var(--accent);color:#fff;width:100%}
+  .login-foot{margin-top:16px;font-size:11.5px;color:var(--ink3)}
+  /* ---- layout ---- */
+  .app{flex:1;display:flex;min-height:0}
+  .sidebar{width:262px;flex:none;padding:10px 12px 14px;display:flex;flex-direction:column;gap:2px;border-right:1px solid var(--sep);background:rgba(246,246,249,.9)}
+  .side-brand{display:flex;align-items:center;gap:10px;padding:8px 10px 14px}
+  .side-brand .logo{background:var(--navy);color:#fff;font-weight:800;border-radius:10px;padding:5px 9px;font-size:14px}
+  .side-brand div b{font-size:14px;display:block;line-height:1.2}
+  .side-brand div small{font-size:11px;color:var(--ink2)}
+  .nav-sec{font-size:11px;font-weight:700;color:var(--ink3);text-transform:uppercase;letter-spacing:.6px;padding:14px 12px 6px}
+  .nav-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:12px;cursor:pointer;font-size:14.5px;font-weight:500;transition:background .15s}
+  .nav-item svg{flex:none;color:var(--ink2)}
+  .nav-item:hover{background:rgba(0,0,0,.045)}
+  .nav-item.active{background:var(--accent);color:#fff;font-weight:600}
+  .nav-item.active svg{color:#fff}
+  .nav-item .badge{margin-left:auto;background:var(--red);color:#fff;font-size:11.5px;font-weight:700;border-radius:20px;padding:1px 8px;min-width:22px;text-align:center}
+  .nav-item.active .badge{background:rgba(255,255,255,.28)}
+  .side-spacer{flex:1}
+  .sync-box{background:#fff;border:1px solid var(--sep);border-radius:16px;padding:12px;margin-top:8px}
+  .sync-box .row{display:flex;align-items:center;justify-content:space-between;font-size:12.5px;color:var(--ink2);margin-bottom:9px}
+  .sync-box .row b{color:var(--ink)}
+  .btn-sync{width:100%;background:var(--navy);color:#fff;font-size:13.5px;padding:10px;border-radius:11px;display:flex;align-items:center;justify-content:center;gap:8px}
+  .btn-sync.spin svg{animation:rot 1s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  .user-chip{display:flex;align-items:center;gap:10px;padding:10px 8px 2px;font-size:13px}
+  .user-chip .avatar{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+  .user-chip small{display:block;color:var(--ink2);font-size:11px}
+  .user-chip .logout{margin-left:auto;color:var(--blue);cursor:pointer;font-size:12.5px;font-weight:600}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
+  .page{flex:1;overflow-y:auto;padding:6px 28px 40px;display:none;animation:pagein .28s ease}
+  .page.active{display:block}
+  @keyframes pagein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .pagehead{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:18px 0 14px;position:sticky;top:0;background:linear-gradient(var(--bg) 82%,transparent);z-index:5}
+  .pagehead h2{font-size:29px;font-weight:800;letter-spacing:.2px}
+  .pagehead .sub{font-size:13.5px;color:var(--ink2);margin-top:3px}
+  .backlink{display:inline-flex;align-items:center;gap:4px;color:var(--blue);font-size:15px;font-weight:500;cursor:pointer;margin:14px 0 0}
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px}
+  .grid{display:grid;gap:14px}
+  .kpis{grid-template-columns:repeat(4,1fr)}
+  .kpi .num{font-size:29px;font-weight:800;letter-spacing:-.5px}
+  .kpi .lbl{font-size:12.5px;color:var(--ink2);margin-top:2px}
+  .kpi{position:relative;overflow:hidden;cursor:pointer;transition:transform .15s}
+  .kpi:active{transform:scale(.98)}
+  .kpi .ico{position:absolute;right:14px;top:14px;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+  .tiles{grid-template-columns:repeat(3,1fr)}
+  .tile{cursor:pointer;transition:transform .15s, box-shadow .15s;display:flex;flex-direction:column;gap:10px;min-height:126px}
+  .tile:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(11,31,51,.12)}
+  .tile .tico{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:var(--accent-soft);color:var(--accent-dark)}
+  .tile b{font-size:15.5px}
+  .tile p{font-size:12.5px;color:var(--ink2);line-height:1.45}
+  .seg{display:inline-flex;background:rgba(118,118,128,.12);border-radius:11px;padding:2px;gap:2px}
+  .seg button{border:none;background:transparent;font-family:inherit;font-size:13.5px;font-weight:500;padding:6px 16px;border-radius:9px;cursor:pointer;color:var(--ink);transition:all .18s}
+  .seg button.on{background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.12);font-weight:600}
+  .list{display:flex;flex-direction:column;gap:12px;margin-top:14px}
+  .mrow{display:flex;gap:16px;align-items:center;cursor:pointer;transition:transform .12s}
+  .mrow:active{transform:scale(.99)}
+  .mrow .stat{width:44px;height:44px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center}
+  .mrow .body{flex:1;min-width:0}
+  .mrow .body b{font-size:15px;display:block}
+  .mrow .body .meta{font-size:12.5px;color:var(--ink2);margin-top:3px;display:flex;gap:14px;flex-wrap:wrap}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;letter-spacing:.2px}
+  .chip{font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap}
+  .chip.green{background:var(--accent-soft);color:var(--accent-dark)}
+  .chip.orange{background:var(--yellow-soft);color:#b56a00}
+  .chip.red{background:var(--red-soft);color:var(--red)}
+  .chip.blue{background:var(--blue-soft);color:var(--blue)}
+  .chip.purple{background:var(--purple-soft);color:var(--purple)}
+  .chip.gray{background:rgba(118,118,128,.12);color:var(--ink2)}
+  .chev{color:var(--ink3);flex:none}
+  .searchbar{display:flex;align-items:center;gap:8px;background:rgba(118,118,128,.12);border-radius:11px;padding:8px 12px;color:var(--ink2)}
+  .searchbar input{border:none;background:transparent;outline:none;font-family:inherit;font-size:14.5px;flex:1;color:var(--ink)}
+  .checkrow{display:grid;grid-template-columns:34px 1fr 150px 44px 44px;gap:12px;align-items:center;padding:13px 4px;border-bottom:1px solid var(--sep)}
+  .checkrow:last-child{border-bottom:none}
+  .checkrow .nr{font-size:13px;color:var(--ink2);font-weight:600}
+  .checkrow .name{font-size:14.5px}
+  .jn{display:flex;background:rgba(118,118,128,.12);border-radius:10px;padding:2px;gap:2px}
+  .jn button{flex:1;border:none;background:transparent;font-family:inherit;font-size:13px;font-weight:600;padding:6px 0;border-radius:8px;cursor:pointer;color:var(--ink2)}
+  .jn button.ok{background:var(--accent);color:#fff}
+  .jn button.bad{background:var(--red);color:#fff}
+  .iconbtn{width:38px;height:38px;border-radius:11px;border:1px solid var(--sep);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink2);position:relative;transition:all .15s}
+  .iconbtn:active{transform:scale(.92)}
+  .iconbtn.done{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft)}
+  .iconbtn .dot{position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;background:var(--accent);color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:800}
+  .stoer-banner{display:none;margin-top:6px;background:var(--red-soft);border:1px solid rgba(255,59,48,.25);border-radius:14px;padding:12px 16px;font-size:13.5px;align-items:center;gap:12px}
+  .stoer-banner.show{display:flex}
+  .stoer-banner button{margin-left:auto;background:var(--red);color:#fff;border:none;border-radius:10px;padding:8px 14px;font-family:inherit;font-weight:600;font-size:13px;cursor:pointer}
+  .footbar{display:flex;gap:12px;justify-content:flex-end;padding:16px 0 4px;border-top:1px solid var(--sep);margin-top:16px}
+  .btn-ghost{background:transparent;color:var(--blue)}
+  .btn-line{background:#fff;border:1.5px solid var(--sep);color:var(--ink)}
+  .btn-green{background:var(--accent);color:#fff}
+  .btn-navy{background:var(--navy);color:#fff}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:6px}
+  .field input,.field textarea,.field select{width:100%;font-family:inherit;font-size:15px;padding:11px 13px;border:1.5px solid var(--sep);border-radius:12px;background:#fff;outline:none;color:var(--ink)}
+  .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--accent)}
+  .field textarea{resize:vertical;min-height:84px}
+  .field.full{grid-column:1/-1}
+  .photo-drop{border:1.5px dashed var(--ink3);border-radius:14px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--ink2);font-size:13px;cursor:pointer;background:#fff}
+  .photo-drop:hover{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft)}
+  .thumbs{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .thumb{width:74px;height:74px;border-radius:12px;background:linear-gradient(135deg,#c9d6e2,#8fa8bd);display:flex;align-items:center;justify-content:center;color:#fff;position:relative}
+  .thumb .x{position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--ink);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .scanwrap{display:grid;grid-template-columns:1.1fr .9fr;gap:18px;margin-top:4px}
+  .scanview{background:#0d1620;border-radius:22px;min-height:400px;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .scan-frame{width:240px;height:240px;position:relative}
+  .scan-frame i{position:absolute;width:44px;height:44px;border:4px solid var(--accent);border-radius:6px}
+  .scan-frame i:nth-child(1){top:0;left:0;border-right:none;border-bottom:none}
+  .scan-frame i:nth-child(2){top:0;right:0;border-left:none;border-bottom:none}
+  .scan-frame i:nth-child(3){bottom:0;left:0;border-right:none;border-top:none}
+  .scan-frame i:nth-child(4){bottom:0;right:0;border-left:none;border-top:none}
+  .laser{position:absolute;left:8%;right:8%;height:2.5px;background:linear-gradient(90deg,transparent,#3ddc97,transparent);top:12%;animation:laser 2.1s ease-in-out infinite;box-shadow:0 0 14px #3ddc97}
+  @keyframes laser{0%,100%{top:12%}50%{top:86%}}
+  .scanhint{position:absolute;bottom:22px;left:0;right:0;text-align:center;color:rgba(255,255,255,.75);font-size:13px}
+  .scan-side{display:flex;flex-direction:column;gap:14px}
+  .found{display:none;animation:pagein .3s ease}
+  .found.show{display:block}
+  .qr{background:#fff;border-radius:12px;padding:8px;display:inline-block}
+  .card>b{display:block}
+  /* ---- TP tree ---- */
+  .dinbar{display:flex;gap:7px;flex-wrap:wrap;margin-top:12px}
+  .dinchip{font-size:11.5px;font-weight:700;padding:5px 11px;border-radius:20px;background:#fff;border:1.5px solid var(--sep);cursor:pointer;color:var(--ink2);transition:all .15s;white-space:nowrap}
+  .dinchip:hover{border-color:var(--accent)}
+  .dinchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tnode{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:11px;cursor:pointer;transition:background .13s;min-height:40px}
+  .tnode:hover{background:rgba(0,0,0,.035)}
+  .tnode .tw{width:16px;flex:none;color:var(--ink3);font-size:11px;text-align:center;transition:transform .18s;display:inline-block}
+  .tnode .tw.open{transform:rotate(90deg)}
+  .tnode .tico{width:26px;height:26px;flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .tnode .tname{font-size:14.3px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tnode .tname .tid{color:var(--ink3);margin-left:8px}
+  .tnode.lvl-company .tname,.tnode.lvl-site .tname,.tnode.lvl-object .tname{font-weight:700}
+  .tnode.lvl-area .tname{font-weight:600}
+  .tnode.eq{color:var(--ink)}
+  .tnode.eq .tico{background:var(--purple-soft)}
+  .tnode.sys .tico{background:var(--accent-soft)}
+  .treewrap{max-height:none}
+  .seghead{display:grid;grid-template-columns:34px 1fr;gap:12px;font-size:13px;padding:9px 4px;border-bottom:1px solid var(--sep)}
+  .seghead:last-child{border:none}
+  .kv{display:grid;grid-template-columns:190px 1fr;gap:8px 16px;font-size:13.5px;line-height:1.9}
+  .kv .k{color:var(--ink2)}
+  .crumb{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--ink2);margin-top:2px}
+  .crumb span{cursor:pointer}
+  .crumb span:hover{color:var(--accent-dark)}
+  .sigpad{border:1.5px solid var(--sep);border-radius:14px;background:#fff;position:relative}
+  .sigpad canvas{display:block;width:100%;height:150px;border-radius:14px;cursor:crosshair;touch-action:none}
+  .sigpad .clear{position:absolute;top:8px;right:10px;font-size:12px;color:var(--blue);cursor:pointer;font-weight:600}
+  .sigpad .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink3);font-size:13px;pointer-events:none}
+  #toast{position:absolute;left:50%;bottom:30px;transform:translate(-50%,20px);background:rgba(28,28,30,.94);color:#fff;padding:12px 22px;border-radius:16px;font-size:14px;font-weight:500;opacity:0;transition:all .3s;z-index:80;display:flex;align-items:center;gap:10px;box-shadow:var(--shadow-lg);max-width:80%}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #toast .tick{color:#3ddc97}
+  .sheet-back{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:50;opacity:0;visibility:hidden;transition:all .3s;display:flex;align-items:flex-end;justify-content:center;border-radius:24px}
+  .sheet-back.show{opacity:1;visibility:visible}
+  .sheet{background:var(--bg);width:660px;max-width:94%;border-radius:22px 22px 0 0;padding:14px 26px 34px;transform:translateY(40px);transition:transform .3s;max-height:82%;overflow-y:auto}
+  .sheet-back.show .sheet{transform:none}
+  .grab{width:40px;height:5px;border-radius:3px;background:var(--ink3);margin:0 auto 14px}
+  .sheet h3{font-size:19px;font-weight:800;margin-bottom:4px}
+  .sheet .sub{font-size:13px;color:var(--ink2);margin-bottom:16px}
+  .pdfdoc{background:#fff;border:1px solid var(--sep);border-radius:10px;padding:22px 26px;font-size:12px;line-height:1.7;box-shadow:var(--shadow)}
+  .pdfdoc .ph{display:flex;justify-content:space-between;border-bottom:2px solid var(--navy);padding-bottom:10px;margin-bottom:12px}
+  .pdfdoc table{width:100%;border-collapse:collapse;margin-top:8px}
+  .pdfdoc td{border:1px solid #ddd;padding:4px 8px}
+  ::-webkit-scrollbar{width:0;height:0}
+</style>
+</head>
+<body>
+<div class="stage">
+ <div class="ipad">
+  <div class="screen">
+
+   <!-- LOGIN -->
+   <div id="login">
+     <div class="login-card">
+       <div class="brand-badge">.XPN</div>
+       <h1>Mobile Facility Management</h1>
+       <p>Rollenbasierte Anmeldung am gemeinschaftlich genutzten Gerät</p>
+       <div class="role-list" id="roleList">
+         <div class="role sel" data-name="Sharam Pourmir" data-role="Techniker · Instandhaltung">
+           <div class="avatar">🔧</div><div><b>Techniker</b><small>Interner Instandhalter mit SAP-PM-Rolle</small></div></div>
+         <div class="role" data-name="Fremdfirma Müller GmbH" data-role="Externer Dienstleister">
+           <div class="avatar">🤝</div><div><b>Fremddienstleister</b><small>Zugriff ohne eigenen SAP-User</small></div></div>
+         <div class="role" data-name="Leitstelle Nord" data-role="Zentrale Steuerung">
+           <div class="avatar">🗂️</div><div><b>Zentrale Steuerung</b><small>Disposition &amp; Auswertung</small></div></div>
+       </div>
+       <button class="btn btn-primary" onclick="doLogin()">Anmelden</button>
+       <div class="login-foot">SAP BTP Mobile Services · Single Sign-On (IAS) · Offlinefähig</div>
+     </div>
+   </div>
+
+   <!-- STATUS BAR -->
+   <div class="statusbar">
+     <div style="display:flex;align-items:center;gap:10px"><span id="clock">09:41</span></div>
+     <div class="right">
+       <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 9.7a1.6 1.6 0 100 3.2 1.6 1.6 0 000-3.2zM5.6 7.9l1.2 1.2a2.5 2.5 0 013.4 0l1.2-1.2a4.2 4.2 0 00-5.8 0zM2.8 5.1L4 6.3a6.4 6.4 0 019 0l1.2-1.2a8.1 8.1 0 00-11.4 0zM0 2.3l1.2 1.2a10.3 10.3 0 0114.6 0L17 2.3A12 12 0 000 2.3z" transform="translate(0 -1)"/></svg>
+       <span style="font-size:12px">100 %</span>
+       <svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="18" height="8" rx="1.5" fill="currentColor"/><rect x="22.5" y="4" width="2" height="4" rx="1" fill="currentColor" opacity=".4"/></svg>
+     </div>
+   </div>
+
+   <div class="app">
+     <!-- SIDEBAR -->
+     <nav class="sidebar">
+       <div class="side-brand"><div class="logo">.XPN</div><div><b>MFM App</b><small>Mobile Facility Management</small></div></div>
+       <div class="nav-sec">Module</div>
+       <div class="nav-item active" data-page="home" onclick="nav('home')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></svg>Start</div>
+       <div class="nav-item" data-page="scan" onclick="nav('scan')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg>Scannen</div>
+       <div class="nav-item" data-page="meldungen" onclick="nav('meldungen')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h6M9 3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5V5h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2zM9 12l2 2 4-4"/></svg>Wartungsmeldungen<span class="badge" id="bMeld">5</span></div>
+       <div class="nav-item" data-page="manuell" onclick="nav('manuell')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Manuelle Erfassung</div>
+       <div class="nav-item" data-page="maengel" onclick="nav('maengel')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg>Mängel<span class="badge" id="bMangel">3</span></div>
+       <div class="nav-sec">Anlagenstruktur</div>
+       <div class="nav-item" data-page="tp" onclick="nav('tp')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 14h6v6h-6zM7 10v5a2 2 0 0 0 2 2h5"/></svg>Technische Plätze</div>
+       <div class="nav-item" data-page="formulare" onclick="nav('formulare')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 14h6M9 18h4"/></svg>Formulare</div>
+       <div class="nav-item" data-page="zwischen" onclick="nav('zwischen')"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Zwischengespeichert<span class="badge" id="bZw" style="background:var(--orange)">3</span></div>
+       <div class="side-spacer"></div>
+       <div class="sync-box">
+         <div class="row"><span>Letzte Synchronisation</span><b id="lastSync">Heute, 08:12</b></div>
+         <div class="row"><span>Wartende Vorgänge</span><b id="pendCnt">3</b></div>
+         <button class="btn btn-sync" id="syncBtn" onclick="doSync()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4M21 3v6h-6"/></svg>Synchronisieren</button>
+       </div>
+       <div class="user-chip"><div class="avatar" id="uAv">SP</div><div><b id="uName" style="font-size:13px">Sharam Pourmir</b><small id="uRole">Techniker · Instandhaltung</small></div><span class="logout" onclick="doLogout()">Abmelden</span></div>
+     </nav>
+
+     <main class="main">
+
+       <!-- HOME -->
+       <div class="page active" id="page-home">
+         <div class="pagehead"><div><h2 id="greet">Guten Morgen, Sharam</h2><div class="sub" id="today">Dienstag, 18. August 2026 · Musterunternehmen UN01 · Hauptstandort ST01</div></div>
+           <span class="chip green" style="align-self:center">SAP S/4HANA verbunden</span></div>
+         <div class="grid kpis">
+           <div class="card kpi" onclick="nav('meldungen')"><div class="num" id="kMeld">5</div><div class="lbl">Offene Wartungsmeldungen</div><div class="ico" style="background:var(--blue-soft)">📋</div></div>
+           <div class="card kpi" onclick="nav('maengel')"><div class="num" id="kMangel">3</div><div class="lbl">Dokumentierte Mängel</div><div class="ico" style="background:var(--red-soft)">⚠️</div></div>
+           <div class="card kpi" onclick="nav('zwischen')"><div class="num" id="kZw">3</div><div class="lbl">Zwischengespeichert</div><div class="ico" style="background:var(--yellow-soft)">💾</div></div>
+           <div class="card kpi" onclick="nav('tp')"><div class="num" id="kTp">51</div><div class="lbl">Technische Plätze (DIN 276)</div><div class="ico" style="background:var(--accent-soft)">🏗️</div></div>
+         </div>
+         <div class="nav-sec" style="padding-left:2px;margin-top:10px">Schnellzugriff</div>
+         <div class="grid tiles">
+           <div class="card tile" onclick="nav('scan')"><div class="tico">⌗</div><b>Scannen</b><p>Technische Objekte per QR-Code oder RFID erfassen und direkt öffnen.</p></div>
+           <div class="card tile" onclick="nav('manuell')"><div class="tico">✎</div><b>Manuelle Erfassung</b><p>Störungsmeldungen, Messbelege und Stammdaten direkt vor Ort anlegen.</p></div>
+           <div class="card tile" onclick="nav('zwischen')"><div class="tico">↓</div><b>Zwischengespeichert</b><p>Offline bearbeitete Vorgänge – Synchronisation mit einem Klick.</p></div>
+           <div class="card tile" onclick="nav('maengel')"><div class="tico">⚠</div><b>Mängel</b><p>Wartungsmängel mit Fotobeleg dokumentieren, PDF erzeugen, an SAP übergeben.</p></div>
+           <div class="card tile" onclick="nav('tp')"><div class="tico">🏗</div><b>Technische Plätze</b><p>Hybride räumlich-funktionale Struktur nach DIN 276:2018-12 – bis zum System-TP.</p></div>
+           <div class="card tile" onclick="nav('formulare')"><div class="tico">📄</div><b>Einweisung &amp; Scheine</b><p>Einweisungsformulare, Feuererlaubnisschein, Freigabe elektrischer Anlagen.</p></div>
+         </div>
+         <div class="nav-sec" style="padding-left:2px;margin-top:10px">Letzte Aktivitäten</div>
+         <div class="card" style="padding:6px 20px" id="activity"></div>
+       </div>
+
+       <!-- SCAN -->
+       <div class="page" id="page-scan">
+         <div class="pagehead"><div><h2>Scannen</h2><div class="sub">Technischen Platz oder Equipment per QR-Code / RFID identifizieren</div></div>
+           <div class="seg"><button class="on" onclick="setScanMode(this,'QR-Code')">QR-Code</button><button onclick="setScanMode(this,'RFID')">RFID</button></div></div>
+         <div class="scanwrap">
+           <div class="scanview"><div class="scan-frame"><i></i><i></i><i></i><i></i><div class="laser"></div></div>
+             <div class="scanhint" id="scanHint">Kamera auf den QR-Code der Anlage richten …</div></div>
+           <div class="scan-side">
+             <button class="btn btn-green" onclick="simulateScan()" id="scanBtn">Scan simulieren</button>
+             <div class="card found" id="scanFound"></div>
+             <div class="card">
+               <b style="font-size:14.5px">Mobile Geräte</b>
+               <div class="mrow" style="margin-top:12px"><div class="stat" style="background:var(--blue-soft)">🖨️</div><div class="body"><b style="font-size:13.5px">Zebra ZQ320 · QR-Labeldrucker</b><div class="meta">Bluetooth · verbunden</div></div><span class="chip green">bereit</span></div>
+               <div class="mrow" style="margin-top:8px"><div class="stat" style="background:var(--blue-soft)">📡</div><div class="body"><b style="font-size:13.5px">RFID-Scanner TSL 1128</b><div class="meta">Bluetooth · verbunden</div></div><span class="chip green">bereit</span></div>
+             </div>
+           </div>
+         </div>
+       </div>
+
+       <!-- MELDUNGEN -->
+       <div class="page" id="page-meldungen">
+         <div class="pagehead"><div><h2>Wartungsmeldungen</h2><div class="sub">Aus SAP-Wartungsplänen · Meldeobjekt ist der System-TP oder ein Equipment</div></div>
+           <div class="seg" id="meldSeg"><button class="on" onclick="filterMeld(this,'alle')">Alle</button><button onclick="filterMeld(this,'mangel')">Mangelbehaftet</button><button onclick="filterMeld(this,'zw')">Zwischengespeichert</button></div></div>
+         <div class="searchbar"><span>🔍</span><input placeholder="Meldung, Technischen Platz oder DIN-Kostengruppe suchen" oninput="meldQuery=this.value;renderMeld()"></div>
+         <div class="list" id="meldList"></div>
+       </div>
+
+       <!-- MELDUNG DETAIL -->
+       <div class="page" id="page-meldung-detail">
+         <span class="backlink" onclick="nav('meldungen')">‹ Wartungsmeldungen</span>
+         <div class="pagehead" style="padding-top:10px"><div><h2 id="mdTitle"></h2><div class="sub" id="mdSub"></div></div>
+           <button class="btn btn-line" style="font-size:13px" onclick="toast('Bearbeitungshistorie: 3 frühere Durchführungen geladen','🕘')">Historie</button></div>
+         <div class="card">
+           <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start">
+             <div class="kv" id="mdMeta" style="flex:1"></div>
+             <div class="field" style="width:190px"><label>Durchgeführt am</label><input type="date" value="2026-08-18"></div>
+           </div>
+         </div>
+         <div class="stoer-banner" id="stoerBanner">⚠️ <span><b style="color:var(--red)">Befund festgestellt.</b> Bearbeitungsdaten (Foto, Bemerkung) werden übernommen.</span><button onclick="createStoerung()">Störungsmeldung erstellen</button></div>
+         <div class="card" style="margin-top:14px;padding:8px 20px 12px">
+           <div class="checkrow" style="border-bottom:2px solid var(--sep);padding:10px 4px"><span class="nr">Nr.</span><span style="font-size:12.5px;font-weight:700;color:var(--ink2)">Überprüfte Anlagentechnik</span><span style="font-size:12.5px;font-weight:700;color:var(--ink2);text-align:center">Befund</span><span style="font-size:12.5px;font-weight:700;color:var(--ink2)">Foto</span><span style="font-size:12.5px;font-weight:700;color:var(--ink2)">Bem.</span></div>
+           <div id="checkRows"></div>
+         </div>
+         <div class="footbar">
+           <button class="btn btn-ghost" onclick="allOk()">Alles in Ordnung</button>
+           <button class="btn btn-line" onclick="saveDraft()">Zwischenspeichern</button>
+           <button class="btn btn-green" onclick="finishMeld()">Meldung abschließen</button>
+         </div>
+       </div>
+
+       <!-- MANUELLE ERFASSUNG -->
+       <div class="page" id="page-manuell">
+         <div class="pagehead"><div><h2>Manuelle Erfassung</h2><div class="sub">Direkt vor Ort anlegen – Meldeobjekt aus der DIN-276-Struktur wählen</div></div></div>
+         <div class="grid tiles">
+           <div class="card tile" onclick="showSub('stoerung')"><div class="tico" style="background:var(--red-soft);color:var(--red)">⚠</div><b>Störungsmeldung</b><p>Meldung bei Befunden erstellen – mit Foto, Priorität und Übergabe an SAP.</p></div>
+           <div class="card tile" onclick="showSub('messbeleg')"><div class="tico" style="background:var(--blue-soft);color:var(--blue)">#</div><b>Messbeleg erfassen</b><p>Strom-, Gas- oder Wasserzählerwerte strukturiert dokumentieren.</p></div>
+           <div class="card tile" onclick="nav('tp')"><div class="tico">🏷</div><b>Stammdaten pflegen</b><p>Technische Plätze und Equipments anlegen oder korrigieren.</p></div>
+         </div>
+         <div id="sub-stoerung" style="display:none;margin-top:18px" class="card">
+           <b style="font-size:17px">Neue Störungsmeldung</b>
+           <div class="fgrid" style="margin-top:16px">
+             <div class="field full"><label>Meldeobjekt (System-TP oder Equipment)</label><select id="stoerTp"></select></div>
+             <div class="field"><label>DIN-276-Kostengruppe</label><input id="stoerDin" readonly value=""></div>
+             <div class="field"><label>Priorität</label><div class="seg" style="width:100%"><button type="button" onclick="segOnly(this)">Niedrig</button><button type="button" class="on" onclick="segOnly(this)">Mittel</button><button type="button" onclick="segOnly(this)">Hoch</button></div></div>
+             <div class="field full"><label>Kurztext</label><input value="Türsensor reagiert verzögert"></div>
+             <div class="field full"><label>Beschreibung / Langtext</label><textarea>Sensor reagiert erst nach mehrmaligem Auslösen. Verletzungsgefahr, Anlage weiter in Betrieb.</textarea></div>
+             <div class="field full"><label>Fotobeleg</label><div class="photo-drop" onclick="addPhoto('stoerThumbs')">📷 &nbsp;Foto aufnehmen oder aus Mediathek wählen</div><div class="thumbs" id="stoerThumbs"></div></div>
+           </div>
+           <div class="footbar"><button class="btn btn-line" onclick="hideSubs()">Abbrechen</button><button class="btn btn-line" onclick="queueItem('Störungsmeldung (Entwurf)');hideSubs()">Zwischenspeichern</button><button class="btn btn-green" onclick="submitStoerung()">An SAP übergeben</button></div>
+         </div>
+         <div id="sub-messbeleg" style="display:none;margin-top:18px" class="card">
+           <b style="font-size:17px">Messbeleg erfassen</b>
+           <div class="fgrid" style="margin-top:16px">
+             <div class="field"><label>Zählerart</label><div class="seg" style="width:100%"><button type="button" class="on" onclick="segOnly(this)">⚡ Strom</button><button type="button" onclick="segOnly(this)">🔥 Gas</button><button type="button" onclick="segOnly(this)">💧 Wasser</button></div></div>
+             <div class="field"><label>Messpunkt / Technischer Platz</label><select id="messTp"></select></div>
+             <div class="field"><label>Zählerstand</label><input type="number" value="48213"></div>
+             <div class="field"><label>Einheit</label><select><option>kWh</option><option>m³</option><option>MWh</option></select></div>
+             <div class="field full"><label>Bemerkung (optional)</label><input placeholder="z. B. Ablesung bei Rundgang"></div>
+           </div>
+           <div class="footbar"><button class="btn btn-line" onclick="hideSubs()">Abbrechen</button><button class="btn btn-green" onclick="toast('Messbeleg 48.213 kWh an SAP übergeben');hideSubs()">Messbeleg buchen</button></div>
+         </div>
+       </div>
+
+       <!-- ZWISCHENGESPEICHERT -->
+       <div class="page" id="page-zwischen">
+         <div class="pagehead"><div><h2>Zwischengespeichert</h2><div class="sub">Offline bearbeitete Vorgänge – lokal gesichert, bereit zur Synchronisation</div></div>
+           <button class="btn btn-navy" onclick="doSync()" style="font-size:14px">⟳ Jetzt synchronisieren</button></div>
+         <div class="list" id="zwList"></div>
+         <div id="zwEmpty" style="display:none;text-align:center;padding:70px 0;color:var(--ink2)">
+           <div style="font-size:44px;margin-bottom:10px">✅</div><b style="font-size:16px;color:var(--ink)">Alles synchronisiert</b>
+           <p style="font-size:13.5px;margin-top:6px">Keine wartenden Vorgänge. Alle Daten liegen im SAP-System – ohne externe Datenhaltung.</p>
+         </div>
+       </div>
+
+       <!-- MÄNGEL -->
+       <div class="page" id="page-maengel">
+         <div class="pagehead"><div><h2>Mängel</h2><div class="sub">Wartungsmängel mit Fotobeleg · automatische PDF-Erstellung · Übergabe an SAP</div></div>
+           <button class="btn btn-green" style="font-size:14px" onclick="nav('manuell');showSub('stoerung')">+ Mangel erfassen</button></div>
+         <div class="list" id="mangelList"></div>
+       </div>
+
+       <!-- TECHNISCHE PLÄTZE (TREE) -->
+       <div class="page" id="page-tp">
+         <div class="pagehead"><div><h2>Technische Plätze</h2><div class="sub" id="tpSub"></div></div>
+           <button class="btn btn-line" style="font-size:14px" onclick="toast('Neuer Technischer Platz nach Namensschema {company}-{site}-{object}-{area}-{din276}-{system}','🏗️')">+ Neuer TP</button></div>
+         <div class="searchbar"><span>🔍</span><input placeholder="Technischen Platz, Bezeichnung, Equipment oder DIN-Kostengruppe suchen" oninput="tpQuery=this.value;renderTree()"></div>
+         <div class="dinbar" id="dinBar"></div>
+         <div class="card treewrap" style="margin-top:14px;padding:10px 14px" id="tpTree"></div>
+         <div class="card" style="margin-top:14px;padding:14px 20px">
+           <b style="font-size:13.5px">Namensschema</b>
+           <div class="mono" style="margin-top:6px;color:var(--ink2)" id="tpPattern"></div>
+         </div>
+       </div>
+
+       <!-- TP DETAIL -->
+       <div class="page" id="page-tp-detail">
+         <span class="backlink" onclick="nav('tp')">‹ Technische Plätze</span>
+         <div class="pagehead" style="padding-top:10px"><div><h2 id="tpdName"></h2><div class="crumb" id="tpdCrumb"></div></div>
+           <div style="display:flex;gap:8px;align-items:center" id="tpdChips"></div></div>
+         <div style="display:grid;grid-template-columns:1.2fr .8fr;gap:16px">
+           <div style="display:flex;flex-direction:column;gap:16px">
+             <div class="card"><b style="font-size:15px">Stammdaten</b><div class="kv" style="margin-top:12px" id="tpdKv"></div></div>
+             <div class="card"><b style="font-size:15px">Identifikations-Segmente</b><div style="margin-top:10px" id="tpdSeg"></div></div>
+             <div class="card" id="tpdEqCard"><b style="font-size:15px">Equipments an diesem Platz</b><div id="tpdEq" style="margin-top:6px"></div></div>
+           </div>
+           <div style="display:flex;flex-direction:column;gap:16px">
+             <div class="card" style="text-align:center">
+               <b style="font-size:15px">Objektidentifikation</b>
+               <div style="margin:14px 0 10px" class="qr" id="tpdQr"></div>
+               <div class="mono" style="color:var(--ink2);margin-bottom:14px" id="tpdCode"></div>
+               <div style="display:flex;gap:10px">
+                 <button class="btn btn-navy" style="flex:1;font-size:13px" onclick="printLabel()">🖨️ QR-Label</button>
+                 <button class="btn btn-line" style="flex:1;font-size:13px" onclick="toast('RFID-Tag beschrieben und mit dem Technischen Platz verknüpft','📡')">RFID</button>
+               </div>
+             </div>
+             <div class="card"><b style="font-size:15px">Verknüpfte Vorgänge</b><div id="tpdVorgaenge" style="margin-top:6px"></div></div>
+             <div class="card"><b style="font-size:15px">Aktionen</b>
+               <div style="display:flex;flex-direction:column;gap:9px;margin-top:12px">
+                 <button class="btn btn-line" style="font-size:13.5px" onclick="nav('manuell');showSub('stoerung');preselectTp()">Störungsmeldung anlegen</button>
+                 <button class="btn btn-line" style="font-size:13.5px" onclick="toast('Untergeordneten Technischen Platz anlegen (IL01)','🏗️')">Untergeordneten TP anlegen</button>
+                 <button class="btn btn-line" style="font-size:13.5px" onclick="toast('Equipment an diesem Platz einbauen (IE01 / IE4N)','🏷️')">Equipment einbauen</button>
+               </div>
+             </div>
+           </div>
+         </div>
+       </div>
+
+       <!-- EQUIPMENT DETAIL -->
+       <div class="page" id="page-eq-detail">
+         <span class="backlink" id="eqBack">‹ Technischer Platz</span>
+         <div class="pagehead" style="padding-top:10px"><div><h2 id="eqTitle"></h2><div class="crumb" id="eqCrumb"></div></div><span class="chip green" style="align-self:center">In Betrieb</span></div>
+         <div style="display:grid;grid-template-columns:1.15fr .85fr;gap:16px">
+           <div class="card">
+             <b style="font-size:15px">Stammdaten</b>
+             <div class="fgrid" style="margin-top:14px" id="eqFields"></div>
+             <div class="footbar"><button class="btn btn-green" onclick="toast('Stammdaten in SAP gesichert (IE02)')">Änderungen sichern</button></div>
+           </div>
+           <div style="display:flex;flex-direction:column;gap:16px">
+             <div class="card" style="text-align:center">
+               <b style="font-size:15px">Objektidentifikation</b>
+               <div style="margin:14px 0 10px" class="qr" id="eqQr"></div>
+               <div class="mono" style="color:var(--ink2);margin-bottom:14px" id="eqCode"></div>
+               <div style="display:flex;gap:10px">
+                 <button class="btn btn-navy" style="flex:1;font-size:13px" onclick="printLabel()">🖨️ QR-Label</button>
+                 <button class="btn btn-line" style="flex:1;font-size:13px" onclick="toast('RFID-Tag beschrieben und mit dem Equipment verknüpft','📡')">RFID</button>
+               </div>
+             </div>
+             <div class="card"><b style="font-size:15px">Verknüpfte Vorgänge</b><div id="eqVorgaenge" style="margin-top:6px"></div></div>
+           </div>
+         </div>
+       </div>
+
+       <!-- FORMULARE -->
+       <div class="page" id="page-formulare">
+         <div class="pagehead"><div><h2>Einweisung &amp; Sicherheitsscheine</h2><div class="sub">Rechtskonforme Dokumentation für Fremddienstleister – digital unterschreiben, als PDF versenden</div></div></div>
+         <div class="grid tiles">
+           <div class="card tile" onclick="openForm(0)"><div class="tico" style="background:var(--blue-soft);color:var(--blue)">🦺</div><b>Einweisungsformular</b><p>Allgemeine Sicherheitseinweisung vor Arbeitsbeginn – PSA, Fluchtwege, Verbote.</p></div>
+           <div class="card tile" onclick="openForm(1)"><div class="tico" style="background:var(--red-soft);color:var(--red)">🔥</div><b>Feuererlaubnisschein</b><p>Für Schweiß-, Trenn- und Brennarbeiten mit besonderen Schutzmaßnahmen.</p></div>
+           <div class="card tile" onclick="openForm(2)"><div class="tico" style="background:var(--yellow-soft);color:#b56a00">⚡</div><b>Elektrische Anlagen</b><p>Freigabeformular für Arbeiten an elektrischen Anlagen (DIN 276 – KG 440).</p></div>
+         </div>
+         <div class="nav-sec" style="padding-left:2px;margin-top:14px">Zuletzt erstellt</div>
+         <div class="card" style="padding:6px 20px">
+           <div class="mrow" style="padding:12px 0;border-bottom:1px solid var(--sep)"><div class="stat" style="background:var(--blue-soft)">📄</div><div class="body"><b>Einweisung Fremdfirma Müller GmbH</b><div class="meta"><span>17.08.2026</span><span class="mono">UN01-ST01-BG01-TECH-430-RLT1</span></div></div><span class="chip green">archiviert in SAP</span></div>
+           <div class="mrow" style="padding:12px 0"><div class="stat" style="background:var(--red-soft)">📄</div><div class="body"><b>Feuererlaubnisschein · Dacharbeiten Bürogebäude</b><div class="meta"><span>14.08.2026</span><span class="mono">UN01-ST01-BG01-DACH-360-DACH</span></div></div><span class="chip gray">abgelaufen</span></div>
+         </div>
+       </div>
+
+       <!-- FORM DETAIL -->
+       <div class="page" id="page-form-detail">
+         <span class="backlink" onclick="nav('formulare')">‹ Formulare</span>
+         <div class="pagehead" style="padding-top:10px"><div><h2 id="formTitle"></h2><div class="sub" id="formSub"></div></div></div>
+         <div class="card">
+           <div class="fgrid">
+             <div class="field"><label>Fremdfirma / Dienstleister</label><input value="Müller Gebäudetechnik GmbH"></div>
+             <div class="field"><label>Unterwiesene Person</label><input value="J. Kowalski"></div>
+             <div class="field full"><label>Einsatzort (Technischer Platz)</label><select id="formTp"></select></div>
+             <div class="field"><label>Datum / Uhrzeit</label><input value="18.08.2026 · 09:41" readonly></div>
+             <div class="field"><label>DIN-276-Kostengruppe</label><input id="formDin" readonly></div>
+           </div>
+         </div>
+         <div class="card" style="margin-top:14px;padding:8px 20px 12px"><div id="formRows"></div></div>
+         <div class="card" style="margin-top:14px">
+           <b style="font-size:14.5px">Digitale Unterschrift (Dienstleister / unterweisende Person)</b>
+           <div class="sigpad" style="margin-top:12px">
+             <canvas id="sig" width="900" height="150"></canvas>
+             <span class="hint" id="sigHint">Hier mit Finger oder Pencil unterschreiben</span>
+             <span class="clear" onclick="clearSig()">Löschen</span>
+           </div>
+         </div>
+         <div class="footbar">
+           <button class="btn btn-line" onclick="queueItem('Formular (Entwurf)');nav('formulare')">Zwischenspeichern</button>
+           <button class="btn btn-green" onclick="finishForm()">PDF erstellen &amp; versenden</button>
+         </div>
+       </div>
+
+     </main>
+   </div>
+
+   <div class="sheet-back" id="pdfSheet" onclick="if(event.target===this)closeSheet()">
+     <div class="sheet"><div class="grab"></div>
+       <h3 id="pdfTitle">PDF-Bericht</h3>
+       <div class="sub">Automatisch generiert · bereit für E-Mail-Versand und SAP-Archivierung</div>
+       <div class="pdfdoc" id="pdfBody"></div>
+       <div class="footbar" style="border:none">
+         <button class="btn btn-line" onclick="closeSheet();toast('PDF per E-Mail versendet','✉️')">Per E-Mail senden</button>
+         <button class="btn btn-green" onclick="closeSheet();toast('PDF im SAP-System archiviert (DMS)')">In SAP archivieren</button>
+       </div>
+     </div>
+   </div>
+
+   <div id="toast"><span class="tick">✓</span><span id="toastTxt"></span></div>
+  </div>
+ </div>
+</div>
+
+<script>
+/* ===================== DIN 276 Struktur (aus technischeplatzstrukturdin276mvp.json) ===================== */
+const TP = {"schema_version":"1.0","title":"Technische-Platz-Struktur nach DIN 276 für einen Instandhaltungs-MVP","basis":{"standard":"DIN 276:2018-12","model":"Hybride räumlich-funktionale Struktur nach dem Vorbild von SAP PM","scope":"Bürogebäude, Produktion, Lager, Tiefgarage und Außenanlagen"},"identifier_pattern":{"format":"{company}-{site}-{object}-{area}-{din276}-{system}","separator":"-","example":"UN01-ST01-BG01-TECH-430-RLT1","segments":[{"position":1,"key":"company","length":4,"example":"UN01"},{"position":2,"key":"site","length":4,"example":"ST01"},{"position":3,"key":"object","length":4,"example":"BG01"},{"position":4,"key":"area","length":4,"example":"TECH"},{"position":5,"key":"din276","length":3,"example":"430"},{"position":6,"key":"system","length":4,"example":"RLT1"}]},"maintenance_model":{"notification_targets":["system_functional_location","equipment"],"order_targets":["system_functional_location","equipment"],"maintenance_plan_targets":["system_functional_location","equipment"],"mvp_granularity_rule":"Ein eigener Technischer Platz wird angelegt, wenn eine eigene Wartung, Prüfung, Verantwortlichkeit, Historie, Kostenbetrachtung oder eindeutige Störungslokalisierung erforderlich ist.","equipment_rule":"Austauschbare, serialisierte, prüfpflichtige oder separat zu verfolgende Betriebsmittel werden als Equipment unter einem System-TP angelegt."},"din276_cost_groups":{"300":"Bauwerk – Baukonstruktionen","360":"Dächer","410":"Abwasser-, Wasser- und Gasanlagen","420":"Wärmeversorgungsanlagen","430":"Raumlufttechnische Anlagen","440":"Elektrische Anlagen","450":"Kommunikations-, sicherheits- und informationstechnische Anlagen","460":"Förderanlagen","470":"Nutzungsspezifische und verfahrenstechnische Anlagen","480":"Gebäude- und Anlagenautomation","500":"Außenanlagen und Freiflächen","550":"Technische Anlagen in Außenanlagen und Freiflächen"},"root":{"id":"UN01","code":"UN01","name":"Musterunternehmen","node_type":"functional_location","hierarchy_level":"company","children":[{"id":"UN01-ST01","code":"ST01","name":"Hauptstandort","node_type":"functional_location","hierarchy_level":"site","children":[{"id":"UN01-ST01-BG01","code":"BG01","name":"Bürogebäude","node_type":"functional_location","hierarchy_level":"object","object_type":"office_building","children":[{"id":"UN01-ST01-BG01-EG00","code":"EG00","name":"Erdgeschoss","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-BG01-EG00-300","code":"300","name":"Bauwerk – Baukonstruktionen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"300","children":[{"id":"UN01-ST01-BG01-EG00-300-BAU1","code":"BAU1","name":"Baukonstruktion Erdgeschoss","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-EG00-410","code":"410","name":"Abwasser-, Wasser- und Gasanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"410","children":[{"id":"UN01-ST01-BG01-EG00-410-SAN1","code":"SAN1","name":"Sanitäranlage Erdgeschoss","node_type":"functional_location","hierarchy_level":"system","din276":"410","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-EG00-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-BG01-EG00-440-UV01","code":"UV01","name":"Unterverteilung Erdgeschoss","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-BG01-OG01","code":"OG01","name":"1. Obergeschoss","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-BG01-OG01-300","code":"300","name":"Bauwerk – Baukonstruktionen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"300","children":[{"id":"UN01-ST01-BG01-OG01-300-BAU1","code":"BAU1","name":"Baukonstruktion 1. Obergeschoss","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-OG01-410","code":"410","name":"Abwasser-, Wasser- und Gasanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"410","children":[{"id":"UN01-ST01-BG01-OG01-410-SAN1","code":"SAN1","name":"Sanitäranlage 1. Obergeschoss","node_type":"functional_location","hierarchy_level":"system","din276":"410","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-OG01-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-BG01-OG01-440-UV01","code":"UV01","name":"Unterverteilung 1. Obergeschoss","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-BG01-TECH","code":"TECH","name":"Technikzentralen","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-BG01-TECH-420","code":"420","name":"Wärmeversorgungsanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"420","children":[{"id":"UN01-ST01-BG01-TECH-420-HZG1","code":"HZG1","name":"Zentrale Wärmeversorgung","node_type":"functional_location","hierarchy_level":"system","din276":"420","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-TECH-430","code":"430","name":"Raumlufttechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"430","children":[{"id":"UN01-ST01-BG01-TECH-430-RLT1","code":"RLT1","name":"Zentrale Lüftungsanlage","node_type":"functional_location","hierarchy_level":"system","din276":"430","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-TECH-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-BG01-TECH-440-NSHV","code":"NSHV","name":"Niederspannungshauptverteilung","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-TECH-450","code":"450","name":"Kommunikations-, sicherheits- und informationstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"450","children":[{"id":"UN01-ST01-BG01-TECH-450-BMA1","code":"BMA1","name":"Brandmeldeanlage","node_type":"functional_location","hierarchy_level":"system","din276":"450","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-TECH-460","code":"460","name":"Förderanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"460","children":[{"id":"UN01-ST01-BG01-TECH-460-AUF1","code":"AUF1","name":"Aufzugsanlage","node_type":"functional_location","hierarchy_level":"system","din276":"460","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-BG01-TECH-480","code":"480","name":"Gebäude- und Anlagenautomation","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"480","children":[{"id":"UN01-ST01-BG01-TECH-480-GA01","code":"GA01","name":"Gebäudeautomation","node_type":"functional_location","hierarchy_level":"system","din276":"480","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-BG01-DACH","code":"DACH","name":"Dach","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-BG01-DACH-360","code":"360","name":"Dächer","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"360","children":[{"id":"UN01-ST01-BG01-DACH-360-DACH","code":"DACH","name":"Dachkonstruktion und Dachhaut","node_type":"functional_location","hierarchy_level":"system","din276":"360","maintenance_target":true,"equipment":[]}]}]}]},{"id":"UN01-ST01-PH01","code":"PH01","name":"Produktion","node_type":"functional_location","hierarchy_level":"object","object_type":"production_building","children":[{"id":"UN01-ST01-PH01-HAL1","code":"HAL1","name":"Produktionshalle 1","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-PH01-HAL1-300","code":"300","name":"Bauwerk – Baukonstruktionen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"300","children":[{"id":"UN01-ST01-PH01-HAL1-300-BAU1","code":"BAU1","name":"Hallenbaukonstruktion","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-HAL1-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-PH01-HAL1-440-ELT1","code":"ELT1","name":"Elektrische Hallenanlage","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-HAL1-450","code":"450","name":"Kommunikations-, sicherheits- und informationstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"450","children":[{"id":"UN01-ST01-PH01-HAL1-450-SIC1","code":"SIC1","name":"Sicherheits- und Informationstechnik","node_type":"functional_location","hierarchy_level":"system","din276":"450","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-HAL1-460","code":"460","name":"Förderanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"460","children":[{"id":"UN01-ST01-PH01-HAL1-460-KRAN","code":"KRAN","name":"Hallenkran","node_type":"functional_location","hierarchy_level":"system","din276":"460","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-HAL1-470","code":"470","name":"Nutzungsspezifische und verfahrenstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"470","children":[{"id":"UN01-ST01-PH01-HAL1-470-LIN1","code":"LIN1","name":"Produktionslinie 1","node_type":"functional_location","hierarchy_level":"system","din276":"470","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-PH01-MEDI","code":"MEDI","name":"Medienversorgung","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-PH01-MEDI-470","code":"470","name":"Nutzungsspezifische und verfahrenstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"470","children":[{"id":"UN01-ST01-PH01-MEDI-470-DL01","code":"DL01","name":"Druckluftversorgung","node_type":"functional_location","hierarchy_level":"system","din276":"470","maintenance_target":true,"equipment":[]},{"id":"UN01-ST01-PH01-MEDI-470-PW01","code":"PW01","name":"Prozesswasserversorgung","node_type":"functional_location","hierarchy_level":"system","din276":"470","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-PH01-TECH","code":"TECH","name":"Technikzentralen","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-PH01-TECH-410","code":"410","name":"Abwasser-, Wasser- und Gasanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"410","children":[{"id":"UN01-ST01-PH01-TECH-410-SAN1","code":"SAN1","name":"Zentrale Sanitärversorgung","node_type":"functional_location","hierarchy_level":"system","din276":"410","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-TECH-420","code":"420","name":"Wärmeversorgungsanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"420","children":[{"id":"UN01-ST01-PH01-TECH-420-HZG1","code":"HZG1","name":"Zentrale Wärmeversorgung","node_type":"functional_location","hierarchy_level":"system","din276":"420","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-TECH-430","code":"430","name":"Raumlufttechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"430","children":[{"id":"UN01-ST01-PH01-TECH-430-RLT1","code":"RLT1","name":"Zentrale Lüftungsanlage","node_type":"functional_location","hierarchy_level":"system","din276":"430","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-TECH-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-PH01-TECH-440-NSHV","code":"NSHV","name":"Niederspannungshauptverteilung","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-PH01-TECH-480","code":"480","name":"Gebäude- und Anlagenautomation","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"480","children":[{"id":"UN01-ST01-PH01-TECH-480-GA01","code":"GA01","name":"Gebäude- und Anlagenautomation","node_type":"functional_location","hierarchy_level":"system","din276":"480","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-PH01-DACH","code":"DACH","name":"Dach","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-PH01-DACH-360","code":"360","name":"Dächer","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"360","children":[{"id":"UN01-ST01-PH01-DACH-360-DACH","code":"DACH","name":"Dachkonstruktion und Dachhaut","node_type":"functional_location","hierarchy_level":"system","din276":"360","maintenance_target":true,"equipment":[]}]}]}]},{"id":"UN01-ST01-LG01","code":"LG01","name":"Lager","node_type":"functional_location","hierarchy_level":"object","object_type":"warehouse","children":[{"id":"UN01-ST01-LG01-HAL1","code":"HAL1","name":"Lagerhalle 1","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-LG01-HAL1-300","code":"300","name":"Bauwerk – Baukonstruktionen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"300","children":[{"id":"UN01-ST01-LG01-HAL1-300-BAU1","code":"BAU1","name":"Hallenbaukonstruktion","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-HAL1-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-LG01-HAL1-440-ELT1","code":"ELT1","name":"Elektrische Hallenanlage","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-HAL1-450","code":"450","name":"Kommunikations-, sicherheits- und informationstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"450","children":[{"id":"UN01-ST01-LG01-HAL1-450-SIC1","code":"SIC1","name":"Sicherheits- und Informationstechnik","node_type":"functional_location","hierarchy_level":"system","din276":"450","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-HAL1-460","code":"460","name":"Förderanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"460","children":[{"id":"UN01-ST01-LG01-HAL1-460-FOE1","code":"FOE1","name":"Fördertechnik Lagerhalle","node_type":"functional_location","hierarchy_level":"system","din276":"460","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-LG01-RAMP","code":"RAMP","name":"Verladerampe","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-LG01-RAMP-300","code":"300","name":"Bauwerk – Baukonstruktionen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"300","children":[{"id":"UN01-ST01-LG01-RAMP-300-TOR1","code":"TOR1","name":"Verladetor-Anlage","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-RAMP-460","code":"460","name":"Förderanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"460","children":[{"id":"UN01-ST01-LG01-RAMP-460-HUB1","code":"HUB1","name":"Überladebrücke","node_type":"functional_location","hierarchy_level":"system","din276":"460","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-LG01-TECH","code":"TECH","name":"Technikzentralen","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-LG01-TECH-410","code":"410","name":"Abwasser-, Wasser- und Gasanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"410","children":[{"id":"UN01-ST01-LG01-TECH-410-SAN1","code":"SAN1","name":"Zentrale Sanitärversorgung","node_type":"functional_location","hierarchy_level":"system","din276":"410","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-TECH-430","code":"430","name":"Raumlufttechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"430","children":[{"id":"UN01-ST01-LG01-TECH-430-RLT1","code":"RLT1","name":"Lüftungsanlage Lager","node_type":"functional_location","hierarchy_level":"system","din276":"430","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-TECH-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-LG01-TECH-440-NSHV","code":"NSHV","name":"Niederspannungshauptverteilung","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-TECH-450","code":"450","name":"Kommunikations-, sicherheits- und informationstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"450","children":[{"id":"UN01-ST01-LG01-TECH-450-BMA1","code":"BMA1","name":"Brandmeldeanlage","node_type":"functional_location","hierarchy_level":"system","din276":"450","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-LG01-TECH-480","code":"480","name":"Gebäude- und Anlagenautomation","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"480","children":[{"id":"UN01-ST01-LG01-TECH-480-GA01","code":"GA01","name":"Gebäudeautomation","node_type":"functional_location","hierarchy_level":"system","din276":"480","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-LG01-DACH","code":"DACH","name":"Dach","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-LG01-DACH-360","code":"360","name":"Dächer","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"360","children":[{"id":"UN01-ST01-LG01-DACH-360-DACH","code":"DACH","name":"Dachkonstruktion und Dachhaut","node_type":"functional_location","hierarchy_level":"system","din276":"360","maintenance_target":true,"equipment":[]}]}]}]},{"id":"UN01-ST01-TG01","code":"TG01","name":"Tiefgarage","node_type":"functional_location","hierarchy_level":"object","object_type":"underground_parking","children":[{"id":"UN01-ST01-TG01-UG01","code":"UG01","name":"Parkebene UG 1","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-TG01-UG01-300","code":"300","name":"Bauwerk – Baukonstruktionen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"300","children":[{"id":"UN01-ST01-TG01-UG01-300-BAU1","code":"BAU1","name":"Baukonstruktion Tiefgarage","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]},{"id":"UN01-ST01-TG01-UG01-300-TOR1","code":"TOR1","name":"Garagentoranlage","node_type":"functional_location","hierarchy_level":"system","din276":"300","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-TG01-UG01-410","code":"410","name":"Abwasser-, Wasser- und Gasanlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"410","children":[{"id":"UN01-ST01-TG01-UG01-410-ENTW","code":"ENTW","name":"Entwässerungsanlage","node_type":"functional_location","hierarchy_level":"system","din276":"410","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-TG01-UG01-430","code":"430","name":"Raumlufttechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"430","children":[{"id":"UN01-ST01-TG01-UG01-430-ABL1","code":"ABL1","name":"Abluftanlage Tiefgarage","node_type":"functional_location","hierarchy_level":"system","din276":"430","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-TG01-UG01-440","code":"440","name":"Elektrische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"440","children":[{"id":"UN01-ST01-TG01-UG01-440-ELT1","code":"ELT1","name":"Elektrische Anlage Tiefgarage","node_type":"functional_location","hierarchy_level":"system","din276":"440","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-TG01-UG01-450","code":"450","name":"Kommunikations-, sicherheits- und informationstechnische Anlagen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"450","children":[{"id":"UN01-ST01-TG01-UG01-450-BMA1","code":"BMA1","name":"Brandmeldeanlage Tiefgarage","node_type":"functional_location","hierarchy_level":"system","din276":"450","maintenance_target":true,"equipment":[]},{"id":"UN01-ST01-TG01-UG01-450-CO01","code":"CO01","name":"CO-Warnanlage","node_type":"functional_location","hierarchy_level":"system","din276":"450","maintenance_target":true,"equipment":[]}]}]},{"id":"UN01-ST01-TG01-TECH","code":"TECH","name":"Technikzentrale Tiefgarage","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-TG01-TECH-480","code":"480","name":"Gebäude- und Anlagenautomation","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"480","children":[{"id":"UN01-ST01-TG01-TECH-480-GA01","code":"GA01","name":"Gebäudeautomation Tiefgarage","node_type":"functional_location","hierarchy_level":"system","din276":"480","maintenance_target":true,"equipment":[]}]}]}]},{"id":"UN01-ST01-AF01","code":"AF01","name":"Außenanlagen","node_type":"functional_location","hierarchy_level":"object","object_type":"outdoor_facilities","children":[{"id":"UN01-ST01-AF01-AUSS","code":"AUSS","name":"Außenbereich","node_type":"functional_location","hierarchy_level":"area","children":[{"id":"UN01-ST01-AF01-AUSS-500","code":"500","name":"Außenanlagen und Freiflächen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"500","children":[{"id":"UN01-ST01-AF01-AUSS-500-VERK","code":"VERK","name":"Verkehrs- und befestigte Flächen","node_type":"functional_location","hierarchy_level":"system","din276":"500","maintenance_target":true,"equipment":[]},{"id":"UN01-ST01-AF01-AUSS-500-GRUE","code":"GRUE","name":"Grünflächen","node_type":"functional_location","hierarchy_level":"system","din276":"500","maintenance_target":true,"equipment":[]}]},{"id":"UN01-ST01-AF01-AUSS-550","code":"550","name":"Technische Anlagen in Außenanlagen und Freiflächen","node_type":"functional_location","hierarchy_level":"din276_cost_group","din276":"550","children":[{"id":"UN01-ST01-AF01-AUSS-550-BEL1","code":"BEL1","name":"Außenbeleuchtung","node_type":"functional_location","hierarchy_level":"system","din276":"550","maintenance_target":true,"equipment":[]},{"id":"UN01-ST01-AF01-AUSS-550-ENTW","code":"ENTW","name":"Außenentwässerung","node_type":"functional_location","hierarchy_level":"system","din276":"550","maintenance_target":true,"equipment":[]},{"id":"UN01-ST01-AF01-AUSS-550-TOR1","code":"TOR1","name":"Tor- und Schrankenanlage","node_type":"functional_location","hierarchy_level":"system","din276":"550","maintenance_target":true,"equipment":[]}]}]}]}]}]}};
+const DING = TP.din276_cost_groups;
+const NODES = {}; const SYSTEMS = []; const AREAS = [];
+(function index(n,parent){ n._p = parent?parent.id:null; NODES[n.id]=n;
+  if(n.hierarchy_level==='system')SYSTEMS.push(n); if(n.hierarchy_level==='area')AREAS.push(n);
+  (n.children||[]).forEach(c=>index(c,n)); })(TP.root,null);
+function pathOf(id){const p=[];let n=NODES[id];while(n){p.unshift(n);n=n._p?NODES[n._p]:null;}return p;}
+function shortPath(id){return pathOf(id).slice(1,-1).map(n=>n.name).join(' › ');}
+function dinOf(id){const n=NODES[id];return n&&n.din276?n.din276:'';}
+function dinLabel(id){const d=dinOf(id);return d?('KG '+d+' · '+DING[d]):'';}
+
+/* Equipments nach equipment_rule: austauschbar, serialisiert, prüfpflichtig oder separat zu verfolgen */
+const EQMAP={
+ 'UN01-ST01-BG01-TECH-430-RLT1':[
+   {id:'EQ-100001',name:'Zuluftventilator ZV-1',her:'Ziehl-Abegg RH45',sn:'ZA-2021-4471',pruef:'12.11.2026',tag:'QR + RFID'},
+   {id:'EQ-100002',name:'Wärmerückgewinnung WRG-1',her:'Hoval RotaGen',sn:'HV-88214',pruef:'12.11.2026',tag:'QR'},
+   {id:'EQ-100003',name:'Filterstufe F7 Zuluft',her:'Camfil Hi-Flo',sn:'—',pruef:'30.09.2026',tag:'QR'}],
+ 'UN01-ST01-BG01-TECH-460-AUF1':[
+   {id:'EQ-100010',name:'Personenaufzug A2 (8 Pers./630 kg)',her:'Schindler 3300',sn:'SCH-3300-77219',pruef:'12.10.2026',tag:'QR + RFID'},
+   {id:'EQ-100011',name:'Notruf- und Sprechsystem',her:'Kone KRM',sn:'KRM-4410',pruef:'12.10.2026',tag:'QR'}],
+ 'UN01-ST01-BG01-TECH-450-BMA1':[
+   {id:'EQ-100020',name:'Brandmeldezentrale BMZ-1',her:'Siemens Cerberus FIT',sn:'SI-CFT-9091',pruef:'05.12.2026',tag:'QR + RFID'},
+   {id:'EQ-100021',name:'Rauchmeldergruppe EG',her:'Siemens OP720',sn:'—',pruef:'05.12.2026',tag:'QR'}],
+ 'UN01-ST01-BG01-TECH-440-NSHV':[
+   {id:'EQ-100030',name:'NSHV Feld 1–4',her:'Siemens Sivacon S8',sn:'SIV-S8-2201',pruef:'20.03.2027',tag:'QR'},
+   {id:'EQ-100031',name:'USV-Anlage 40 kVA',her:'Riello MPT',sn:'RIE-MPT-3390',pruef:'20.03.2027',tag:'QR + RFID'}],
+ 'UN01-ST01-BG01-TECH-420-HZG1':[
+   {id:'EQ-100040',name:'Gas-Brennwertkessel 320 kW',her:'Viessmann Vitocrossal',sn:'VIE-VC-5512',pruef:'01.10.2026',tag:'QR'},
+   {id:'EQ-100041',name:'Heizungsumwälzpumpe HP-1',her:'Grundfos Magna3',sn:'GF-M3-7781',pruef:'01.10.2026',tag:'QR'}],
+ 'UN01-ST01-BG01-TECH-480-GA01':[
+   {id:'EQ-100045',name:'GA-Automationsstation AS-1',her:'Siemens Desigo PXC',sn:'DES-PXC-1180',pruef:'15.01.2027',tag:'QR'}],
+ 'UN01-ST01-BG01-EG00-410-SAN1':[
+   {id:'EQ-100050',name:'Trinkwasser-Druckerhöhungsanlage',her:'Wilo Comfort',sn:'WI-CO-2214',pruef:'18.09.2026',tag:'QR'}],
+ 'UN01-ST01-BG01-EG00-440-UV01':[
+   {id:'EQ-100052',name:'Unterverteilung UV-EG',her:'Hager Univers',sn:'HA-UN-4408',pruef:'20.03.2027',tag:'QR'}],
+ 'UN01-ST01-BG01-DACH-360-DACH':[
+   {id:'EQ-100110',name:'Anschlagpunkte Absturzsicherung (12 St.)',her:'ABS-Safety Lock',sn:'ABS-2024-12',pruef:'22.08.2026',tag:'QR + RFID'}],
+ 'UN01-ST01-PH01-HAL1-460-KRAN':[
+   {id:'EQ-100070',name:'Hallenkran 10 t',her:'Demag EKKE',sn:'DEM-EK-6620',pruef:'14.09.2026',tag:'QR + RFID'},
+   {id:'EQ-100071',name:'Anschlagmittel-Satz Halle 1',her:'Dolezych',sn:'DOL-AS-118',pruef:'14.09.2026',tag:'QR'}],
+ 'UN01-ST01-PH01-HAL1-300-BAU1':[
+   {id:'EQ-100120',name:'Anlegeleiter Alu 6 m',her:'Zarges Z600',sn:'ZA-L-0071',pruef:'31.08.2026',tag:'QR'},
+   {id:'EQ-100121',name:'Podesttreppe fahrbar',her:'Günzburger 51012',sn:'GU-P-0122',pruef:'31.08.2026',tag:'QR'}],
+ 'UN01-ST01-PH01-MEDI-470-DL01':[
+   {id:'EQ-100080',name:'Schraubenkompressor 55 kW',her:'Kaeser ASD 60',sn:'KA-ASD-9931',pruef:'07.10.2026',tag:'QR + RFID'},
+   {id:'EQ-100081',name:'Kältetrockner DL',her:'Kaeser TG 261',sn:'KA-TG-4417',pruef:'07.10.2026',tag:'QR'},
+   {id:'EQ-100082',name:'Druckbehälter 900 l (prüfpflichtig)',her:'Kaeser DB900',sn:'KA-DB-1180',pruef:'07.10.2026',tag:'QR + RFID'}],
+ 'UN01-ST01-PH01-MEDI-470-PW01':[
+   {id:'EQ-100085',name:'Prozesswasserpumpe PW-1',her:'KSB Etanorm',sn:'KSB-ET-2290',pruef:'11.11.2026',tag:'QR'}],
+ 'UN01-ST01-PH01-HAL1-470-LIN1':[
+   {id:'EQ-100088',name:'Montagelinie L1 – Antriebsstation',her:'Bosch Rexroth',sn:'BR-VF-7712',pruef:'02.12.2026',tag:'QR'}],
+ 'UN01-ST01-LG01-HAL1-460-FOE1':[
+   {id:'EQ-100091',name:'Rollenförderer RF-1',her:'Interroll',sn:'INT-RF-3312',pruef:'19.10.2026',tag:'QR'},
+   {id:'EQ-100092',name:'Regalbediengerät RBG-1',her:'Jungheinrich',sn:'JH-RBG-0091',pruef:'19.10.2026',tag:'QR + RFID'}],
+ 'UN01-ST01-LG01-RAMP-460-HUB1':[
+   {id:'EQ-100090',name:'Überladebrücke ÜB-1',her:'Hörmann HLS2',sn:'HO-HLS-5521',pruef:'26.09.2026',tag:'QR'}],
+ 'UN01-ST01-LG01-RAMP-300-TOR1':[
+   {id:'EQ-100093',name:'Sektionaltor T-1 mit Antrieb',her:'Hörmann SPU F42',sn:'HO-SPU-8842',pruef:'26.09.2026',tag:'QR'}],
+ 'UN01-ST01-TG01-UG01-430-ABL1':[
+   {id:'EQ-100060',name:'Abluftventilator TG-1',her:'Systemair AXC',sn:'SY-AXC-6612',pruef:'08.09.2026',tag:'QR + RFID'}],
+ 'UN01-ST01-TG01-UG01-450-CO01':[
+   {id:'EQ-100061',name:'CO-Warnzentrale',her:'Schütz GMA200',sn:'SCH-GMA-1120',pruef:'08.09.2026',tag:'QR'},
+   {id:'EQ-100062',name:'CO-Sensorfeld Ebene 2 (8 St.)',her:'Schütz MPX',sn:'—',pruef:'08.09.2026',tag:'QR'}],
+ 'UN01-ST01-TG01-UG01-300-TOR1':[
+   {id:'EQ-100063',name:'Garagentor-Antrieb',her:'Hörmann ITO 400',sn:'HO-ITO-2231',pruef:'03.11.2026',tag:'QR'}],
+ 'UN01-ST01-TG01-UG01-410-ENTW':[
+   {id:'EQ-100064',name:'Hebeanlage Entwässerung',her:'Jung Pumpen',sn:'JP-HE-4471',pruef:'03.11.2026',tag:'QR'}],
+ 'UN01-ST01-AF01-AUSS-550-TOR1':[
+   {id:'EQ-100100',name:'Schrankenanlage Einfahrt',her:'Magnetic MHTM',sn:'MAG-MH-7781',pruef:'28.10.2026',tag:'QR + RFID'}],
+ 'UN01-ST01-AF01-AUSS-550-BEL1':[
+   {id:'EQ-100101',name:'Lichtmast LM-04',her:'Trilux Lumega',sn:'TR-LM-0044',pruef:'28.10.2026',tag:'QR'}]
+};
+Object.keys(EQMAP).forEach(k=>{ if(NODES[k]) NODES[k].equipment=EQMAP[k]; });
+const EQINDEX={}; Object.keys(EQMAP).forEach(k=>EQMAP[k].forEach(e=>EQINDEX[e.id]={...e,tp:k}));
+const EQCOUNT=Object.keys(EQINDEX).length;
+
+/* ===================== Vorgänge ===================== */
+const meldungen=[
+ {id:'4710000010',name:'Rundgang Baukonstruktion Erdgeschoss',tp:'UN01-ST01-BG01-EG00-300-BAU1',plan:'WP-BG01-EG-300',zeitraum:'25.06.26 – 10.07.26',status:'offen',
+  punkte:['Haupt-/Nebeneingänge, Betriebs- und Lagerflächen','Flucht- und Rettungswege, Treppenhaus, Handläufe','Abfallsammelstellen, Mülleimer und Aschenbecher','Bodenbeläge und Fugen','Beschilderung allgemein','Beleuchtung und Kennzeichnung']},
+ {id:'4710000011',name:'Prüfung Leitern und Tritte (Halle 1)',tp:'UN01-ST01-PH01-HAL1-300-BAU1',plan:'WP-PH01-LEITER',zeitraum:'01.08.26 – 31.08.26',status:'mangel',
+  punkte:['Holme','Sprossen / Stufen / Plattform','Spreizsicherungen','Beschlagteile','Leiter- / Tritte- / Rollen','Zubehör','Kennzeichnung']},
+ {id:'4710000012',name:'Wartung Aufzugsanlage',tp:'UN01-ST01-BG01-TECH-460-AUF1',plan:'WP-BG01-AUF-460',zeitraum:'10.08.26 – 20.08.26',status:'zw',
+  punkte:['Türsensorik und Lichtgitter','Notruf- und Sprechverbindung','Kabinenbeleuchtung','Fahrkomfort / Geräusche','Schachtgrube Sauberkeit','Prüfplakette / Kennzeichnung']},
+ {id:'4710000013',name:'Wartung zentrale Lüftungsanlage',tp:'UN01-ST01-BG01-TECH-430-RLT1',plan:'WP-BG01-RLT-430',zeitraum:'12.08.26 – 26.08.26',status:'offen',
+  punkte:['Filterstufen Zu-/Abluft (Differenzdruck)','Ventilatoren und Riemenantrieb','Wärmerückgewinnung','Kondensatablauf und Tropfenabscheider','Klappen und Stellantriebe','Schaltschrank und Regelung']},
+ {id:'4710000014',name:'Prüfung CO-Warnanlage Tiefgarage',tp:'UN01-ST01-TG01-UG01-450-CO01',plan:'WP-TG01-CO-450',zeitraum:'15.08.26 – 29.08.26',status:'offen',
+  punkte:['Funktionsprüfung CO-Warnzentrale','Sensorik Ebene 1 / Ebene 2','Alarmierung und Signalgeber','Kopplung zur Abluftanlage','Störmeldung an Gebäudeautomation','Prüfprotokoll und Kennzeichnung']}
+];
+const maengel=[
+ {id:'M-2026-0141',titel:'Beleuchtung defekt – Fahrgasse Ebene 2',tp:'UN01-ST01-TG01-UG01-440-ELT1',datum:'12.08.2026',status:'Offen',cls:'red',fotos:2},
+ {id:'M-2026-0138',titel:'Anlegeleiter 6 m – Spreizsicherung beschädigt',tp:'UN01-ST01-PH01-HAL1-300-BAU1',datum:'09.08.2026',status:'An Dienstleister',cls:'orange',fotos:1},
+ {id:'M-2026-0133',titel:'Fluchtwegschild fehlt – Treppenhaus B',tp:'UN01-ST01-BG01-OG01-300-BAU1',datum:'05.08.2026',status:'Behoben',cls:'green',fotos:1}
+];
+let zwischen=[
+ {t:'Wartungsmeldung 4710000012 · Aufzugsanlage',s:'zwischengespeichert · 6 Prüfpunkte erfasst',ico:'📋'},
+ {t:'Messbeleg Tiefgarage · 12.842 m³',s:'offline erfasst (kein Netz im UG)',ico:'#'},
+ {t:'Mangel M-2026-0141 · 2 Fotos',s:'PDF wartet auf Übergabe an SAP',ico:'⚠'}
+];
+const forms=[
+ {t:'Einweisungsformular',sub:'Allgemeine Sicherheitseinweisung vor Arbeitsbeginn',rows:['Innerbetriebliche Verbote erläutert','Innerbetriebliche Warnungen erläutert','Innerbetriebliche Gebote erläutert','Nutzung von innerbetrieblicher PSA erläutert','Notausgänge sind stets frei und benutzbar zu halten','Verhalten im Brandfall / Sammelplatz erläutert']},
+ {t:'Feuererlaubnisschein',sub:'Schweiß-, Trenn- oder Brennarbeiten',rows:['Brennbare Stoffe im Umkreis von 10 m entfernt','Feuerlöscher am Arbeitsplatz bereitgestellt','Brandwache während und nach den Arbeiten gestellt','Rauchmelder-Abschaltung mit Leitstelle abgestimmt','Nachkontrolle nach Arbeitsende (2 h) vereinbart']},
+ {t:'Freigabe elektrische Anlagen',sub:'Arbeiten an elektrischen Anlagen (DIN 276 – KG 440)',rows:['Anlage freigeschaltet und gegen Wiedereinschalten gesichert','Spannungsfreiheit festgestellt','Erden und Kurzschließen durchgeführt','Benachbarte, unter Spannung stehende Teile abgedeckt','Arbeitsbereich abgegrenzt und gekennzeichnet']}
+];
+let curMeld=0,curForm=0,curTp=null,curEq=null,hasFinding=false,meldQuery='',tpQuery='',dinFilter='';
+
+/* ===================== Helpers ===================== */
+const $=id=>document.getElementById(id);
+function toast(msg,icon){$('toastTxt').textContent=msg;document.querySelector('#toast .tick').textContent=icon||'✓';$('toast').classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>$('toast').classList.remove('show'),2600);}
+function segOnly(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
+function qrSvg(size){return '<svg width="'+size+'" height="'+size+'" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="#0b1f33" d="M0 0h7v7H0zM22 0h7v7h-7zM0 22h7v7H0zM2 2h3v3H2zM24 2h3v3h-3zM2 24h3v3H2zM9 0h2v2H9zM13 0h2v3h-2zM17 0h2v2h-2zM9 4h3v2H9zM14 4h2v2h-2zM18 4h1v3h-1zM9 8h2v2H9zM0 9h2v2H0zM4 9h3v2H4zM12 8h3v3h-3zM17 9h2v2h-2zM20 8h2v2h-2zM24 9h2v2h-2zM27 9h2v2h-2zM0 13h3v2H0zM5 13h2v2H5zM9 12h2v3H9zM13 13h3v3h-3zM19 12h2v2h-2zM22 13h2v2h-2zM26 13h3v2h-3zM1 17h2v2H1zM5 17h2v2H5zM9 16h2v2H9zM12 18h2v2h-2zM16 17h3v2h-3zM21 16h2v3h-2zM25 17h2v2h-2zM9 20h2v3H9zM13 21h2v2h-2zM17 20h2v2h-2zM20 21h3v2h-3zM26 20h3v2h-3zM9 24h3v2H9zM14 24h2v3h-2zM18 24h2v2h-2zM22 24h2v2h-2zM25 25h3v2h-3zM10 27h2v2h-2zM15 27h3v2h-3z"/></svg>';}
+
+/* ===================== Login / Nav ===================== */
+document.querySelectorAll('#roleList .role').forEach(r=>r.onclick=()=>{document.querySelectorAll('#roleList .role').forEach(x=>x.classList.remove('sel'));r.classList.add('sel');});
+function doLogin(){const r=document.querySelector('#roleList .role.sel');const name=r.dataset.name,role=r.dataset.role;
+  $('uName').textContent=name;$('uRole').textContent=role;$('uAv').textContent=name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  $('greet').textContent='Guten Morgen, '+name.split(' ')[0];$('login').classList.add('hidden');toast('Angemeldet als '+role,'👋');}
+function doLogout(){$('login').classList.remove('hidden');}
+function nav(page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  $('page-'+page).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const owner={'meldung-detail':'meldungen','tp-detail':'tp','eq-detail':'tp','form-detail':'formulare'}[page]||page;
+  const ni=document.querySelector('.nav-item[data-page="'+owner+'"]');if(ni)ni.classList.add('active');
+  const ap=document.querySelector('.main .page.active');if(ap)ap.scrollTop=0;
+  if(page==='manuell')hideSubs();
+}
+
+/* ===================== Wartungsmeldungen ===================== */
+function renderMeld(filter){
+  if(filter!==undefined)renderMeld._f=filter;
+  const f=renderMeld._f||'alle';
+  const q=meldQuery.trim().toLowerCase();
+  const map={offen:['blue','offen','📋'],mangel:['red','mangelbehaftet','⚠'],zw:['orange','zwischengespeichert','💾']};
+  const rows=meldungen.filter(m=>(f==='alle'||m.status===f)&&(!q||(m.id+' '+m.name+' '+m.tp+' '+dinLabel(m.tp)).toLowerCase().includes(q)));
+  $('meldList').innerHTML=rows.map(m=>{const i=meldungen.indexOf(m);const c=map[m.status];
+    return '<div class="card mrow" onclick="openMeld('+i+')">'+
+      '<div class="stat" style="background:var(--'+(c[0]==='blue'?'blue-soft':c[0]==='red'?'red-soft':'yellow-soft')+')">'+c[2]+'</div>'+
+      '<div class="body"><b>'+m.name+' · Meldung '+m.id+'</b><div class="meta">'+
+        '<span class="mono">'+m.tp+'</span><span>'+shortPath(m.tp)+'</span><span>'+m.zeitraum+'</span></div></div>'+
+      '<span class="chip purple">KG '+dinOf(m.tp)+'</span><span class="chip '+c[0]+'">'+c[1]+'</span>'+
+      '<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2"><path d="m1 1 6 6-6 6"/></svg></div>';}).join('')
+    ||'<div class="card" style="text-align:center;color:var(--ink2);padding:36px">Keine Meldungen zu diesem Filter</div>';
+}
+function filterMeld(btn,f){segOnly(btn);renderMeld(f);}
+function openMeld(i){
+  curMeld=i;hasFinding=false;$('stoerBanner').classList.remove('show');
+  const m=meldungen[i],n=NODES[m.tp];
+  $('mdTitle').textContent=m.name;
+  $('mdSub').textContent='Meldung '+m.id+' · aus SAP-Wartungsplan '+m.plan+' (IH-Anleitung)';
+  $('mdMeta').innerHTML=
+    '<div class="k">Technischer Platz</div><div><span class="mono">'+m.tp+'</span> <span style="cursor:pointer;color:var(--blue)" onclick="openTp(\''+m.tp+'\')">öffnen ›</span></div>'+
+    '<div class="k">Bezeichnung</div><div>'+n.name+'</div>'+
+    '<div class="k">Struktur</div><div>'+shortPath(m.tp)+'</div>'+
+    '<div class="k">DIN-276-Kostengruppe</div><div>'+dinLabel(m.tp)+'</div>'+
+    '<div class="k">Wartungsobjekt</div><div>System-TP (maintenance_target)</div>'+
+    '<div class="k">Start-/Enddatum</div><div>'+m.zeitraum+'</div>';
+  $('checkRows').innerHTML=m.punkte.map((p,idx)=>
+    '<div class="checkrow"><span class="nr">'+(idx+1)+'</span><span class="name">ℹ️&nbsp; '+p+'</span>'+
+    '<div class="jn"><button onclick="setJN(this,false)">Nein</button><button onclick="setJN(this,true)">Ja</button></div>'+
+    '<button class="iconbtn" onclick="fotoBtn(this)">📷</button><button class="iconbtn" onclick="bemBtn(this)">✏️</button></div>').join('');
+  nav('meldung-detail');
+}
+function setJN(btn,ok){const jn=btn.parentElement;[...jn.children].forEach(b=>b.classList.remove('ok','bad'));btn.classList.add(ok?'ok':'bad');
+  if(!ok){hasFinding=true;$('stoerBanner').classList.add('show');}}
+function fotoBtn(b){b.classList.add('done');const d=b.querySelector('.dot');if(!d){const s=document.createElement('span');s.className='dot';s.textContent='1';b.appendChild(s);}else d.textContent=+d.textContent+1;toast('Foto zur Dokumentation aufgenommen','📷');}
+function bemBtn(b){b.classList.add('done');toast('Bemerkung / Langtext gespeichert','✏️');}
+function allOk(){document.querySelectorAll('#checkRows .jn').forEach(jn=>{[...jn.children].forEach(b=>b.classList.remove('ok','bad'));jn.children[1].classList.add('ok');});$('stoerBanner').classList.remove('show');toast('Alle Prüfpunkte auf „Ja / in Ordnung" gesetzt');}
+function saveDraft(){queueItem('Wartungsmeldung '+meldungen[curMeld].id+' (Entwurf)');meldungen[curMeld].status='zw';renderMeld();nav('meldungen');}
+function finishMeld(){const m=meldungen[curMeld];toast('Meldung '+m.id+' abgeschlossen und an SAP übergeben');
+  if(hasFinding)setTimeout(()=>toast('Mangelbericht als PDF erzeugt','📄'),1400);nav('meldungen');}
+function createStoerung(){const m=meldungen[curMeld];
+  toast('Störungsmeldung 4720000181 auf '+m.tp+' erstellt · Referenz: '+m.id,'⚠');
+  $('stoerBanner').classList.remove('show');
+  maengel.unshift({id:'M-2026-0145',titel:'Befund aus '+m.name,tp:m.tp,datum:'18.08.2026',status:'Offen',cls:'red',fotos:1});
+  renderMangel();updateCounts();}
+
+/* ===================== Manuelle Erfassung ===================== */
+function showSub(w){hideSubs();$('sub-'+w).style.display='block';}
+function hideSubs(){['stoerung','messbeleg'].forEach(s=>{const e=$('sub-'+s);if(e)e.style.display='none';});}
+function addPhoto(id){const t=document.createElement('div');t.className='thumb';t.innerHTML='📷<span class="x" onclick="this.parentElement.remove()">✕</span>';$(id).appendChild(t);toast('Foto hinzugefügt','📷');}
+function submitStoerung(){const v=$('stoerTp').value;toast('Störungsmeldung 4720000182 auf '+v+' an SAP übergeben','⚠');hideSubs();}
+function preselectTp(){if(curTp){$('stoerTp').value=curTp;updStoerDin();}}
+function updStoerDin(){const v=$('stoerTp').value;const id=v.startsWith('EQ-')?EQINDEX[v].tp:v;$('stoerDin').value=dinLabel(id);}
+function fillSelects(){
+  const opts=SYSTEMS.map(s=>'<option value="'+s.id+'">'+s.id+' · '+s.name+'</option>').join('');
+  const eqOpts=Object.keys(EQINDEX).map(k=>'<option value="'+k+'">'+k+' · '+EQINDEX[k].name+'</option>').join('');
+  $('stoerTp').innerHTML='<optgroup label="Technische Plätze (System)">'+opts+'</optgroup><optgroup label="Equipments">'+eqOpts+'</optgroup>';
+  $('stoerTp').onchange=updStoerDin;updStoerDin();
+  $('messTp').innerHTML=SYSTEMS.filter(s=>['410','420','430','440','470'].includes(s.din276)).map(s=>'<option value="'+s.id+'">'+s.id+' · '+s.name+'</option>').join('');
+  $('formTp').innerHTML=opts;
+  $('formTp').onchange=()=>{$('formDin').value=dinLabel($('formTp').value);};
+}
+
+/* ===================== Zwischengespeichert / Sync ===================== */
+function renderZw(){
+  $('zwList').innerHTML=zwischen.map(z=>'<div class="card mrow"><div class="stat" style="background:var(--yellow-soft)">'+z.ico+'</div>'+
+    '<div class="body"><b>'+z.t+'</b><div class="meta"><span>'+z.s+'</span></div></div><span class="chip orange">wartet auf Sync</span></div>').join('');
+  $('zwEmpty').style.display=zwischen.length?'none':'block';updateCounts();
+}
+function queueItem(t){zwischen.push({t:t,s:'lokal gespeichert · '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})+' Uhr',ico:'💾'});renderZw();toast('Lokal zwischengespeichert – Sync bei Netzverbindung','💾');}
+function updateCounts(){
+  $('bZw').textContent=zwischen.length;$('kZw').textContent=zwischen.length;$('pendCnt').textContent=zwischen.length;
+  $('bZw').style.display=zwischen.length?'':'none';
+  const mg=maengel.filter(m=>m.status!=='Behoben').length;$('bMangel').textContent=mg;$('kMangel').textContent=mg;
+  const of=meldungen.filter(m=>m.status!=='zw').length;$('bMeld').textContent=of;$('kMeld').textContent=of;
+}
+function doSync(){const b=$('syncBtn');b.classList.add('spin');toast('Synchronisation mit SAP BTP Mobile Services läuft …','⟳');
+  setTimeout(()=>{b.classList.remove('spin');const n=zwischen.length;zwischen=[];
+    meldungen.forEach(m=>{if(m.status==='zw')m.status='offen';});renderZw();renderMeld();
+    $('lastSync').textContent='Heute, '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    toast(n+' Vorgänge synchronisiert · Delta-Sync abgeschlossen, keine Konflikte');},1800);}
+
+/* ===================== Mängel ===================== */
+function renderMangel(){
+  $('mangelList').innerHTML=maengel.map((m,i)=>'<div class="card mrow" onclick="openPdf(\'mangel\','+i+')">'+
+    '<div class="thumb" style="width:52px;height:52px;flex:none;font-size:20px">📷'+(m.fotos>1?'<span class="x" style="background:var(--accent)">'+m.fotos+'</span>':'')+'</div>'+
+    '<div class="body"><b>'+m.titel+'</b><div class="meta"><span>'+m.id+'</span><span class="mono">'+m.tp+'</span><span>'+m.datum+'</span></div></div>'+
+    '<span class="chip purple">KG '+dinOf(m.tp)+'</span><span class="chip '+m.cls+'">'+m.status+'</span></div>').join('');
+}
+
+/* ===================== TP-Baum ===================== */
+const LVLICON={company:'🏢',site:'📍',object:'🏗️',area:'🗺️',din276_cost_group:'📂',system:'⚙️'};
+const LVLNAME={company:'Unternehmen',site:'Standort',object:'Objekt',area:'Bereich',din276_cost_group:'DIN-276-Kostengruppe',system:'System / Anlage'};
+let expanded=new Set(['UN01','UN01-ST01','UN01-ST01-BG01','UN01-ST01-BG01-TECH']);
+function selfMatch(n){
+  const q=tpQuery.trim().toLowerCase();
+  const mq=!q||((n.id+' '+n.name+' '+(n.code||'')).toLowerCase().includes(q))||((n.equipment||[]).some(e=>(e.id+' '+e.name).toLowerCase().includes(q)));
+  const md=!dinFilter||n.din276===dinFilter;
+  return mq&&md;
+}
+function subMatch(n){return selfMatch(n)||(n.children||[]).some(subMatch);}
+function toggleNode(id,ev){if(ev)ev.stopPropagation();if(expanded.has(id))expanded.delete(id);else expanded.add(id);renderTree();}
+function renderNode(n,depth,inherited){
+  const self=selfMatch(n),kids=n.children||[];
+  if(!(inherited||self||kids.some(subMatch)))return '';
+  const filtering=!!(tpQuery.trim()||dinFilter);
+  const open=filtering?true:expanded.has(n.id);
+  const inh=inherited||(self&&filtering);
+  const eq=n.equipment||[];
+  const hasKids=kids.length||eq.length;
+  const lvl=n.hierarchy_level;
+  let chips='';
+  if(n.din276&&lvl==='system')chips+='<span class="chip purple">KG '+n.din276+'</span>';
+  if(lvl==='din276_cost_group')chips+='<span class="chip purple">KG '+n.din276+'</span>';
+  if(eq.length)chips+='<span class="chip gray">'+eq.length+' EQ</span>';
+  if(n.maintenance_target)chips+='<span class="chip green">Wartungsobjekt</span>';
+  const click=lvl==='system'?('openTp(\''+n.id+'\')'):('toggleNode(\''+n.id+'\')');
+  let html='<div class="tnode lvl-'+lvl+(lvl==='system'?' sys':'')+'" style="padding-left:'+(6+depth*20)+'px" onclick="'+click+'">'+
+    '<span class="tw'+(open&&hasKids?' open':'')+'" onclick="toggleNode(\''+n.id+'\',event)">'+(hasKids?'▶':'·')+'</span>'+
+    '<span class="tico" style="background:'+(lvl==='system'?'var(--accent-soft)':lvl==='din276_cost_group'?'var(--purple-soft)':'rgba(118,118,128,.12)')+'">'+LVLICON[lvl]+'</span>'+
+    '<span class="tname">'+n.name+'<span class="tid mono">'+n.id+'</span></span>'+chips+
+    (lvl==='system'?'<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2"><path d="m1 1 6 6-6 6"/></svg>':'')+'</div>';
+  if(open){
+    html+=kids.map(c=>renderNode(c,depth+1,inh)).join('');
+    const q=tpQuery.trim().toLowerCase();
+    html+=eq.filter(e=>!q||(e.id+' '+e.name).toLowerCase().includes(q)||selfMatch(n)).map(e=>
+      '<div class="tnode eq" style="padding-left:'+(6+(depth+1)*20)+'px" onclick="openEq(\''+e.id+'\')">'+
+      '<span class="tw">·</span><span class="tico">🏷️</span>'+
+      '<span class="tname">'+e.name+'<span class="tid mono">'+e.id+'</span></span>'+
+      '<span class="chip blue">Equipment</span><span class="chip gray">'+e.tag+'</span>'+
+      '<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2"><path d="m1 1 6 6-6 6"/></svg></div>').join('');
+  }
+  return html;
+}
+function renderTree(){
+  $('tpTree').innerHTML=renderNode(TP.root,0,false)||'<div style="padding:34px;text-align:center;color:var(--ink2)">Keine Treffer</div>';
+}
+const DINSHORT={'300':'Baukonstruktionen','360':'Dächer','410':'Wasser / Gas','420':'Wärmeversorgung','430':'Raumlufttechnik','440':'Elektrotechnik','450':'Sicherheit / IT','460':'Förderanlagen','470':'Verfahrenstechnik','480':'Gebäudeautomation','500':'Außenanlagen','550':'Technik außen'};
+function renderDinBar(){
+  const counts={};SYSTEMS.forEach(s=>counts[s.din276]=(counts[s.din276]||0)+1);
+  $('dinBar').innerHTML='<span class="dinchip'+(dinFilter===''?' on':'')+'" onclick="setDin(\'\')">Alle Kostengruppen</span>'+
+    Object.keys(DING).filter(k=>counts[k]).map(k=>'<span class="dinchip'+(dinFilter===k?' on':'')+'" onclick="setDin(\''+k+'\')" title="KG '+k+' · '+DING[k]+'">'+k+' · '+(DINSHORT[k]||DING[k])+' ('+counts[k]+')</span>').join('');
+}
+function setDin(k){dinFilter=(dinFilter===k?'':k);renderDinBar();renderTree();}
+function openTp(id){
+  curTp=id;const n=NODES[id],p=pathOf(id);
+  $('tpdName').textContent=n.name;
+  $('tpdCrumb').innerHTML=p.map((x,i)=>'<span onclick="'+(i<p.length-1?'openTpAny(\''+x.id+'\')':'')+'">'+x.name+'</span>').join(' <span style="color:var(--ink3)">›</span> ');
+  $('tpdChips').innerHTML=(n.din276?'<span class="chip purple">KG '+n.din276+'</span>':'')+
+    (n.maintenance_target?'<span class="chip green">Wartungsobjekt</span>':'<span class="chip gray">Strukturknoten</span>');
+  const eq=n.equipment||[];
+  $('tpdKv').innerHTML=
+    '<div class="k">Technischer Platz</div><div class="mono">'+n.id+'</div>'+
+    '<div class="k">Kurzcode</div><div class="mono">'+(n.code||'—')+'</div>'+
+    '<div class="k">Hierarchie-Ebene</div><div>'+LVLNAME[n.hierarchy_level]+'</div>'+
+    '<div class="k">DIN-276-Kostengruppe</div><div>'+(dinLabel(n.id)||'—')+'</div>'+
+    '<div class="k">Übergeordneter Platz</div><div class="mono">'+(n._p||'—')+'</div>'+
+    '<div class="k">Meldung / Auftrag möglich</div><div>'+(n.maintenance_target?'Ja – Meldung, Auftrag und Wartungsplan':'Nein – nur Strukturierung')+'</div>'+
+    '<div class="k">Equipments</div><div>'+eq.length+'</div>';
+  const segs=TP.identifier_pattern.segments,parts=n.id.split('-');
+  $('tpdSeg').innerHTML=segs.map((s,i)=>'<div class="seghead"><span class="mono" style="color:var(--ink3)">'+s.position+'</span>'+
+    '<span><b class="mono">'+(parts[i]||'—')+'</b> <span style="color:var(--ink2)">· '+s.key+'</span></span></div>').join('');
+  $('tpdEqCard').style.display=eq.length?'block':'none';
+  $('tpdEq').innerHTML=eq.map(e=>'<div class="mrow" style="padding:11px 0;border-bottom:1px solid var(--sep)" onclick="openEq(\''+e.id+'\')">'+
+    '<div class="stat" style="background:var(--purple-soft);width:38px;height:38px;border-radius:11px">🏷️</div>'+
+    '<div class="body"><b style="font-size:13.8px">'+e.name+'</b><div class="meta"><span class="mono">'+e.id+'</span><span>'+e.her+'</span><span>Prüfung: '+e.pruef+'</span></div></div>'+
+    '<span class="chip gray">'+e.tag+'</span></div>').join('');
+  const vg=meldungen.filter(m=>m.tp===id),mg=maengel.filter(m=>m.tp===id);
+  $('tpdVorgaenge').innerHTML=(vg.map(m=>'<div class="mrow" style="padding:10px 0" onclick="openMeld('+meldungen.indexOf(m)+')">'+
+      '<div class="stat" style="background:var(--blue-soft);width:36px;height:36px;border-radius:10px">📋</div>'+
+      '<div class="body"><b style="font-size:13.3px">'+m.name+'</b><div class="meta"><span>'+m.id+' · '+m.zeitraum+'</span></div></div></div>').join('')+
+    mg.map(m=>'<div class="mrow" style="padding:10px 0"><div class="stat" style="background:var(--red-soft);width:36px;height:36px;border-radius:10px">⚠</div>'+
+      '<div class="body"><b style="font-size:13.3px">'+m.titel+'</b><div class="meta"><span>'+m.id+' · '+m.status+'</span></div></div></div>').join(''))
+    ||'<div style="font-size:13px;color:var(--ink2);padding:10px 0">Keine offenen Vorgänge an diesem Platz.</div>';
+  $('tpdQr').innerHTML=qrSvg(118);
+  $('tpdCode').textContent='QR: '+n.id;
+  nav('tp-detail');
+}
+function openTpAny(id){const n=NODES[id];if(!n)return;expanded.add(id);pathOf(id).forEach(x=>expanded.add(x.id));renderTree();
+  if(n.hierarchy_level==='system')openTp(id);else nav('tp');}
+function openEq(eid){
+  const e=EQINDEX[eid];if(!e)return;curEq=eid;const n=NODES[e.tp];
+  $('eqTitle').textContent=e.name;
+  $('eqCrumb').innerHTML=pathOf(e.tp).map(x=>'<span>'+x.name+'</span>').join(' <span style="color:var(--ink3)">›</span> ');
+  $('eqBack').textContent='‹ '+n.name;$('eqBack').onclick=()=>openTp(e.tp);
+  $('eqFields').innerHTML=
+    '<div class="field"><label>Equipment-Nummer</label><input value="'+e.id+'" readonly></div>'+
+    '<div class="field"><label>Technischer Platz</label><input class="mono" value="'+e.tp+'" readonly></div>'+
+    '<div class="field full"><label>Bezeichnung</label><input value="'+e.name+'"></div>'+
+    '<div class="field"><label>Hersteller / Typ</label><input value="'+e.her+'"></div>'+
+    '<div class="field"><label>Serien-Nr.</label><input value="'+e.sn+'"></div>'+
+    '<div class="field"><label>DIN-276-Kostengruppe</label><input value="'+dinLabel(e.tp)+'" readonly></div>'+
+    '<div class="field"><label>Nächste Prüfung</label><input value="'+e.pruef+'" readonly></div>';
+  $('eqQr').innerHTML=qrSvg(118);$('eqCode').textContent='QR: '+e.id+' · '+e.tag;
+  const vg=meldungen.filter(m=>m.tp===e.tp);
+  $('eqVorgaenge').innerHTML=vg.map(m=>'<div class="mrow" style="padding:10px 0" onclick="openMeld('+meldungen.indexOf(m)+')">'+
+      '<div class="stat" style="background:var(--blue-soft);width:36px;height:36px;border-radius:10px">📋</div>'+
+      '<div class="body"><b style="font-size:13.3px">'+m.name+'</b><div class="meta"><span>'+m.id+'</span></div></div></div>').join('')
+    ||'<div style="font-size:13px;color:var(--ink2);padding:10px 0">Keine offenen Vorgänge.</div>';
+  nav('eq-detail');
+}
+function printLabel(){toast('QR-Label wird auf Zebra ZQ320 gedruckt – direkt an der Anlage anbringen','🖨️');}
+
+/* ===================== Formulare ===================== */
+function openForm(i){curForm=i;const f=forms[i];
+  $('formTitle').textContent=f.t;$('formSub').textContent=f.sub;
+  if(i===2){const el=[...$('formTp').options].find(o=>dinOf(o.value)==='440');if(el)$('formTp').value=el.value;}
+  $('formDin').value=dinLabel($('formTp').value);
+  $('formRows').innerHTML=f.rows.map((r,idx)=>'<div class="checkrow" style="grid-template-columns:44px 1fr 150px">'+
+    '<span class="nr">'+(idx+1).toString().padStart(2,'0')+'</span><span class="name">'+r+'</span>'+
+    '<div class="jn"><button onclick="setJNForm(this)">Nein</button><button onclick="segJa(this)">Ja</button></div></div>').join('');
+  clearSig();nav('form-detail');}
+function segJa(b){[...b.parentElement.children].forEach(x=>x.classList.remove('ok','bad'));b.classList.add('ok');}
+function setJNForm(b){[...b.parentElement.children].forEach(x=>x.classList.remove('ok','bad'));b.classList.add('bad');}
+function finishForm(){if(!sigDrawn){toast('Bitte zuerst digital unterschreiben','✍️');return;}openPdf('form',curForm);}
+let sigDrawn=false,drawing=false;
+const sig=$('sig'),ctx=sig.getContext('2d');ctx.lineWidth=2.2;ctx.lineCap='round';ctx.strokeStyle='#0b1f33';
+function pos(e){const r=sig.getBoundingClientRect();const p=e.touches?e.touches[0]:e;return[(p.clientX-r.left)*sig.width/r.width,(p.clientY-r.top)*sig.height/r.height];}
+function startDraw(e){drawing=true;sigDrawn=true;$('sigHint').style.display='none';const[x,y]=pos(e);ctx.beginPath();ctx.moveTo(x,y);e.preventDefault();}
+function moveDraw(e){if(!drawing)return;const[x,y]=pos(e);ctx.lineTo(x,y);ctx.stroke();e.preventDefault();}
+function endDraw(){drawing=false;}
+sig.addEventListener('mousedown',startDraw);sig.addEventListener('mousemove',moveDraw);window.addEventListener('mouseup',endDraw);
+sig.addEventListener('touchstart',startDraw,{passive:false});sig.addEventListener('touchmove',moveDraw,{passive:false});sig.addEventListener('touchend',endDraw);
+function clearSig(){ctx.clearRect(0,0,sig.width,sig.height);sigDrawn=false;$('sigHint').style.display='flex';}
+
+/* ===================== PDF ===================== */
+function openPdf(kind,i){
+  const now='18.08.2026, '+new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})+' Uhr';
+  let title,body;
+  if(kind==='mangel'){const m=maengel[i];title='Mangelbericht '+m.id;
+    body='<div class="ph"><b style="font-size:15px">.XPN MFM – Mangelbericht</b><span>'+m.id+'</span></div>'+
+      '<b>'+m.titel+'</b><br>Technischer Platz: '+m.tp+'<br>Struktur: '+shortPath(m.tp)+'<br>'+dinLabel(m.tp)+
+      '<table><tr><td><b>Befund</b></td><td>dokumentiert inkl. '+m.fotos+' Fotobeleg(e)</td></tr>'+
+      '<tr><td><b>Status</b></td><td>'+m.status+' · erfasst am '+m.datum+'</td></tr>'+
+      '<tr><td><b>Referenz SAP</b></td><td>Meldung / Auftrag auf System-TP '+m.tp+'</td></tr>'+
+      '<tr><td><b>Erstellt von</b></td><td>'+$('uName').textContent+' · '+now+'</td></tr></table>';
+  } else {
+    const f=forms[i],tp=$('formTp').value;title=f.t+' · PDF';
+    body='<div class="ph"><b style="font-size:15px">.XPN MFM – '+f.t+'</b><span>Nr. F-2026-0'+(318+i)+'</span></div>'+
+      'Fremdfirma: Müller Gebäudetechnik GmbH · Unterwiesene Person: J. Kowalski<br>'+
+      'Einsatzort: '+tp+' – '+NODES[tp].name+'<br>'+dinLabel(tp)+' · '+now+
+      '<table>'+f.rows.map((r,x)=>'<tr><td>'+(x+1).toString().padStart(2,'0')+'</td><td>'+r+'</td><td><b>Ja</b></td></tr>').join('')+'</table>'+
+      '<div style="margin-top:12px;display:flex;justify-content:space-between;align-items:flex-end">'+
+      '<span>Unterschrift: <img src="'+(sigDrawn?sig.toDataURL():'')+'" style="height:44px;vertical-align:middle"></span>'+
+      '<span style="color:#888">rechtskonform dokumentiert · SAP DMS</span></div>';
+    toast('Formular als PDF generiert','📄');nav('formulare');
+  }
+  $('pdfTitle').textContent=title;$('pdfBody').innerHTML=body;$('pdfSheet').classList.add('show');
+}
+function closeSheet(){$('pdfSheet').classList.remove('show');}
+
+/* ===================== Scan ===================== */
+const SCANTARGETS=['EQ-100010','EQ-100080','EQ-100060','EQ-100092'];let scanIdx=0;
+function setScanMode(btn,mode){segOnly(btn);$('scanHint').textContent=mode==='RFID'?'RFID-Scanner an den Tag der Anlage halten …':'Kamera auf den QR-Code der Anlage richten …';$('scanFound').classList.remove('show');}
+function simulateScan(){
+  $('scanFound').classList.remove('show');$('scanBtn').textContent='Scanne …';
+  setTimeout(()=>{
+    $('scanBtn').textContent='Scan simulieren';
+    const eid=SCANTARGETS[scanIdx++%SCANTARGETS.length],e=EQINDEX[eid];
+    $('scanFound').innerHTML='<div style="display:flex;gap:14px;align-items:center">'+
+      '<div style="width:48px;height:48px;border-radius:14px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-size:22px">🏷️</div>'+
+      '<div><b style="font-size:16px">'+e.name+'</b><div class="mono" style="color:var(--ink2);margin-top:2px">'+e.id+' · '+e.tp+'</div></div>'+
+      '<span class="chip green" style="margin-left:auto">erkannt</span></div>'+
+      '<div style="font-size:12.5px;color:var(--ink2);margin-top:10px">'+shortPath(e.tp)+' · '+dinLabel(e.tp)+'</div>'+
+      '<div style="display:flex;gap:10px;margin-top:16px">'+
+      '<button class="btn btn-navy" style="flex:1;font-size:13.5px" onclick="openEq(\''+e.id+'\')">Equipment öffnen</button>'+
+      '<button class="btn btn-line" style="flex:1;font-size:13.5px" onclick="openTp(\''+e.tp+'\')">Technischen Platz öffnen</button></div>';
+    $('scanFound').classList.add('show');toast('Objekt erkannt: '+e.id+' · '+e.name);},900);
+}
+
+/* ===================== Init ===================== */
+function renderActivity(){
+  $('activity').innerHTML=
+   '<div class="mrow" style="padding:12px 0;border-bottom:1px solid var(--sep)" onclick="openTp(\'UN01-ST01-BG01-EG00-300-BAU1\')"><div class="stat" style="background:var(--accent-soft)">✅</div><div class="body"><b>Rundgang Baukonstruktion EG abgeschlossen</b><div class="meta"><span>Gestern, 16:40</span><span class="mono">UN01-ST01-BG01-EG00-300-BAU1</span></div></div><span class="chip green">an SAP übergeben</span></div>'+
+   '<div class="mrow" style="padding:12px 0;border-bottom:1px solid var(--sep)" onclick="openTp(\'UN01-ST01-TG01-UG01-440-ELT1\')"><div class="stat" style="background:var(--red-soft)">⚠️</div><div class="body"><b>Störungsmeldung 4720000173 erstellt</b><div class="meta"><span>Gestern, 14:05</span><span class="mono">UN01-ST01-TG01-UG01-440-ELT1</span></div></div><span class="chip red">Priorität hoch</span></div>'+
+   '<div class="mrow" style="padding:12px 0" onclick="openEq(\'EQ-100010\')"><div class="stat" style="background:var(--blue-soft)">🖨️</div><div class="body"><b>QR-Label gedruckt · EQ-100010 Personenaufzug A2</b><div class="meta"><span>Gestern, 11:22</span><span>Mobiler Drucker ZQ320</span></div></div><span class="chip blue">Label vor Ort</span></div>';
+}
+function tick(){$('clock').textContent=new Date().toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});}
+tick();setInterval(tick,15000);
+$('kTp').textContent=SYSTEMS.length;
+$('tpSub').textContent=TP.basis.model+' · '+TP.basis.standard+' · '+SYSTEMS.length+' System-TPs, '+AREAS.length+' Bereiche, '+EQCOUNT+' Equipments';
+$('tpPattern').textContent=TP.identifier_pattern.format+'   →   Beispiel: '+TP.identifier_pattern.example;
+fillSelects();renderMeld('alle');renderZw();renderMangel();renderDinBar();renderTree();renderActivity();updateCounts();
+</script>
+</body>
+</html>
