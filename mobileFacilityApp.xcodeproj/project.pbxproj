@@ -6,7 +6,43 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A10000000000000000000011 /* SAPCommon.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* SAPCommon.xcframework */; };
+		A10000000000000000000012 /* SAPCommon.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* SAPCommon.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000013 /* SAPFiori.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* SAPFiori.xcframework */; };
+		A10000000000000000000014 /* SAPFiori.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* SAPFiori.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000015 /* SAPFioriFlows.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SAPFioriFlows.xcframework */; };
+		A10000000000000000000016 /* SAPFioriFlows.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* SAPFioriFlows.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000017 /* SAPFoundation.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* SAPFoundation.xcframework */; };
+		A10000000000000000000018 /* SAPFoundation.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* SAPFoundation.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000019 /* SAPOData.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* SAPOData.xcframework */; };
+		A10000000000000000000020 /* SAPOData.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* SAPOData.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A10000000000000000000031 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A10000000000000000000012 /* SAPCommon.xcframework in Embed Frameworks */,
+				A10000000000000000000014 /* SAPFiori.xcframework in Embed Frameworks */,
+				A10000000000000000000016 /* SAPFioriFlows.xcframework in Embed Frameworks */,
+				A10000000000000000000018 /* SAPFoundation.xcframework in Embed Frameworks */,
+				A10000000000000000000020 /* SAPOData.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A10000000000000000000001 /* SAPCommon.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPCommon.xcframework; sourceTree = "<group>"; };
+		A10000000000000000000002 /* SAPFiori.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPFiori.xcframework; sourceTree = "<group>"; };
+		A10000000000000000000003 /* SAPFioriFlows.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPFioriFlows.xcframework; sourceTree = "<group>"; };
+		A10000000000000000000004 /* SAPFoundation.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPFoundation.xcframework; sourceTree = "<group>"; };
+		A10000000000000000000005 /* SAPOData.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPOData.xcframework; sourceTree = "<group>"; };
 		A10000000000000000000006 /* mobileFacilityApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mobileFacilityApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -18,13 +54,42 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		A10000000000000000000051 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000011 /* SAPCommon.xcframework in Frameworks */,
+				A10000000000000000000013 /* SAPFiori.xcframework in Frameworks */,
+				A10000000000000000000015 /* SAPFioriFlows.xcframework in Frameworks */,
+				A10000000000000000000017 /* SAPFoundation.xcframework in Frameworks */,
+				A10000000000000000000019 /* SAPOData.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
 		A10000000000000000000061 = {
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000041 /* mobileFacilityApp */,
+				A10000000000000000000062 /* Frameworks */,
 				A10000000000000000000063 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		A10000000000000000000062 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000001 /* SAPCommon.xcframework */,
+				A10000000000000000000002 /* SAPFiori.xcframework */,
+				A10000000000000000000003 /* SAPFioriFlows.xcframework */,
+				A10000000000000000000004 /* SAPFoundation.xcframework */,
+				A10000000000000000000005 /* SAPOData.xcframework */,
+			);
+			name = Frameworks;
+			path = "Release-xcframework";
 			sourceTree = "<group>";
 		};
 		A10000000000000000000063 /* Products */ = {
@@ -43,7 +108,9 @@
 			buildConfigurationList = A10000000000000000000072 /* Build configuration list for PBXNativeTarget "mobileFacilityApp" */;
 			buildPhases = (
 				A10000000000000000000073 /* Sources */,
+				A10000000000000000000051 /* Frameworks */,
 				A10000000000000000000074 /* Resources */,
+				A10000000000000000000031 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -142,6 +209,10 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mobilefacility.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -167,6 +238,10 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mobilefacility.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -190,7 +265,7 @@
 				A10000000000000000000094 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		A10000000000000000000082 /* Build configuration list for PBXProject "mobileFacilityApp" */ = {
 			isa = XCConfigurationList;
@@ -199,7 +274,7 @@
 				A10000000000000000000092 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
