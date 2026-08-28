@@ -2,12 +2,21 @@ import SwiftUI
 
 struct FacilityShellView: View {
     let demo: FacilityDemoViewModel
+    let onSignOut: (() -> Void)?
     @State private var isSidebarVisible = true
     @State private var isSimulatingSync = false
     @State private var didCompleteSyncSimulation = false
 
     private let expandedSidebarWidth: CGFloat = 340
     private let sidebarAnimation = Animation.easeInOut(duration: 0.42)
+
+    init(
+        demo: FacilityDemoViewModel,
+        onSignOut: (() -> Void)? = nil
+    ) {
+        self.demo = demo
+        self.onSignOut = onSignOut
+    }
 
     var body: some View {
         @Bindable var demo = demo
@@ -125,6 +134,19 @@ struct FacilityShellView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
+
+                Spacer(minLength: 6)
+
+                if let onSignOut {
+                    Button(action: onSignOut) {
+                        Text("sidebar.signOut")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(FacilityTheme.accent)
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(Text("sidebar.signOut.hint"))
+                }
             }
             .padding(.top, 8)
         }
@@ -228,7 +250,9 @@ struct FacilityShellView: View {
                     .font(.subheadline.weight(.semibold))
             }
             Spacer()
-            DemoBadge()
+            if demo.isDemoMode {
+                DemoBadge()
+            }
             Image(systemName: "bell")
                 .font(.body.weight(.medium))
                 .frame(width: 38, height: 38)

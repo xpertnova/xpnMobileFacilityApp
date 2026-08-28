@@ -4,14 +4,36 @@ struct AppRootView: View {
     @State private var phase: AppPhase = .launching
     @State private var onboarding = SAPOnboardingState()
     @State private var demo: FacilityDemoViewModel?
+    @State private var productionWorkspace: FacilityDemoViewModel?
+    @State private var productionSession: FacilityUserSession?
 
     var body: some View {
         Group {
             switch phase {
             case .launching:
                 onboardingContent
+            case .authentication:
+                if let productionWorkspace {
+                    ZStack {
+                        FacilityShellView(demo: productionWorkspace, onSignOut: signOut)
+                        Color.black.opacity(0.62)
+                            .ignoresSafeArea()
+                        RoleSelectionView { role, username in
+                            productionSession = FacilityUserSession(role: role, displayName: username)
+                            phase = .ready
+                        }
+                    }
+                } else {
+                    ProgressView()
+                }
             case .ready:
-                FacilityHomeView()
+                if let productionWorkspace {
+                    FacilityShellView(demo: productionWorkspace, onSignOut: signOut)
+                        .tint(FacilityTheme.accent)
+                        .background(FacilityTheme.canvas)
+                } else {
+                    ProgressView()
+                }
             case .demo:
                 if let demo {
                     FacilityShellView(demo: demo)
@@ -27,7 +49,8 @@ struct AppRootView: View {
 
             switch completion {
             case .authenticated:
-                phase = .ready
+                productionWorkspace = FacilityDemoViewModel(isDemoMode: false)
+                phase = .authentication
             case .demo:
                 demo = FacilityDemoViewModel()
                 phase = .demo
@@ -44,22 +67,9 @@ struct AppRootView: View {
             SAPOnboardingContainer(state: onboarding)
         }
     }
-}
 
-private struct FacilityHomeView: View {
-    var body: some View {
-        NavigationSplitView {
-            List {
-                Label("facility.navigation.overview", systemImage: "rectangle.grid.2x2")
-                Label("facility.navigation.notifications", systemImage: "bell")
-            }
-            .navigationTitle("facility.title")
-        } detail: {
-            ContentUnavailableView {
-                Label("facility.welcome.title", systemImage: "building.2")
-            } description: {
-                Text("facility.welcome.production")
-            }
-        }
+    private func signOut() {
+        productionSession = nil
+        phase = .authentication
     }
 }
