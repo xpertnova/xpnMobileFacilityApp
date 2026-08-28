@@ -30,6 +30,13 @@ playground.xcworkspace
 # .swiftpm
 
 .build/
+build/
+
+# SAP landscape configuration is local and can contain tenant-specific values.
+mobileFacilityApp/ConfigurationProvider.plist
+
+# Local SAP SDK binaries are distributed outside Git.
+Release-xcframework/
 
 # CocoaPods
 #
