@@ -3,6 +3,7 @@ import SwiftUI
 struct AppRootView: View {
     @State private var phase: AppPhase = .launching
     @State private var onboarding = SAPOnboardingState()
+    @State private var demo: FacilityDemoViewModel?
 
     var body: some View {
         Group {
@@ -10,9 +11,15 @@ struct AppRootView: View {
             case .launching:
                 onboardingContent
             case .ready:
-                FacilityHomeView(isDemo: false)
+                FacilityHomeView()
             case .demo:
-                FacilityHomeView(isDemo: true)
+                if let demo {
+                    FacilityShellView(demo: demo)
+                        .tint(FacilityTheme.accent)
+                        .background(FacilityTheme.canvas)
+                } else {
+                    ProgressView()
+                }
             }
         }
         .onChange(of: onboarding.completion) { _, completion in
@@ -22,6 +29,7 @@ struct AppRootView: View {
             case .authenticated:
                 phase = .ready
             case .demo:
+                demo = FacilityDemoViewModel()
                 phase = .demo
             }
         }
@@ -39,8 +47,6 @@ struct AppRootView: View {
 }
 
 private struct FacilityHomeView: View {
-    let isDemo: Bool
-
     var body: some View {
         NavigationSplitView {
             List {
@@ -52,7 +58,7 @@ private struct FacilityHomeView: View {
             ContentUnavailableView {
                 Label("facility.welcome.title", systemImage: "building.2")
             } description: {
-                Text(isDemo ? "facility.welcome.demo" : "facility.welcome.production")
+                Text("facility.welcome.production")
             }
         }
     }
