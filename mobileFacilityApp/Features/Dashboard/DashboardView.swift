@@ -19,7 +19,7 @@ struct DashboardView: View {
                 dashboardHeader
 
                 LazyVGrid(columns: metricColumns, spacing: 14) {
-                    MetricCard(count: demo.openNotifications, titleKey: "dashboard.metrics.notifications", symbol: "checklist", tint: FacilityTheme.blue) {
+                    MetricCard(count: demo.allNotificationCount, titleKey: "dashboard.metrics.notifications", symbol: "checklist", tint: FacilityTheme.blue) {
                         demo.open(.notifications)
                     }
                     MetricCard(count: visibleDefectCount, titleKey: "dashboard.metrics.defects", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
@@ -194,7 +194,7 @@ private struct NotificationActivityRow: View {
         switch notification.status {
         case .attention: FacilityTheme.red
         case .draft: FacilityTheme.orange
-        case .pending, .complete: FacilityTheme.accent
+        case .pending, .complete, .closedLocally: FacilityTheme.accent
         case .open: FacilityTheme.blue
         }
     }
@@ -205,6 +205,7 @@ private struct NotificationActivityRow: View {
         case .draft: "tray.and.arrow.down.fill"
         case .pending: "arrow.triangle.2.circlepath"
         case .complete: "checkmark.square.fill"
+        case .closedLocally: "checkmark.circle.fill"
         case .open: "checklist"
         }
     }

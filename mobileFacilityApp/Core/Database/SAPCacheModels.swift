@@ -69,8 +69,92 @@ struct SAPCachedData: Equatable, Sendable {
     static let empty = SAPCachedData(notifications: [], workerProfile: nil, metadata: nil)
 }
 
+struct SAPNotificationPage: Equatable, Sendable {
+    let notifications: [SAPNotificationSummary]
+    let nextOffset: Int?
+    let totalCount: Int
+
+    static let empty = SAPNotificationPage(notifications: [], nextOffset: nil, totalCount: 0)
+}
+
+/// Read-only notification detail rebuilt from the SAP `T_0271` row and its
+/// decoded `FELDWERT.T_PLPOD` inspection positions.
+struct SAPNotificationDetail: Equatable, Sendable {
+    struct InspectionItem: Identifiable, Equatable, Sendable {
+        let id: String
+        let title: String
+        let information: String
+    }
+
+    let summary: SAPNotificationSummary
+    let structure: String
+    let equipmentID: String
+    let inspectionItems: [InspectionItem]
+
+    init(summary: SAPNotificationSummary) {
+        self.summary = summary
+        guard
+            let data = summary.rawPayloadJSON.data(using: .utf8),
+            var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            structure = ""
+            equipmentID = ""
+            inspectionItems = []
+            return
+        }
+
+        // Caches created before the detail screen retained the original SAP
+        // `FELDWERT`; decode it on demand so users do not have to lose their
+        // current offline cache before the next refresh.
+        if Self.value(named: "T_PLPOD", in: payload) == nil,
+           let feldwert = Self.value(named: "FELDWERT", in: payload) as? String,
+           let planData = decodeSAPNotificationPayload(fromFeldwert: feldwert) {
+            payload.merge(planData) { _, planValue in planValue }
+        }
+
+        structure = Self.stringValue(named: "STRUR", in: payload)
+        equipmentID = Self.stringValue(named: "EQUNR", in: payload)
+        let rows = Self.value(named: "T_PLPOD", in: payload) as? [[String: Any]] ?? []
+        inspectionItems = rows.enumerated().compactMap { index, row in
+            let rowType = Self.stringValue(named: "USR00", in: row)
+            let fallbackRowType = Self.stringValue(named: "DNAME", in: row)
+            let normalizedRowType = (rowType.isEmpty ? fallbackRowType : rowType).uppercased()
+            guard !["HEADER", "U1", "FOTO"].contains(normalizedRowType) else { return nil }
+            let title = Self.stringValue(named: "LTXA1", in: row)
+            guard !title.isEmpty else { return nil }
+            let operation = Self.stringValue(named: "VORNR", in: row)
+            return InspectionItem(
+                id: operation.isEmpty ? "position-\(index)" : operation,
+                title: title,
+                information: Self.stringValue(named: "LTXA2", in: row)
+            )
+        }
+    }
+
+    private static func value(named key: String, in dictionary: [String: Any]) -> Any? {
+        dictionary.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
+    }
+
+    private static func stringValue(named key: String, in dictionary: [String: Any]) -> String {
+        switch value(named: key, in: dictionary) {
+        case let value as String:
+            value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let value as NSNumber:
+            value.stringValue
+        default:
+            ""
+        }
+    }
+}
+
 protocol SAPDataCacheRepository: Sendable {
     func load(for localWorkerID: String) async throws -> SAPCachedData
+    func loadNotifications(
+        for localWorkerID: String,
+        matching searchText: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> SAPNotificationPage
     func replace(
         with snapshot: SAPReadSnapshot,
         for localWorkerID: String,
@@ -141,7 +225,33 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
     }
 
     func load(for localWorkerID: String) async throws -> SAPCachedData {
-        dataByWorkerID[localWorkerID] ?? .empty
+        guard let data = dataByWorkerID[localWorkerID] else { return .empty }
+        return SAPCachedData(notifications: [], workerProfile: data.workerProfile, metadata: data.metadata)
+    }
+
+    func loadNotifications(
+        for localWorkerID: String,
+        matching searchText: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> SAPNotificationPage {
+        let allNotifications = dataByWorkerID[localWorkerID]?.notifications ?? []
+        let normalizedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matchingNotifications = (normalizedSearchText.isEmpty ? allNotifications : allNotifications.filter {
+            $0.id.localizedCaseInsensitiveContains(normalizedSearchText) ||
+            $0.title.localizedCaseInsensitiveContains(normalizedSearchText) ||
+            $0.functionalLocationID.localizedCaseInsensitiveContains(normalizedSearchText) ||
+            $0.functionalLocationName.localizedCaseInsensitiveContains(normalizedSearchText)
+        })
+        .sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+        let boundedOffset = min(max(offset, 0), matchingNotifications.count)
+        let endIndex = min(boundedOffset + max(limit, 1), matchingNotifications.count)
+        let notifications = Array(matchingNotifications[boundedOffset..<endIndex])
+        return SAPNotificationPage(
+            notifications: notifications,
+            nextOffset: endIndex < matchingNotifications.count ? endIndex : nil,
+            totalCount: matchingNotifications.count
+        )
     }
 
     func replace(
@@ -158,12 +268,21 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             )
         )
         dataByWorkerID[localWorkerID] = data
-        return data
+        return SAPCachedData(notifications: [], workerProfile: data.workerProfile, metadata: data.metadata)
     }
 }
 
 struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
     func load(for localWorkerID: String) async throws -> SAPCachedData {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadNotifications(
+        for localWorkerID: String,
+        matching searchText: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> SAPNotificationPage {
         throw SAPReadError.serviceUnavailable
     }
 

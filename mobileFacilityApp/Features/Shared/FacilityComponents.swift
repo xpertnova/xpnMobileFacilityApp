@@ -15,7 +15,7 @@ struct PageHeader: View {
         HStack(alignment: .bottom, spacing: 20) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(LocalizedStringKey(titleKey))
-                    .font(.system(size: 29, weight: .bold, design: .rounded))
+                    .font(.system(size: 29, weight: .bold))
                     .foregroundStyle(FacilityTheme.ink)
                 Text(LocalizedStringKey(subtitleKey))
                     .font(.subheadline)

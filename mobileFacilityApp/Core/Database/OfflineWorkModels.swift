@@ -2,6 +2,7 @@ import Foundation
 
 enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case manualCapture
+    case notificationReview
 }
 
 enum OfflineWorkStatus: String, Codable, CaseIterable, Sendable {
@@ -30,12 +31,41 @@ struct ManualCaptureDraftPayload: Codable, Equatable, Sendable {
     var note: String
 }
 
+enum NotificationReviewResult: String, Codable, Equatable, Sendable {
+    case no
+    case yes
+}
+
+struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
+    var notificationID: String
+    var performedOn: Date
+    var results: [String: NotificationReviewResult]
+    var comments: [String: String]
+    var photoItemIDs: [String]
+    var isClosedLocally: Bool
+}
+
+enum OfflineWorkPayload: Equatable, Sendable {
+    case manualCapture(ManualCaptureDraftPayload)
+    case notificationReview(NotificationReviewDraftPayload)
+
+    var manualCapture: ManualCaptureDraftPayload? {
+        guard case let .manualCapture(payload) = self else { return nil }
+        return payload
+    }
+
+    var notificationReview: NotificationReviewDraftPayload? {
+        guard case let .notificationReview(payload) = self else { return nil }
+        return payload
+    }
+}
+
 struct OfflineWorkItem: Identifiable, Equatable, Sendable {
     let id: UUID
     let workerID: String
     let type: OfflineWorkType
     let status: OfflineWorkStatus
-    let payload: ManualCaptureDraftPayload
+    let payload: OfflineWorkPayload
     let createdAt: Date
     let updatedAt: Date
     let syncError: String?

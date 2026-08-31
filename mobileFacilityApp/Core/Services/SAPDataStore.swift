@@ -14,11 +14,19 @@ final class SAPDataStore {
 
     private let repository: any SAPDataCacheRepository
     private let refreshService: (any SAPNotificationRefreshService)?
+    private let notificationPageSize = 40
     let localWorkerID: String
     private(set) var state: State = .loadingCache
     private(set) var cachedData: SAPCachedData = .empty
     private(set) var refreshError: SAPReadError?
     private(set) var refreshStage: SAPReadRefreshStage?
+    private(set) var notifications: [SAPNotificationSummary] = []
+    private(set) var matchingNotificationCount = 0
+    private(set) var totalNotificationCount = 0
+    private(set) var isLoadingMoreNotifications = false
+    private var nextNotificationOffset: Int?
+    private var notificationSearchText = ""
+    private var notificationLoadID = UUID()
 
     init(
         repository: any SAPDataCacheRepository,
@@ -30,23 +38,67 @@ final class SAPDataStore {
         self.localWorkerID = localWorkerID
     }
 
-    var notifications: [SAPNotificationSummary] { cachedData.notifications }
     var workerProfile: SAPWorkerProfile? { cachedData.workerProfile }
     var lastSuccessfulRefreshAt: Date? { cachedData.metadata?.lastSuccessfulRefreshAt }
     var isRefreshAvailable: Bool { refreshService != nil }
     var isRefreshing: Bool { state == .refreshing }
     var hasCache: Bool { cachedData.metadata != nil }
+    var hasMoreNotifications: Bool { nextNotificationOffset != nil }
 
     func loadCachedData() async {
         state = .loadingCache
         do {
             cachedData = try await repository.load(for: localWorkerID)
-            state = cachedData.metadata == nil ? .noData : .ready
+            guard cachedData.metadata != nil else {
+                resetNotificationPage()
+                state = .noData
+                return
+            }
+            try await loadTotalNotificationCount()
+            try await loadFirstNotificationPage()
+            state = .ready
         } catch is CancellationError {
             return
         } catch {
             refreshError = .serviceUnavailable
             state = .failed
+        }
+    }
+
+    func updateNotificationSearch(_ searchText: String) async {
+        let normalizedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedSearchText != notificationSearchText else { return }
+        notificationSearchText = normalizedSearchText
+        guard hasCache else { return }
+        do {
+            try await loadFirstNotificationPage()
+        } catch is CancellationError {
+            return
+        } catch {
+            refreshError = .serviceUnavailable
+        }
+    }
+
+    func loadMoreNotifications() async {
+        guard !isLoadingMoreNotifications, let offset = nextNotificationOffset else { return }
+        let loadID = notificationLoadID
+        isLoadingMoreNotifications = true
+        defer { isLoadingMoreNotifications = false }
+        do {
+            let page = try await repository.loadNotifications(
+                for: localWorkerID,
+                matching: notificationSearchText,
+                limit: notificationPageSize,
+                offset: offset
+            )
+            guard notificationLoadID == loadID else { return }
+            notifications.append(contentsOf: page.notifications)
+            matchingNotificationCount = page.totalCount
+            nextNotificationOffset = page.nextOffset
+        } catch is CancellationError {
+            return
+        } catch {
+            refreshError = .serviceUnavailable
         }
     }
 
@@ -70,6 +122,8 @@ final class SAPDataStore {
                 for: localWorkerID,
                 refreshedAt: Date()
             )
+            try await loadTotalNotificationCount()
+            try await loadFirstNotificationPage()
             refreshStage = nil
             state = .ready
         } catch is CancellationError {
@@ -91,5 +145,38 @@ final class SAPDataStore {
         if state == .failed {
             state = cachedData.metadata == nil ? .noData : .ready
         }
+    }
+
+    private func loadFirstNotificationPage() async throws {
+        let loadID = UUID()
+        notificationLoadID = loadID
+        let page = try await repository.loadNotifications(
+            for: localWorkerID,
+            matching: notificationSearchText,
+            limit: notificationPageSize,
+            offset: 0
+        )
+        guard notificationLoadID == loadID else { return }
+        notifications = page.notifications
+        matchingNotificationCount = page.totalCount
+        nextNotificationOffset = page.nextOffset
+    }
+
+    private func loadTotalNotificationCount() async throws {
+        let page = try await repository.loadNotifications(
+            for: localWorkerID,
+            matching: "",
+            limit: 1,
+            offset: 0
+        )
+        totalNotificationCount = page.totalCount
+    }
+
+    private func resetNotificationPage() {
+        notificationLoadID = UUID()
+        notifications = []
+        matchingNotificationCount = 0
+        totalNotificationCount = 0
+        nextNotificationOffset = nil
     }
 }
