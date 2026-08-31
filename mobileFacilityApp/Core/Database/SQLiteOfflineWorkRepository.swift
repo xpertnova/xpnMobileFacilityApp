@@ -88,15 +88,30 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                   let createdAt = formatter.date(from: row.5), let updatedAt = formatter.date(from: row.6) else {
                 throw OfflineWorkRepositoryError.invalidStoredItem
             }
+            let payload: OfflineWorkPayload
+            switch type {
+            case .manualCapture:
+                payload = .manualCapture(try decoder.decode(ManualCaptureDraftPayload.self, from: data))
+            case .notificationReview:
+                payload = .notificationReview(try decoder.decode(NotificationReviewDraftPayload.self, from: data))
+            }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
-                                   payload: try decoder.decode(ManualCaptureDraftPayload.self, from: data),
-                                   createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
+                                   payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
         }
     }
 
     func save(_ item: OfflineWorkItem) async throws {
         guard let database else { throw OfflineWorkRepositoryError.unavailable }
-        guard let data = try? JSONEncoder().encode(item.payload), let payloadJSON = String(data: data, encoding: .utf8) else {
+        let payloadData: Data?
+        switch (item.type, item.payload) {
+        case let (.manualCapture, .manualCapture(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.notificationReview, .notificationReview(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        default:
+            payloadData = nil
+        }
+        guard let payloadData, let payloadJSON = String(data: payloadData, encoding: .utf8) else {
             throw OfflineWorkRepositoryError.invalidStoredItem
         }
         let formatter = ISO8601DateFormatter()

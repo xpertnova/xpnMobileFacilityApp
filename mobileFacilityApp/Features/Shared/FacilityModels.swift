@@ -45,6 +45,7 @@ enum WorkStatus: String, CaseIterable, Identifiable {
     case pending
     case attention
     case complete
+    case closedLocally
 
     var id: String { rawValue }
 
@@ -55,6 +56,7 @@ enum WorkStatus: String, CaseIterable, Identifiable {
         case .pending: return "status.pending"
         case .attention: return "status.attention"
         case .complete: return "status.complete"
+        case .closedLocally: return "status.closedLocally"
         }
     }
 }
@@ -69,6 +71,11 @@ struct MaintenanceNotification: Identifiable, Hashable {
     var status: WorkStatus
     var completedChecks: Int
     let totalChecks: Int
+    /// Local review state is not a SAP status. It stays on-device until a
+    /// confirmed SAP upload path exists.
+    var isTemporarilySaved = false
+    var isClosedLocally = false
+    var hasLocalDefect = false
 }
 
 struct Defect: Identifiable, Hashable {

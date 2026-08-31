@@ -48,7 +48,33 @@ final class OfflineWorkStore {
             workerID: workerID,
             type: .manualCapture,
             status: .draft,
-            payload: payload,
+            payload: .manualCapture(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func notificationReview(notificationID: String) -> NotificationReviewDraftPayload? {
+        items.first {
+            $0.type == .notificationReview && $0.payload.notificationReview?.notificationID == notificationID
+        }?.payload.notificationReview
+    }
+
+    func saveNotificationReview(_ payload: NotificationReviewDraftPayload) async throws -> OfflineWorkItem {
+        let existing = items.first {
+            $0.type == .notificationReview && $0.payload.notificationReview?.notificationID == payload.notificationID
+        }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .notificationReview,
+            status: .draft,
+            payload: .notificationReview(payload),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             syncError: nil

@@ -32,6 +32,7 @@ struct StatusPill: View {
         case .pending: FacilityTheme.accent
         case .attention: FacilityTheme.red
         case .complete: FacilityTheme.accent
+        case .closedLocally: FacilityTheme.accent
         }
     }
 

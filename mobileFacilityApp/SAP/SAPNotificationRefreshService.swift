@@ -670,6 +670,10 @@ private enum SAPLegacyDataExchangeCodec {
     private static let parameterStructureName = "/EZO/MTFMS_PARAMETER"
     private static let synchronizationStructureName = "/EZO/MTFMS_IP4SYNCH"
 
+    static func cachedNotificationPayload(fromFeldwert feldwert: String) -> [String: Any]? {
+        notificationData(fromFeldwert: feldwert)
+    }
+
     private struct Envelope: Codable {
         let KEY: String
         let PAR: String?
@@ -822,22 +826,27 @@ private enum SAPLegacyDataExchangeCodec {
     }
 
     private static func notification(from row: [String: Any]) -> SAPNotificationSummary? {
-        let type = stringValue(value(named: "QMART", in: row)).uppercased()
-        let systemStatus = stringValue(value(named: "STTXT", in: row)).uppercased()
-        let id = stringValue(value(named: "QMNUM", in: row))
+        var mergedNotificationData = row
+        if let planData = notificationData(fromFeldwert: stringValue(value(named: "FELDWERT", in: row))) {
+            mergedNotificationData.merge(planData) { _, planValue in planValue }
+        }
+
+        let type = stringValue(value(named: "QMART", in: mergedNotificationData)).uppercased()
+        let systemStatus = stringValue(value(named: "STTXT", in: mergedNotificationData)).uppercased()
+        let id = stringValue(value(named: "QMNUM", in: mergedNotificationData))
         guard type == "I1", systemStatus != "MMAB", !id.isEmpty else { return nil }
-        let rawPayloadJSON = (try? JSONSerialization.data(withJSONObject: row))
+        let rawPayloadJSON = (try? JSONSerialization.data(withJSONObject: mergedNotificationData))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         return SAPNotificationSummary(
             id: id,
-            client: stringValue(value(named: "MANDT", in: row)),
-            title: stringValue(value(named: "QMTXT", in: row)),
-            functionalLocationID: stringValue(value(named: "STRNO", in: row)),
-            functionalLocationName: stringValue(value(named: "PLTXT", in: row)),
-            startDate: stringValue(value(named: "STRMN", in: row)),
-            endDate: stringValue(value(named: "LTRMN", in: row)),
+            client: stringValue(value(named: "MANDT", in: mergedNotificationData)),
+            title: stringValue(value(named: "QMTXT", in: mergedNotificationData)),
+            functionalLocationID: stringValue(value(named: "STRNO", in: mergedNotificationData)),
+            functionalLocationName: stringValue(value(named: "PLTXT", in: mergedNotificationData)),
+            startDate: stringValue(value(named: "STRMN", in: mergedNotificationData)),
+            endDate: stringValue(value(named: "LTRMN", in: mergedNotificationData)),
             systemStatus: systemStatus,
-            userStatus: stringValue(value(named: "USTXT", in: row)),
+            userStatus: stringValue(value(named: "USTXT", in: mergedNotificationData)),
             rawPayloadJSON: rawPayloadJSON
         )
     }
@@ -949,6 +958,54 @@ private enum SAPLegacyDataExchangeCodec {
             let padding = (4 - value.count % 4) % 4
             return Data(base64Encoded: value + String(repeating: "=", count: padding))
         }
+    }
+
+    /// Decodes the SAP `T_0271.FELDWERT` structure using the same layered
+    /// Base64/DEFLATE path as the legacy SwiftUI client. The merged payload is
+    /// cached with the notification so the detail screen can be rebuilt offline
+    /// without another SAP call.
+    private static func notificationData(fromFeldwert feldwert: String) -> [String: Any]? {
+        guard !feldwert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        var candidates: [Data] = []
+        var seen: Set<Data> = []
+        func appendCandidate(_ data: Data) {
+            guard !data.isEmpty, seen.insert(data).inserted else { return }
+            candidates.append(data)
+        }
+
+        appendCandidate(Data(feldwert.utf8))
+        var index = 0
+        while index < candidates.count, candidates.count < 16 {
+            let candidate = candidates[index]
+            if let payload = try? JSONSerialization.jsonObject(with: candidate) as? [String: Any],
+               value(named: "T_PLPOD", in: payload) != nil {
+                return payload
+            }
+            if let string = String(data: candidate, encoding: .utf8) {
+                base64Candidates(from: string).forEach(appendCandidate)
+            }
+            if let gzipStream = gzipDeflateStream(candidate) {
+                if let decoded = try? compressionTransform(gzipStream, operation: COMPRESSION_STREAM_DECODE) {
+                    appendCandidate(decoded)
+                }
+                if let decoded = try? zlibDecompress(gzipStream, windowBits: -MAX_WBITS) {
+                    appendCandidate(decoded)
+                }
+            }
+            if let decoded = try? compressionTransform(candidate, operation: COMPRESSION_STREAM_DECODE) {
+                appendCandidate(decoded)
+            }
+            for windowBits in [MAX_WBITS + 32, MAX_WBITS, -MAX_WBITS] {
+                if let decoded = try? zlibDecompress(candidate, windowBits: windowBits) {
+                    appendCandidate(decoded)
+                }
+            }
+            index += 1
+        }
+        return nil
     }
 
     /// Extract the RFC 1952 DEFLATE member without requiring SAP's response
@@ -1139,6 +1196,10 @@ private enum SAPLegacyDataExchangeCodec {
     private static func isSAPTrue(_ value: String) -> Bool {
         ["X", "1", "TRUE", "YES", "OK"].contains(value)
     }
+}
+
+func decodeSAPNotificationPayload(fromFeldwert feldwert: String) -> [String: Any]? {
+    SAPLegacyDataExchangeCodec.cachedNotificationPayload(fromFeldwert: feldwert)
 }
 
 private struct AnyEncodable: Encodable {

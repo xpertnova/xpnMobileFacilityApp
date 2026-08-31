@@ -262,7 +262,7 @@ struct FacilityShellView: View {
 
     private func badge(for destination: AppDestination) -> Int? {
         switch destination {
-        case .notifications: demo.openNotifications
+        case .notifications: demo.allNotificationCount
         case .defects: demo.defects.count
         case .drafts: demo.offlineWorkStore.draftCount
         default: nil

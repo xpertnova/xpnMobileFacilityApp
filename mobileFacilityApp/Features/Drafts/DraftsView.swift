@@ -39,9 +39,9 @@ struct DraftsView: View {
                                     .frame(width: 40, height: 40)
                                     .background(FacilityTheme.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("manual.title")
+                                    Text(draft.type == .manualCapture ? "manual.title" : "notifications.detail.title")
                                         .font(.subheadline.weight(.semibold))
-                                    Text(draft.payload.location)
+                                    Text(draft.payload.manualCapture?.location ?? draft.payload.notificationReview?.notificationID ?? "")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }

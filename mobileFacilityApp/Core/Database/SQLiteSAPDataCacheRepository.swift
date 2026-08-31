@@ -1,7 +1,7 @@
 import Foundation
 
 actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
-    private static let currentSchemaVersion: Int32 = 1
+    private static let currentSchemaVersion: Int32 = 2
     private var database: OpaquePointer?
 
     init(databaseURL: URL? = nil) throws {
@@ -41,29 +41,6 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
 
     func load(for localWorkerID: String) async throws -> SAPCachedData {
         guard let database else { throw SAPReadError.serviceUnavailable }
-        let notifications = try Self.query(
-            on: database,
-            """
-            SELECT notification_id, client, title, functional_location_id, functional_location_name,
-                   start_date, end_date, system_status, user_status, raw_payload_json
-            FROM sap_notifications WHERE local_worker_id = ?
-            ORDER BY start_date, notification_id
-            """,
-            bindings: [localWorkerID]
-        ) { statement in
-            SAPNotificationSummary(
-                id: Self.string(at: 0, from: statement),
-                client: Self.string(at: 1, from: statement),
-                title: Self.string(at: 2, from: statement),
-                functionalLocationID: Self.string(at: 3, from: statement),
-                functionalLocationName: Self.string(at: 4, from: statement),
-                startDate: Self.string(at: 5, from: statement),
-                endDate: Self.string(at: 6, from: statement),
-                systemStatus: Self.string(at: 7, from: statement),
-                userStatus: Self.string(at: 8, from: statement),
-                rawPayloadJSON: Self.string(at: 9, from: statement)
-            )
-        }
         let profile = try Self.query(
             on: database,
             """
@@ -100,7 +77,56 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         } else {
             metadata = nil
         }
-        return SAPCachedData(notifications: notifications, workerProfile: profile, metadata: metadata)
+        return SAPCachedData(notifications: [], workerProfile: profile, metadata: metadata)
+    }
+
+    func loadNotifications(
+        for localWorkerID: String,
+        matching searchText: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> SAPNotificationPage {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let filter = Self.notificationFilter(for: localWorkerID, matching: searchText)
+        let totalCount = try Self.query(
+            on: database,
+            "SELECT COUNT(*) FROM sap_notifications WHERE \(filter.clause)",
+            bindings: filter.bindings
+        ) { statement in
+            Int(SQLiteC.columnInt(statement, 0))
+        }.first ?? 0
+        let boundedOffset = min(max(offset, 0), totalCount)
+        let notifications = try Self.query(
+            on: database,
+            """
+            SELECT notification_id, client, title, functional_location_id, functional_location_name,
+                   start_date, end_date, system_status, user_status, raw_payload_json
+            FROM sap_notifications
+            WHERE \(filter.clause)
+            ORDER BY start_date, notification_id
+            LIMIT ? OFFSET ?
+            """,
+            bindings: filter.bindings + [String(max(limit, 1)), String(boundedOffset)]
+        ) { statement in
+            SAPNotificationSummary(
+                id: Self.string(at: 0, from: statement),
+                client: Self.string(at: 1, from: statement),
+                title: Self.string(at: 2, from: statement),
+                functionalLocationID: Self.string(at: 3, from: statement),
+                functionalLocationName: Self.string(at: 4, from: statement),
+                startDate: Self.string(at: 5, from: statement),
+                endDate: Self.string(at: 6, from: statement),
+                systemStatus: Self.string(at: 7, from: statement),
+                userStatus: Self.string(at: 8, from: statement),
+                rawPayloadJSON: Self.string(at: 9, from: statement)
+            )
+        }
+        let nextOffset = boundedOffset + notifications.count
+        return SAPNotificationPage(
+            notifications: notifications,
+            nextOffset: nextOffset < totalCount ? nextOffset : nil,
+            totalCount: totalCount
+        )
     }
 
     func replace(
@@ -189,6 +215,10 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                     last_successful_refresh_at TEXT NOT NULL
                 )
                 """)
+            try execute(on: database, """
+                CREATE INDEX IF NOT EXISTS sap_notifications_worker_date_index
+                ON sap_notifications (local_worker_id, start_date, notification_id)
+                """)
             try execute(on: database, "PRAGMA user_version = \(currentSchemaVersion)")
             try execute(on: database, "COMMIT")
         } catch {
@@ -224,6 +254,29 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
             let result = value.withCString { SQLiteC.bindText(statement, Int32(index + 1), $0, -1, SQLiteC.transient) }
             guard result == SQLiteC.ok else { throw SAPReadError.serviceUnavailable }
         }
+    }
+
+    private static func notificationFilter(for localWorkerID: String, matching searchText: String) -> (clause: String, bindings: [String]) {
+        let normalizedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedSearchText.isEmpty else {
+            return ("local_worker_id = ?", [localWorkerID])
+        }
+        let escapedSearchText = normalizedSearchText
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "%", with: "\\%")
+            .replacingOccurrences(of: "_", with: "\\_")
+        let pattern = "%\(escapedSearchText)%"
+        return (
+            """
+            local_worker_id = ? AND (
+                notification_id LIKE ? ESCAPE '\\' COLLATE NOCASE OR
+                title LIKE ? ESCAPE '\\' COLLATE NOCASE OR
+                functional_location_id LIKE ? ESCAPE '\\' COLLATE NOCASE OR
+                functional_location_name LIKE ? ESCAPE '\\' COLLATE NOCASE
+            )
+            """,
+            [localWorkerID, pattern, pattern, pattern, pattern]
+        )
     }
 
     private static func string(at index: Int32, from statement: OpaquePointer) -> String {

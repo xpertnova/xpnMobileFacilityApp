@@ -37,6 +37,11 @@ final class FacilityDemoViewModel {
         visibleNotifications.first { $0.id == selectedNotificationID }
     }
 
+    var selectedSAPNotification: SAPNotificationSummary? {
+        guard !isDemoMode, let selectedNotificationID else { return nil }
+        return sapDataStore.notifications.first { $0.id == selectedNotificationID }
+    }
+
     var selectedTechnicalPlace: TechnicalPlace? {
         technicalPlaces.first { $0.id == selectedTechnicalPlaceID }
     }
@@ -45,21 +50,38 @@ final class FacilityDemoViewModel {
         visibleNotifications.filter { $0.status == .open || $0.status == .attention }.count
     }
 
+    var allNotificationCount: Int {
+        isDemoMode ? notifications.count : sapDataStore.totalNotificationCount
+    }
+
     var visibleNotifications: [MaintenanceNotification] {
         guard !isDemoMode else { return notifications }
         return sapDataStore.notifications.map { notification in
-            MaintenanceNotification(
+            let review = locallySavedNotificationReview(for: notification.id)
+            let isClosedLocally = review?.isClosedLocally == true
+            let hasLocalDefect = review?.results.values.contains(.yes) == true
+            return MaintenanceNotification(
                 id: notification.id,
                 title: notification.title.isEmpty ? notification.id : notification.title,
                 location: notification.displayLocation,
                 dueDate: notification.displayDateRange,
                 equipment: notification.functionalLocationID,
                 sapStatus: notification.displayStatus,
-                status: .open,
+                status: isClosedLocally ? .closedLocally : (review == nil ? .open : .draft),
                 completedChecks: 0,
-                totalChecks: 0
+                totalChecks: 0,
+                isTemporarilySaved: review != nil && !isClosedLocally,
+                isClosedLocally: isClosedLocally,
+                hasLocalDefect: hasLocalDefect
             )
         }
+    }
+
+    private func locallySavedNotificationReview(for notificationID: String) -> NotificationReviewDraftPayload? {
+        offlineWorkStore.items.first {
+            $0.type == .notificationReview && $0.status == .draft &&
+            $0.payload.notificationReview?.notificationID == notificationID
+        }?.payload.notificationReview
     }
 
     var effectiveWorkerDisplayName: String {

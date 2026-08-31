@@ -109,9 +109,10 @@ struct ManualCaptureView: View {
         }
 
         editingID = item.id
-        category = item.payload.categoryKey
-        location = item.payload.location
-        note = item.payload.note
+        guard let payload = item.payload.manualCapture else { return }
+        category = payload.categoryKey
+        location = payload.location
+        note = payload.note
     }
 
     private func saveDraft() {
