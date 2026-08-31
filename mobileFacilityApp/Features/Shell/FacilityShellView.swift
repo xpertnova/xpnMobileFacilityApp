@@ -4,8 +4,7 @@ struct FacilityShellView: View {
     let demo: FacilityDemoViewModel
     let onSignOut: (() -> Void)?
     @State private var isSidebarVisible = true
-    @State private var isSimulatingSync = false
-    @State private var didCompleteSyncSimulation = false
+    @State private var sapPassword = ""
 
     private let expandedSidebarWidth: CGFloat = 340
     private let sidebarAnimation = Animation.easeInOut(duration: 0.42)
@@ -50,9 +49,31 @@ struct FacilityShellView: View {
                 .padding(.leading, 16)
                 .zIndex(1)
             }
+
+            if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
+                Color.black.opacity(0.42)
+                    .ignoresSafeArea()
+                    .zIndex(2)
+                SAPRefreshPasswordDialog(
+                    password: $sapPassword,
+                    isRefreshing: demo.sapDataStore.isRefreshing,
+                    stage: demo.sapDataStore.refreshStage,
+                    error: demo.sapDataStore.refreshError,
+                    refresh: refreshSAPData,
+                    cancel: dismissSAPRefresh
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .zIndex(3)
+            }
         }
         .background(FacilityTheme.canvas)
         .animation(sidebarAnimation, value: isSidebarVisible)
+        .task(id: demo.offlineWorkStore.workerID) {
+            await demo.offlineWorkStore.load()
+            if !demo.isDemoMode {
+                await demo.sapDataStore.loadCachedData()
+            }
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 28)
                 .onEnded { value in
@@ -119,18 +140,18 @@ struct FacilityShellView: View {
 
             Spacer(minLength: 18)
 
-            syncStatusCard
+            localWorkStatusCard
 
             HStack(spacing: 9) {
-                Text("AM")
+                Text(demo.workerInitials)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.white)
                     .frame(width: 32, height: 32)
                     .background(FacilityTheme.accent, in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Alex Morgan")
+                    Text(demo.effectiveWorkerDisplayName)
                         .font(.caption.weight(.semibold))
-                    Text("Technician")
+                    Text(LocalizedStringKey(demo.workerRole.titleKey))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -155,68 +176,80 @@ struct FacilityShellView: View {
         .background(FacilityTheme.sidebar)
     }
 
-    private var syncStatusCard: some View {
+    private var localWorkStatusCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 Text("sidebar.localWork.lastSaved")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("sidebar.localWork.lastSaved.value")
-                    .fontWeight(.bold)
+                if let latest = demo.offlineWorkStore.items.first?.updatedAt {
+                    Text(latest, format: .dateTime.day().month().hour().minute())
+                        .fontWeight(.bold)
+                } else {
+                    Text("offline.localWork.none")
+                        .fontWeight(.bold)
+                }
             }
             .font(.subheadline)
 
             HStack {
-                Text("sidebar.localWork.pending")
+                Text("offline.localWork.drafts")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(demo.drafts.count)")
+                Text("\(demo.offlineWorkStore.draftCount)")
                     .font(.subheadline.weight(.bold))
             }
 
-            Button(action: simulateSync) {
-                HStack(spacing: 9) {
-                    if isSimulatingSync {
-                        ProgressView()
-                            .tint(.white)
+            if !demo.isDemoMode {
+                Divider()
+                Text("sap.data.title")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                HStack(alignment: .top) {
+                    Text("sap.data.lastRefresh")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if let lastRefresh = demo.sapDataStore.lastSuccessfulRefreshAt {
+                        Text(lastRefresh, format: .dateTime.day().month().hour().minute())
+                            .fontWeight(.bold)
                     } else {
-                        Image(systemName: didCompleteSyncSimulation ? "checkmark" : "arrow.triangle.2.circlepath")
-                    }
-                    if isSimulatingSync {
-                        Text("sidebar.sync.simulating")
-                    } else if didCompleteSyncSimulation {
-                        Text("sidebar.sync.complete")
-                    } else {
-                        Text("sidebar.localWork.review")
+                        Text("sap.data.notRefreshed")
+                            .fontWeight(.bold)
                     }
                 }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 46)
-                    .foregroundStyle(.white)
-                    .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .font(.subheadline)
+                Label("sap.data.refreshHint", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button(action: demo.requestSAPRefresh) {
+                    Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(FacilityTheme.navy)
+                .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
             }
-            .buttonStyle(.plain)
-            .disabled(isSimulatingSync)
         }
         .facilityCard(padding: 14)
     }
 
-    private func simulateSync() {
-        guard !isSimulatingSync else { return }
-
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isSimulatingSync = true
-            didCompleteSyncSimulation = false
-        }
-
+    private func refreshSAPData() {
+        let password = sapPassword
         Task {
-            try? await Task.sleep(nanoseconds: 1_100_000_000)
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isSimulatingSync = false
-                didCompleteSyncSimulation = true
+            await demo.sapDataStore.refresh(sapPassword: password)
+            sapPassword = ""
+            if demo.sapDataStore.refreshError == nil {
+                demo.shouldPresentSAPRefresh = false
             }
         }
+    }
+
+    private func dismissSAPRefresh() {
+        guard !demo.sapDataStore.isRefreshing else { return }
+        sapPassword = ""
+        demo.sapDataStore.dismissError()
+        demo.shouldPresentSAPRefresh = false
     }
 
     private func sidebarToggleButton(symbol: String, labelKey: String, action: @escaping () -> Void) -> some View {
@@ -235,7 +268,7 @@ struct FacilityShellView: View {
         switch destination {
         case .notifications: demo.openNotifications
         case .defects: demo.defects.count
-        case .drafts: demo.drafts.count
+        case .drafts: demo.offlineWorkStore.draftCount
         default: nil
         }
     }

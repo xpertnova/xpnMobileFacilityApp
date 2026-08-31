@@ -34,11 +34,12 @@ enum FacilityUserRole: String, CaseIterable, Identifiable {
 
 struct FacilityUserSession: Equatable {
     let role: FacilityUserRole
+    let workerID: String
     let displayName: String
 }
 
 struct RoleSelectionView: View {
-    let onSignIn: (FacilityUserRole, String) -> Void
+    let onSignIn: (FacilityUserRole, LocalAuthenticatedUser) -> Void
     @State private var selectedRole: FacilityUserRole = .technician
     @State private var authenticationSection: AuthenticationSection = .signIn
     @State private var username = ""
@@ -126,7 +127,11 @@ struct RoleSelectionView: View {
                 text: $username,
                 prompt: Text("role.selection.username")
             )
-            .textContentType(.username)
+            // These are local shared-device credentials. Use the neutral
+            // one-time-code content type to opt this complete form out of
+            // Passwords AutoFill; `nil` still allows iPadOS to infer a
+            // username/password pair from adjacent secure fields.
+            .textContentType(.oneTimeCode)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .focused($focusedField, equals: .username)
@@ -139,7 +144,7 @@ struct RoleSelectionView: View {
                 text: $password,
                 prompt: Text(authenticationSection.passwordPromptKey)
             )
-            .textContentType(authenticationSection == .signIn ? .password : .newPassword)
+            .textContentType(.oneTimeCode)
             .focused($focusedField, equals: .password)
             .credentialFieldStyle()
             .submitLabel(authenticationSection == .signIn ? .go : .next)
@@ -157,7 +162,7 @@ struct RoleSelectionView: View {
                     text: $confirmedPassword,
                     prompt: Text("role.selection.confirmPassword")
                 )
-                .textContentType(.newPassword)
+                .textContentType(.oneTimeCode)
                 .focused($focusedField, equals: .confirmation)
                 .credentialFieldStyle()
                 .submitLabel(.go)
@@ -194,10 +199,10 @@ struct RoleSelectionView: View {
         }
 
         do {
-            let displayName: String
+            let user: LocalAuthenticatedUser
             switch authenticationSection {
             case .signIn:
-                displayName = try LocalCredentialStore.authenticate(
+                user = try LocalCredentialStore.authenticate(
                     username: trimmedUsername,
                     password: password
                 )
@@ -207,7 +212,7 @@ struct RoleSelectionView: View {
                     focusedField = .confirmation
                     return
                 }
-                displayName = try LocalCredentialStore.createAccount(
+                user = try LocalCredentialStore.createAccount(
                     username: trimmedUsername,
                     password: password
                 )
@@ -216,7 +221,7 @@ struct RoleSelectionView: View {
             password = ""
             confirmedPassword = ""
             focusedField = nil
-            onSignIn(selectedRole, displayName)
+            onSignIn(selectedRole, user)
         } catch let error as LocalCredentialStoreError {
             validationMessage = error.localizedKey
         } catch {

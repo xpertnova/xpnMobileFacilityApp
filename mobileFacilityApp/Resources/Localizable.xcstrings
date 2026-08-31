@@ -7,42 +7,12 @@
     "%@" : {
 
     },
-    "%@ · %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · %2$@"
-          }
-        }
-      }
-    },
-    "%@ · %@ · %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · %2$@ · %3$@"
-          }
-        }
-      }
-    },
     "%@. %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@. %2$@"
-          }
-        }
-      }
-    },
-    "%@/%@ · %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@/%2$@ · %3$@"
           }
         }
       }
@@ -200,12 +170,6 @@
         }
       }
     },
-    "Alex Morgan" : {
-
-    },
-    "AM" : {
-
-    },
     "app.subtitle" : {
       "localizations" : {
         "de" : {
@@ -234,6 +198,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MFM App"
+          }
+        }
+      }
+    },
+    "common.cancel" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbrechen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
           }
         }
       }
@@ -854,13 +835,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dieser Demobereich enthält aktuell keine lokale Arbeit."
+            "value" : "Aktuell ist keine lokal gespeicherte Arbeit vorhanden."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This demo workspace currently has no local work."
+            "value" : "No locally saved work is available yet."
           }
         }
       }
@@ -888,13 +869,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokal gesicherte Arbeit in der Demo"
+            "value" : "Lokal gespeicherte Arbeit"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Work saved locally in the demo"
+            "value" : "Work saved locally"
           }
         }
       }
@@ -1765,13 +1746,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Diese rohe Oberfläche speichert eine deterministische Demo-Kopie. SAP-Übergaben sind hier absichtlich nicht verfügbar."
+            "value" : "Dieses Formular wird lokal als Entwurf gespeichert. Die SAP-Synchronisierung ist noch nicht verfügbar."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This raw interface saves a deterministic demo copy. SAP handoff is intentionally unavailable here."
+            "value" : "This form is saved locally as a draft. SAP synchronization is not available yet."
           }
         }
       }
@@ -1909,6 +1890,7 @@
       }
     },
     "manual.saved.message" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1959,7 +1941,6 @@
       }
     },
     "manual.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2290,6 +2271,223 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Maintenance notifications"
+          }
+        }
+      }
+    },
+    "offline.load.error.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die lokal gespeicherte Arbeit konnte nicht geladen werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local work could not be loaded."
+          }
+        }
+      }
+    },
+    "offline.load.error.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Arbeit nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local work unavailable"
+          }
+        }
+      }
+    },
+    "offline.localWork.drafts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Entwürfe"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local drafts"
+          }
+        }
+      }
+    },
+    "offline.localWork.none" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None yet"
+          }
+        }
+      }
+    },
+    "offline.save.error.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Entwurf konnte nicht lokal gespeichert werden. Bitte erneut versuchen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The draft could not be saved locally. Please try again."
+          }
+        }
+      }
+    },
+    "offline.save.error.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entwurf nicht gespeichert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft not saved"
+          }
+        }
+      }
+    },
+    "offline.status.conflict" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung erforderlich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Review needed"
+          }
+        }
+      }
+    },
+    "offline.status.draft" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entwurf"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Draft"
+          }
+        }
+      }
+    },
+    "offline.status.failed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlgeschlagen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Failed"
+          }
+        }
+      }
+    },
+    "offline.status.pending" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisierung ausstehend"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending synchronization"
+          }
+        }
+      }
+    },
+    "offline.status.synchronized" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronized"
+          }
+        }
+      }
+    },
+    "offline.status.synchronizing" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird synchronisiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronizing"
+          }
+        }
+      }
+    },
+    "offline.sync.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Synchronisierung ist noch nicht eingerichtet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP synchronization is not configured yet."
           }
         }
       }
@@ -2865,6 +3063,138 @@
         }
       }
     },
+    "sap.cache.empty.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisieren Sie Wartungsmeldungen, um die SAP-Daten auf diesem iPad zu speichern."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh maintenance notifications to save SAP data on this iPad."
+          }
+        }
+      }
+    },
+    "sap.cache.empty.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine SAP-Daten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No SAP data yet"
+          }
+        }
+      }
+    },
+    "sap.cache.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte SAP-Daten werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading saved SAP data …"
+          }
+        }
+      }
+    },
+    "sap.data.lastRefresh" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte SAP-Aktualisierung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last SAP refresh"
+          }
+        }
+      }
+    },
+    "sap.data.notRefreshed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht aktualisiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not refreshed yet"
+          }
+        }
+      }
+    },
+    "sap.data.refreshHint" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Wartungsmeldungen aktualisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh from Maintenance notifications"
+          }
+        }
+      }
+    },
+    "sap.data.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Daten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP data"
+          }
+        }
+      }
+    },
+    "sap.notifications.readOnly" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus SAP geladen – in dieser Version schreibgeschützt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loaded from SAP — read-only in this version."
+          }
+        }
+      }
+    },
     "sap.onboarding.error.configuration" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2912,6 +3242,479 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SAP onboarding returned an unsupported result."
+          }
+        }
+      }
+    },
+    "sap.refresh.action" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh"
+          }
+        }
+      }
+    },
+    "sap.refresh.error.configuration" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die SAP-Datenkonfiguration fehlt auf diesem Gerät."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP data configuration is missing on this device."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.connection" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die authentifizierte SAP-Verbindung ist nicht verfügbar. Starten Sie die App erneut und melden Sie sich bei SAP an."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The authenticated SAP connection is unavailable. Restart the app and sign in to SAP."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.credentials" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das SAP-Synchronisierungspasswort ist nicht gültig."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The SAP synchronization password is invalid."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.generic" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die SAP-Daten konnten nicht aktualisiert werden. Bitte erneut versuchen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP data could not be refreshed. Please try again."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.httpStatus" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP hat den HTTP-Status %d zurückgegeben."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP returned HTTP status %d."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.initialPassword" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das anfängliche SAP-Synchronisierungspasswort muss zuerst geändert werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The initial SAP synchronization password must be changed first."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.malformed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP hat ein unvollständiges oder nicht lesbares Datenpaket zurückgegeben. Der vorhandene lokale Stand wurde beibehalten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP returned an incomplete or unreadable data package. Existing local data was kept."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.network" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses iPad kann SAP nicht erreichen. Prüfen Sie die Netzwerkverbindung oder den VPN-Zugang."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This iPad cannot reach SAP. Check the network connection or VPN access."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.password" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie ein SAP-Synchronisierungspasswort ein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter a SAP synchronization password."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.requestTimeout" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die SAP-Anfrage hat das Zeitlimit überschritten. Der vorhandene lokale Stand wurde beibehalten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The SAP request timed out. Existing local data was kept."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.service" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der SAP-Dienst ist auf diesem Gerät derzeit nicht erreichbar. Der vorhandene lokale Stand wurde beibehalten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The SAP service is currently unavailable on this device. Existing local data was kept."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.timeout" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP hat die Daten nicht rechtzeitig vorbereitet. Bitte erneut versuchen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP did not prepare the data in time. Please try again."
+          }
+        }
+      }
+    },
+    "sap.refresh.error.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Aktualisierung fehlgeschlagen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP refresh failed"
+          }
+        }
+      }
+    },
+    "sap.refresh.password.description" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie Ihr separates SAP-Synchronisierungspasswort ein. Es wird nicht gespeichert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter your separate SAP synchronization password. It is not stored."
+          }
+        }
+      }
+    },
+    "sap.refresh.password.placeholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Passwort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP password"
+          }
+        }
+      }
+    },
+    "sap.refresh.password.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Daten aktualisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh SAP data"
+          }
+        }
+      }
+    },
+    "sap.refresh.progress" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Daten werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading SAP data …"
+          }
+        }
+      }
+    },
+    "sap.refresh.sidebarAction" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronize"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.authenticating" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Passwort wird geprüft …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking SAP password …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.posting" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisierung wird an SAP übergeben …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Submitting synchronization to SAP …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.preparing" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Datenpaket wird vorbereitet …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing SAP data package …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.receiving" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Datenpakete werden empfangen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receiving SAP data packages …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.saving" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Daten werden auf diesem iPad gespeichert …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving SAP data on this iPad …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.uploading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisierungsanfrage wird vorbereitet …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing synchronization request …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.version" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Kompatibilität wird geprüft …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking SAP compatibility …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.waiting" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP bereitet die Daten vor …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for SAP to prepare the data …"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.waitingForPost" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Bestätigung von SAP wird gewartet …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for SAP confirmation …"
           }
         }
       }
@@ -3424,6 +4227,7 @@
       }
     },
     "sidebar.localWork.lastSaved.value" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3440,6 +4244,7 @@
       }
     },
     "sidebar.localWork.pending" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3456,6 +4261,7 @@
       }
     },
     "sidebar.localWork.review" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3523,6 +4329,7 @@
       }
     },
     "sidebar.sync.complete" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3539,6 +4346,7 @@
       }
     },
     "sidebar.sync.simulating" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3638,9 +4446,6 @@
           }
         }
       }
-    },
-    "Technician" : {
-
     }
   },
   "version" : "1.0"

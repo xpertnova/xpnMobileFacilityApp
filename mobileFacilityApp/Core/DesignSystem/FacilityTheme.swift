@@ -45,6 +45,28 @@ struct StatusPill: View {
     }
 }
 
+struct OfflineStatusPill: View {
+    let status: OfflineWorkStatus
+
+    private var tint: Color {
+        switch status {
+        case .draft: FacilityTheme.orange
+        case .pendingSynchronization, .synchronizing: FacilityTheme.blue
+        case .synchronized: FacilityTheme.accent
+        case .failed, .conflict: FacilityTheme.red
+        }
+    }
+
+    var body: some View {
+        Text(LocalizedStringKey(status.titleKey))
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(tint.opacity(0.12), in: Capsule())
+    }
+}
+
 struct DemoBadge: View {
     var body: some View {
         Label("demo.badge", systemImage: "theatermasks.fill")

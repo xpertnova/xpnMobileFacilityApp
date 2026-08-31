@@ -1,9 +1,12 @@
 import SwiftUI
 
 struct AppRootView: View {
+    let productionOfflineWorkRepository: any OfflineWorkRepository
+    let productionSAPDataCacheRepository: any SAPDataCacheRepository
     @State private var phase: AppPhase = .launching
     @State private var onboarding = SAPOnboardingState()
     @State private var demo: FacilityDemoViewModel?
+    @State private var authenticationWorkspace: FacilityDemoViewModel?
     @State private var productionWorkspace: FacilityDemoViewModel?
     @State private var productionSession: FacilityUserSession?
 
@@ -13,13 +16,28 @@ struct AppRootView: View {
             case .launching:
                 onboardingContent
             case .authentication:
-                if let productionWorkspace {
+                if let authenticationWorkspace {
                     ZStack {
-                        FacilityShellView(demo: productionWorkspace, onSignOut: signOut)
+                        FacilityShellView(demo: authenticationWorkspace)
                         Color.black.opacity(0.62)
                             .ignoresSafeArea()
-                        RoleSelectionView { role, username in
-                            productionSession = FacilityUserSession(role: role, displayName: username)
+                        RoleSelectionView { role, user in
+                            let session = FacilityUserSession(
+                                role: role,
+                                workerID: user.workerID,
+                                displayName: user.displayName
+                            )
+                            productionSession = session
+                            productionWorkspace = FacilityDemoViewModel(
+                                isDemoMode: false,
+                                offlineWorkStore: OfflineWorkStore(
+                                    repository: productionOfflineWorkRepository,
+                                    workerID: session.workerID
+                                ),
+                                sapDataStore: productionSAPDataStore(for: session),
+                                workerDisplayName: session.displayName,
+                                workerRole: session.role
+                            )
                             phase = .ready
                         }
                     }
@@ -49,10 +67,34 @@ struct AppRootView: View {
 
             switch completion {
             case .authenticated:
-                productionWorkspace = FacilityDemoViewModel(isDemoMode: false)
+                authenticationWorkspace = FacilityDemoViewModel(
+                    isDemoMode: false,
+                    offlineWorkStore: OfflineWorkStore(
+                        repository: InMemoryOfflineWorkRepository(),
+                        workerID: "unauthenticated"
+                    ),
+                    sapDataStore: SAPDataStore(
+                        repository: InMemorySAPDataCacheRepository(),
+                        refreshService: nil,
+                        localWorkerID: "unauthenticated"
+                    )
+                )
                 phase = .authentication
             case .demo:
-                demo = FacilityDemoViewModel()
+                demo = FacilityDemoViewModel(
+                    isDemoMode: true,
+                    offlineWorkStore: OfflineWorkStore(
+                        repository: InMemoryOfflineWorkRepository(),
+                        workerID: "demo"
+                    ),
+                    sapDataStore: SAPDataStore(
+                        repository: InMemorySAPDataCacheRepository(),
+                        refreshService: nil,
+                        localWorkerID: "demo"
+                    ),
+                    workerDisplayName: "Alex Morgan",
+                    workerRole: .technician
+                )
                 phase = .demo
             }
         }
@@ -70,6 +112,21 @@ struct AppRootView: View {
 
     private func signOut() {
         productionSession = nil
+        productionWorkspace = nil
         phase = .authentication
+    }
+
+    private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {
+        let refreshService = onboarding.readConnection.map {
+            SAPInboundNotificationRefreshService(
+                connection: $0,
+                synchronizationUserID: session.displayName
+            )
+        }
+        return SAPDataStore(
+            repository: productionSAPDataCacheRepository,
+            refreshService: refreshService,
+            localWorkerID: session.workerID
+        )
     }
 }

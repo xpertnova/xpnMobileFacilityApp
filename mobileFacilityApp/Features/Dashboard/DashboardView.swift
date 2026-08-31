@@ -25,7 +25,7 @@ struct DashboardView: View {
                     MetricCard(count: demo.defects.count, titleKey: "dashboard.metrics.defects", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
                         demo.open(.defects)
                     }
-                    MetricCard(count: demo.drafts.count, titleKey: "dashboard.metrics.drafts", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
+                    MetricCard(count: demo.offlineWorkStore.draftCount, titleKey: "dashboard.metrics.drafts", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
                         demo.open(.drafts)
                     }
                     MetricCard(count: 51, titleKey: "dashboard.metrics.places", symbol: "square.split.2x2", tint: FacilityTheme.accent) {
@@ -54,7 +54,7 @@ struct DashboardView: View {
                     demo.open(.scan)
                 }
                 DashboardActionCard(titleKey: "dashboard.action.capture", subtitleKey: "dashboard.action.capture.subtitle", symbol: "square.and.pencil", tint: FacilityTheme.accent) {
-                    demo.open(.manualCapture)
+                    demo.openManualCapture()
                 }
                 DashboardActionCard(titleKey: "dashboard.action.drafts", subtitleKey: "dashboard.action.drafts.subtitle", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
                     demo.open(.drafts)

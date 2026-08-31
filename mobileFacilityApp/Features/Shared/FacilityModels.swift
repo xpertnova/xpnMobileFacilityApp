@@ -65,6 +65,7 @@ struct MaintenanceNotification: Identifiable, Hashable {
     let location: String
     let dueDate: String
     let equipment: String
+    let sapStatus: String?
     var status: WorkStatus
     var completedChecks: Int
     let totalChecks: Int
