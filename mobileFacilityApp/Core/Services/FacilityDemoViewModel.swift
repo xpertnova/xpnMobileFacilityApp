@@ -5,21 +5,36 @@ import Observation
 @Observable
 final class FacilityDemoViewModel {
     let isDemoMode: Bool
+    let offlineWorkStore: OfflineWorkStore
+    let sapDataStore: SAPDataStore
+    let workerDisplayName: String
+    let workerRole: FacilityUserRole
     var selection: AppDestination = .overview
+    var editingManualCaptureID: UUID?
     var selectedNotificationID: String?
     var selectedTechnicalPlaceID: String?
+    var shouldPresentSAPRefresh = false
     var notifications = MockFacilityData.notifications
     var defects = MockFacilityData.defects
-    var drafts = MockFacilityData.drafts
     let technicalPlaces = MockFacilityData.technicalPlaces
     let forms = MockFacilityData.forms
 
-    init(isDemoMode: Bool = true) {
+    init(
+        isDemoMode: Bool,
+        offlineWorkStore: OfflineWorkStore,
+        sapDataStore: SAPDataStore,
+        workerDisplayName: String = "Alex Morgan",
+        workerRole: FacilityUserRole = .technician
+    ) {
         self.isDemoMode = isDemoMode
+        self.offlineWorkStore = offlineWorkStore
+        self.sapDataStore = sapDataStore
+        self.workerDisplayName = workerDisplayName
+        self.workerRole = workerRole
     }
 
     var selectedNotification: MaintenanceNotification? {
-        notifications.first { $0.id == selectedNotificationID }
+        visibleNotifications.first { $0.id == selectedNotificationID }
     }
 
     var selectedTechnicalPlace: TechnicalPlace? {
@@ -27,28 +42,59 @@ final class FacilityDemoViewModel {
     }
 
     var openNotifications: Int {
-        notifications.filter { $0.status == .open || $0.status == .attention }.count
+        visibleNotifications.filter { $0.status == .open || $0.status == .attention }.count
+    }
+
+    var visibleNotifications: [MaintenanceNotification] {
+        guard !isDemoMode else { return notifications }
+        return sapDataStore.notifications.map { notification in
+            MaintenanceNotification(
+                id: notification.id,
+                title: notification.title.isEmpty ? notification.id : notification.title,
+                location: notification.displayLocation,
+                dueDate: notification.displayDateRange,
+                equipment: notification.functionalLocationID,
+                sapStatus: notification.displayStatus,
+                status: .open,
+                completedChecks: 0,
+                totalChecks: 0
+            )
+        }
+    }
+
+    var effectiveWorkerDisplayName: String {
+        let sapDisplayName = sapDataStore.workerProfile?.displayName ?? ""
+        return sapDisplayName.isEmpty ? workerDisplayName : sapDisplayName
+    }
+
+    var workerInitials: String {
+        effectiveWorkerDisplayName
+            .split(separator: " ")
+            .prefix(2)
+            .compactMap(\.first)
+            .map(String.init)
+            .joined()
+            .uppercased()
     }
 
     func open(_ destination: AppDestination) {
         selection = destination
     }
 
-    func saveManualDraft() {
-        drafts.insert(
-            DraftWork(
-                id: "draft-manual-\(drafts.count + 1)",
-                title: "Manual issue report",
-                detail: "Local demo entry · Building A",
-                savedAt: "Just now",
-                status: .draft
-            ),
-            at: 0
-        )
-        selection = .drafts
+    func openManualCapture(_ itemID: UUID? = nil) {
+        editingManualCaptureID = itemID
+        selection = .manualCapture
+    }
+
+    func requestSAPRefresh() {
+        guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
+        sapDataStore.dismissError()
+        selection = .notifications
+        shouldPresentSAPRefresh = true
     }
 
     func finishChecks(for notification: MaintenanceNotification) {
+        guard isDemoMode else { return }
         guard let index = notifications.firstIndex(where: { $0.id == notification.id }) else { return }
         notifications[index].completedChecks = notifications[index].totalChecks
         notifications[index].status = .draft
@@ -57,7 +103,7 @@ final class FacilityDemoViewModel {
     func resetDemo() {
         notifications = MockFacilityData.notifications
         defects = MockFacilityData.defects
-        drafts = MockFacilityData.drafts
+        editingManualCaptureID = nil
         selectedNotificationID = nil
         selectedTechnicalPlaceID = nil
         selection = .overview
@@ -66,22 +112,16 @@ final class FacilityDemoViewModel {
 
 private enum MockFacilityData {
     static let notifications: [MaintenanceNotification] = [
-        .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", status: .open, completedChecks: 1, totalChecks: 6),
-        .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", status: .attention, completedChecks: 3, totalChecks: 8),
-        .init(id: "M-30987", title: "Ventilation filter check", location: "Building B · Roof plant", dueDate: "Tomorrow", equipment: "AHU-03", status: .open, completedChecks: 0, totalChecks: 5),
-        .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", status: .pending, completedChecks: 4, totalChecks: 4)
+        .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6),
+        .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8),
+        .init(id: "M-30987", title: "Ventilation filter check", location: "Building B · Roof plant", dueDate: "Tomorrow", equipment: "AHU-03", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5),
+        .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", sapStatus: nil, status: .pending, completedChecks: 4, totalChecks: 4)
     ]
 
     static let defects: [Defect] = [
         .init(id: "D-0284", title: "Emergency exit sign dim", location: "Building C · Corridor 1.04", reportedAt: "Today, 08:45", severity: .attention, description: "Illumination is below the visual inspection threshold."),
         .init(id: "D-0279", title: "Door closer requires adjustment", location: "Building A · Door A2-16", reportedAt: "Yesterday", severity: .pending, description: "Door does not close fully without manual support."),
         .init(id: "D-0274", title: "Filter replacement due", location: "Building B · AHU-03", reportedAt: "27 Aug", severity: .draft, description: "Filter service record prepared for the next maintenance window.")
-    ]
-
-    static let drafts: [DraftWork] = [
-        .init(id: "S-1008", title: "Emergency lighting test", detail: "Building C · 3 of 8 checks recorded", savedAt: "Today, 09:14", status: .draft),
-        .init(id: "S-1007", title: "Issue report · exit sign", detail: "Building C · photo placeholder attached", savedAt: "Today, 08:47", status: .pending),
-        .init(id: "S-1003", title: "Safety briefing", detail: "Workshop · signature awaiting completion", savedAt: "Yesterday, 15:32", status: .draft)
     ]
 
     static let technicalPlaces: [TechnicalPlace] = [

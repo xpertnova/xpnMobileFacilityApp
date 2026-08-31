@@ -9,11 +9,16 @@ enum LocalCredentialStoreError: Error {
     case storageUnavailable
 }
 
+struct LocalAuthenticatedUser: Equatable, Sendable {
+    let workerID: String
+    let displayName: String
+}
+
 struct LocalCredentialStore {
     private static let storageKey = "mobileFacility.localCredentials"
     private static let saltByteCount = 32
 
-    static func createAccount(username: String, password: String) throws -> String {
+    static func createAccount(username: String, password: String) throws -> LocalAuthenticatedUser {
         let displayName = trimmedUsername(username)
         guard !displayName.isEmpty, password.count >= 8 else {
             throw LocalCredentialStoreError.passwordRequirementsNotMet
@@ -33,10 +38,10 @@ struct LocalCredentialStore {
         )
         try save(accounts)
 
-        return displayName
+        return LocalAuthenticatedUser(workerID: normalizedUsername, displayName: displayName)
     }
 
-    static func authenticate(username: String, password: String) throws -> String {
+    static func authenticate(username: String, password: String) throws -> LocalAuthenticatedUser {
         let normalizedUsername = normalizedUsername(username)
         let accounts = try loadAccounts()
 
@@ -47,7 +52,7 @@ struct LocalCredentialStore {
             throw LocalCredentialStoreError.invalidCredentials
         }
 
-        return account.displayName
+        return LocalAuthenticatedUser(workerID: normalizedUsername, displayName: account.displayName)
     }
 
     private static func loadAccounts() throws -> [String: StoredCredentials] {

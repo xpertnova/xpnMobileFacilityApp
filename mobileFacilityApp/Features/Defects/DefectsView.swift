@@ -11,7 +11,7 @@ struct DefectsView: View {
                     subtitle: "defects.subtitle",
                     trailing: AnyView(
                         Button {
-                            demo.open(.manualCapture)
+                            demo.openManualCapture()
                         } label: {
                             Label("defects.capture", systemImage: "plus")
                         }

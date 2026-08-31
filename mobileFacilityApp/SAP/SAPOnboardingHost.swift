@@ -11,6 +11,11 @@ import UIKit
 final class SAPOnboardingState {
     private(set) var completion: SAPOnboardingCompletion?
     private(set) var errorMessage: String?
+    private(set) var readConnection: SAPReadConnection?
+
+    func setReadConnection(_ connection: SAPReadConnection) {
+        readConnection = connection
+    }
 
     func complete(with completion: SAPOnboardingCompletion) {
         self.completion = completion
@@ -24,6 +29,7 @@ final class SAPOnboardingState {
     func retry() {
         completion = nil
         errorMessage = nil
+        readConnection = nil
     }
 }
 
@@ -47,6 +53,11 @@ struct SAPOnboardingContainer: UIViewControllerRepresentable {
                 }
             }
         }
+        controller.onAuthenticatedReadConnection = { connection in
+            DispatchQueue.main.async {
+                state.setReadConnection(connection)
+            }
+        }
         return controller
     }
 
@@ -59,6 +70,7 @@ struct SAPOnboardingContainer: UIViewControllerRepresentable {
 
 final class SAPOnboardingHostController: UIViewController {
     var onCompletion: ((Result<SAPOnboardingCompletion, Error>) -> Void)?
+    var onAuthenticatedReadConnection: ((SAPReadConnection) -> Void)?
 
     private let presentationDelegate = ModalUIViewControllerPresenter()
     private var onboardingContext: OnboardingContext?
@@ -143,8 +155,22 @@ final class SAPOnboardingHostController: UIViewController {
             guard let self else { return }
             switch result {
             case .success(let context):
-                UserDefaults.standard.set(context.onboardingID.uuidString, forKey: Self.onboardingIDKey)
-                finish(.success(.authenticated))
+                Task { [weak self] in
+                    do {
+                        let connection = try await SAPReadConnection.resolve(from: context)
+                        await MainActor.run {
+                            guard let self else { return }
+                            self.onAuthenticatedReadConnection?(connection)
+                            UserDefaults.standard.set(context.onboardingID.uuidString, forKey: Self.onboardingIDKey)
+                            self.finish(.success(.authenticated))
+                        }
+                    } catch {
+                        SAPSynchronizationDiagnostics.logOnboardingIdentityFailure(error)
+                        await MainActor.run {
+                            self?.finish(.failure(error))
+                        }
+                    }
+                }
             case .failed(let error):
                 finish(isDemoModeRequest(error) ? .success(.demo) : .failure(error))
             @unknown default:
