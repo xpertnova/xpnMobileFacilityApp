@@ -16,19 +16,19 @@ struct DashboardView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                PageHeader("dashboard.title", subtitle: "dashboard.context")
+                dashboardHeader
 
                 LazyVGrid(columns: metricColumns, spacing: 14) {
                     MetricCard(count: demo.openNotifications, titleKey: "dashboard.metrics.notifications", symbol: "checklist", tint: FacilityTheme.blue) {
                         demo.open(.notifications)
                     }
-                    MetricCard(count: demo.defects.count, titleKey: "dashboard.metrics.defects", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
+                    MetricCard(count: visibleDefectCount, titleKey: "dashboard.metrics.defects", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
                         demo.open(.defects)
                     }
                     MetricCard(count: demo.offlineWorkStore.draftCount, titleKey: "dashboard.metrics.drafts", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
                         demo.open(.drafts)
                     }
-                    MetricCard(count: 51, titleKey: "dashboard.metrics.places", symbol: "square.split.2x2", tint: FacilityTheme.accent) {
+                    MetricCard(count: visibleTechnicalPlaceCount, titleKey: "dashboard.metrics.places", symbol: "square.split.2x2", tint: FacilityTheme.accent) {
                         demo.open(.technicalPlaces)
                     }
                 }
@@ -40,6 +40,42 @@ struct DashboardView: View {
             .padding(28)
             .frame(maxWidth: 1280, alignment: .leading)
         }
+    }
+
+    private var dashboardHeader: some View {
+        HStack(alignment: .bottom, spacing: 20) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(String(format: String(localized: "dashboard.greeting"), demo.effectiveWorkerDisplayName))
+                    .font(.system(size: 29, weight: .bold, design: .rounded))
+                    .foregroundStyle(FacilityTheme.ink)
+                Text(dashboardContext)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            if !demo.isDemoMode, demo.sapDataStore.isRefreshAvailable {
+                SAPConnectionBadge()
+            }
+        }
+    }
+
+    private var visibleDefectCount: Int {
+        demo.isDemoMode ? demo.defects.count : 0
+    }
+
+    private var dashboardContext: String {
+        let currentDate = Date.now.formatted(
+            .dateTime.weekday(.wide).day().month(.wide).year()
+        )
+        let organizationUnit = demo.sapDataStore.workerProfile?.organizationUnit
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return [currentDate, organizationUnit]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+
+    private var visibleTechnicalPlaceCount: Int {
+        demo.isDemoMode ? demo.technicalPlaces.count : 0
     }
 
     private var quickAccess: some View {
@@ -80,13 +116,42 @@ struct DashboardView: View {
                 .textCase(.uppercase)
                 .padding(.bottom, 10)
 
-            ReferenceActivityRow(symbol: "checkmark.circle.fill", tint: FacilityTheme.accent, titleKey: "activity.route", detailKey: "activity.route.detail", timeKey: "activity.route.time", status: .complete)
-            Divider().padding(.leading, 58)
-            ReferenceActivityRow(symbol: "tray.and.arrow.down.fill", tint: FacilityTheme.orange, titleKey: "activity.draft", detailKey: "activity.draft.detail", timeKey: "activity.draft.time", status: .draft)
-            Divider().padding(.leading, 58)
-            ReferenceActivityRow(symbol: "exclamationmark.triangle.fill", tint: FacilityTheme.red, titleKey: "activity.defect", detailKey: "activity.defect.detail", timeKey: "activity.defect.time", status: .attention)
+            if demo.visibleNotifications.isEmpty {
+                ContentUnavailableView {
+                    Label("sap.cache.empty.title", systemImage: "tray")
+                } description: {
+                    Text("sap.cache.empty.message")
+                }
+                .frame(maxWidth: .infinity, minHeight: 170)
+            } else {
+                ForEach(Array(demo.visibleNotifications.prefix(3).enumerated()), id: \.element.id) { index, notification in
+                    Button {
+                        demo.selectedNotificationID = notification.id
+                        demo.open(.notifications)
+                    } label: {
+                        NotificationActivityRow(notification: notification)
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < min(demo.visibleNotifications.count, 3) - 1 {
+                        Divider().padding(.leading, 64)
+                    }
+                }
+            }
         }
         .facilityCard()
+    }
+}
+
+private struct SAPConnectionBadge: View {
+    var body: some View {
+        Text("sap.connection.connected")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(FacilityTheme.accent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(FacilityTheme.accentSoft, in: Capsule())
+            .accessibilityAddTraits(.isStaticText)
     }
 }
 
@@ -122,33 +187,62 @@ private struct DashboardActionCard: View {
     }
 }
 
-private struct ReferenceActivityRow: View {
-    let symbol: String
-    let tint: Color
-    let titleKey: String
-    let detailKey: String
-    let timeKey: String
-    let status: WorkStatus
+private struct NotificationActivityRow: View {
+    let notification: MaintenanceNotification
+
+    private var tint: Color {
+        switch notification.status {
+        case .attention: FacilityTheme.red
+        case .draft: FacilityTheme.orange
+        case .pending, .complete: FacilityTheme.accent
+        case .open: FacilityTheme.blue
+        }
+    }
+
+    private var symbol: String {
+        switch notification.status {
+        case .attention: "exclamationmark.triangle.fill"
+        case .draft: "tray.and.arrow.down.fill"
+        case .pending: "arrow.triangle.2.circlepath"
+        case .complete: "checkmark.square.fill"
+        case .open: "checklist"
+        }
+    }
+
+    private var detail: String {
+        [notification.dueDate, notification.id, notification.location]
+            .filter { !$0.isEmpty }
+            .joined(separator: "  ·  ")
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: 13) {
             Image(systemName: symbol)
                 .foregroundStyle(tint)
-                .font(.title3)
-                .frame(width: 30)
+                .font(.title3.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
-                Text(LocalizedStringKey(titleKey))
-                    .font(.subheadline.weight(.semibold))
-                Text(LocalizedStringKey(detailKey))
-                    .font(.caption)
+                Text(notification.title)
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+                    .lineLimit(1)
+                Text(detail)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer()
-            Text(LocalizedStringKey(timeKey))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-            StatusPill(status: status)
+            if let sapStatus = notification.sapStatus, !sapStatus.isEmpty {
+                Text(sapStatus)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(FacilityTheme.blue)
+                    .lineLimit(1)
+            } else {
+                StatusPill(status: notification.status)
+            }
         }
-        .padding(.vertical, 13)
+        .contentShape(Rectangle())
+        .padding(.vertical, 8)
     }
 }

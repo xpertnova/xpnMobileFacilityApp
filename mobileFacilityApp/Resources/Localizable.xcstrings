@@ -276,13 +276,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einen Vorfall oder Messwert vor Ort sichern"
+            "value" : "Störungsmeldungen, Messbelege und Stammdaten direkt vor Ort anlegen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Save an issue or reading on site"
+            "value" : "Create fault reports, measurement records, and master data directly on site."
           }
         }
       }
@@ -310,13 +310,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gesicherte Entwürfe und ausstehende Vorgänge prüfen"
+            "value" : "Offline bearbeitete Vorgänge – Synchronisation mit einem Klick."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Review saved drafts and pending work"
+            "value" : "Offline work in progress — synchronize with one tap."
           }
         }
       }
@@ -402,6 +402,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Friday, 28 August 2026 · North Campus · Demo workspace"
+          }
+        }
+      }
+    },
+    "dashboard.greeting" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Morgen, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good morning, %@"
           }
         }
       }
@@ -563,13 +580,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Befunde lokal dokumentieren und weiterbearbeiten."
+            "value" : "Wartungsmängel mit Fotobeleg dokumentieren, PDF erzeugen und zur Synchronisation vormerken."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Document findings locally and continue working on them."
+            "value" : "Document maintenance defects with photo evidence, generate a PDF, and mark them for synchronization."
           }
         }
       }
@@ -597,13 +614,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokale Vorschau für Einweisungen und Arbeitsfreigaben."
+            "value" : "Einweisungsformulare, Feuererlaubnisschein, Freigabe elektrischer Anlagen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Local preview for briefings and work releases."
+            "value" : "Briefing forms, fire permits, and electrical-system releases."
           }
         }
       }
@@ -631,13 +648,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Räumlich-funktionale Struktur nach DIN 276 ansehen."
+            "value" : "Hybride räumlich-funktionale Struktur nach DIN 276:2018-12 – bis zum System-TP."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Explore the spatial-functional DIN 276 structure."
+            "value" : "Hybrid spatial-functional structure based on DIN 276:2018-12 — down to the system technical place."
           }
         }
       }
@@ -665,13 +682,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Technische Objekte per QR-Code erfassen (Vorschau)."
+            "value" : "Technische Objekte per QR-Code oder RFID erfassen und direkt öffnen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Identify technical objects by QR code (preview)."
+            "value" : "Identify technical objects by QR code or RFID and open them directly."
           }
         }
       }
@@ -1612,6 +1629,7 @@
       }
     },
     "header.site" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1628,6 +1646,7 @@
       }
     },
     "header.workspace" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3109,6 +3128,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Loading saved SAP data …"
+          }
+        }
+      }
+    },
+    "sap.connection.connected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP S/4HANA verbunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP S/4HANA connected"
           }
         }
       }
