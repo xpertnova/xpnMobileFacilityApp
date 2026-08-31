@@ -33,11 +33,7 @@ struct FacilityShellView: View {
                     Divider()
                 }
 
-                VStack(spacing: 0) {
-                    header
-                    Divider()
-                    mainContent
-                }
+                mainContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
@@ -271,31 +267,6 @@ struct FacilityShellView: View {
         case .drafts: demo.offlineWorkStore.draftCount
         default: nil
         }
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("header.workspace")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("header.site")
-                    .font(.subheadline.weight(.semibold))
-            }
-            Spacer()
-            if demo.isDemoMode {
-                DemoBadge()
-            }
-            Image(systemName: "bell")
-                .font(.body.weight(.medium))
-                .frame(width: 38, height: 38)
-                .background(.white, in: Circle())
-                .accessibilityLabel("header.notifications")
-        }
-        .padding(.leading, isSidebarVisible ? 28 : 82)
-        .padding(.trailing, 28)
-        .padding(.vertical, 14)
-        .background(FacilityTheme.canvas)
     }
 
     @ViewBuilder
