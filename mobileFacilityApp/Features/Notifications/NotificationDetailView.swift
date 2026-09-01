@@ -315,7 +315,8 @@ struct NotificationDetailView: View {
             results: results,
             comments: comments,
             photoItemIDs: Array(photoItemIDs),
-            isClosedLocally: isClosedLocally
+            isClosedLocally: isClosedLocally,
+            notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
         )
         Task {
             defer { isSavingDraft = false }

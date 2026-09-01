@@ -31,7 +31,16 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            if let selectedSAPNotification = demo.selectedSAPNotification {
+            if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
+                NotificationDetailView(
+                    detail: selectedOfflineNotificationDetail,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    dismiss: { demo.selectedOfflineNotificationDetail = nil }
+                )
+                .id(selectedOfflineNotificationDetail.summary.id)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .zIndex(1)
+            } else if let selectedSAPNotification = demo.selectedSAPNotification {
                 SAPNotificationDetailScreen(
                     summary: selectedSAPNotification,
                     offlineWorkStore: demo.offlineWorkStore,
@@ -46,6 +55,7 @@ struct NotificationsView: View {
             }
         }
         .animation(.snappy(duration: 0.32, extraBounce: 0), value: demo.selectedNotificationID)
+        .animation(.snappy(duration: 0.32, extraBounce: 0), value: demo.selectedOfflineNotificationDetail)
     }
 
     private var notificationOverview: some View {
@@ -136,6 +146,7 @@ struct NotificationsView: View {
                 ForEach(visibleNotifications) { notification in
                     NotificationRow(notification: notification, isSelected: demo.selectedNotificationID == notification.id) {
                         scrollRestoreID = lastVisibleNotificationID ?? notification.id
+                        demo.selectedOfflineNotificationDetail = nil
                         demo.selectedNotificationID = notification.id
                     }
                     .id(notification.id)

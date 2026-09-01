@@ -25,7 +25,7 @@ struct DashboardView: View {
                     MetricCard(count: visibleDefectCount, titleKey: "dashboard.metrics.defects", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
                         demo.open(.defects)
                     }
-                    MetricCard(count: demo.offlineWorkStore.draftCount, titleKey: "dashboard.metrics.drafts", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
+                    MetricCard(count: demo.offlineWorkStore.savedNotificationCount, titleKey: "dashboard.metrics.drafts", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
                         demo.open(.drafts)
                     }
                     MetricCard(count: visibleTechnicalPlaceCount, titleKey: "dashboard.metrics.places", symbol: "square.split.2x2", tint: FacilityTheme.accent) {
@@ -60,7 +60,7 @@ struct DashboardView: View {
     }
 
     private var visibleDefectCount: Int {
-        demo.isDemoMode ? demo.defects.count : 0
+        demo.offlineWorkStore.closedDefectNotificationCount
     }
 
     private var dashboardContext: String {

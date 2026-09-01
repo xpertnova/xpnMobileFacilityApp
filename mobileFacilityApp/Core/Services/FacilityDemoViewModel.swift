@@ -12,6 +12,7 @@ final class FacilityDemoViewModel {
     var selection: AppDestination = .overview
     var editingManualCaptureID: UUID?
     var selectedNotificationID: String?
+    var selectedOfflineNotificationDetail: SAPNotificationDetail?
     var selectedTechnicalPlaceID: String?
     var shouldPresentSAPRefresh = false
     var notifications = MockFacilityData.notifications
@@ -108,6 +109,36 @@ final class FacilityDemoViewModel {
         selection = .manualCapture
     }
 
+    /// New saved reviews carry their own snapshot and therefore reopen without
+    /// a live connection or a matching record in the current SAP cache.
+    func openSavedNotificationReview(_ review: NotificationReviewDraftPayload) async -> Bool {
+        if let snapshot = review.notificationSnapshot {
+            selectedNotificationID = nil
+            selectedOfflineNotificationDetail = SAPNotificationDetail(
+                offlineSnapshot: snapshot,
+                notificationID: review.notificationID
+            )
+            selection = .notifications
+            return true
+        }
+
+        // Backward compatibility for drafts stored before local snapshots were
+        // introduced. They remain available if the original cache still has
+        // their source notification.
+        let cachedSummary: SAPNotificationSummary?
+        if isDemoMode {
+            cachedSummary = nil
+        } else {
+            cachedSummary = await sapDataStore.cachedNotification(id: review.notificationID)
+        }
+        guard let cachedSummary else { return false }
+
+        selectedNotificationID = nil
+        selectedOfflineNotificationDetail = SAPNotificationDetail(summary: cachedSummary)
+        selection = .notifications
+        return true
+    }
+
     func requestSAPRefresh() {
         guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
@@ -127,6 +158,7 @@ final class FacilityDemoViewModel {
         defects = MockFacilityData.defects
         editingManualCaptureID = nil
         selectedNotificationID = nil
+        selectedOfflineNotificationDetail = nil
         selectedTechnicalPlaceID = nil
         selection = .overview
     }

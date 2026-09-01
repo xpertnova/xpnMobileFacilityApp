@@ -131,6 +131,26 @@ struct SAPNotificationDetail: Equatable, Sendable {
         }
     }
 
+    init(offlineSnapshot: OfflineNotificationSnapshot, notificationID: String) {
+        summary = SAPNotificationSummary(
+            id: notificationID,
+            client: "",
+            title: offlineSnapshot.title,
+            functionalLocationID: offlineSnapshot.functionalLocationID,
+            functionalLocationName: offlineSnapshot.functionalLocationName,
+            startDate: offlineSnapshot.startDate,
+            endDate: offlineSnapshot.endDate,
+            systemStatus: offlineSnapshot.systemStatus,
+            userStatus: offlineSnapshot.userStatus,
+            rawPayloadJSON: ""
+        )
+        structure = offlineSnapshot.structure
+        equipmentID = offlineSnapshot.equipmentID
+        inspectionItems = offlineSnapshot.inspectionItems.map {
+            InspectionItem(id: $0.id, title: $0.title, information: $0.information)
+        }
+    }
+
     private static func value(named key: String, in dictionary: [String: Any]) -> Any? {
         dictionary.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
     }
@@ -143,6 +163,23 @@ struct SAPNotificationDetail: Equatable, Sendable {
             value.stringValue
         default:
             ""
+        }
+    }
+}
+
+extension OfflineNotificationSnapshot {
+    init(detail: SAPNotificationDetail) {
+        title = detail.summary.title
+        functionalLocationID = detail.summary.functionalLocationID
+        functionalLocationName = detail.summary.functionalLocationName
+        startDate = detail.summary.startDate
+        endDate = detail.summary.endDate
+        systemStatus = detail.summary.systemStatus
+        userStatus = detail.summary.userStatus
+        structure = detail.structure
+        equipmentID = detail.equipmentID
+        inspectionItems = detail.inspectionItems.map {
+            InspectionItem(id: $0.id, title: $0.title, information: $0.information)
         }
     }
 }

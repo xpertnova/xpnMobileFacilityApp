@@ -17,6 +17,16 @@
         }
       }
     },
+    "%@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@"
+          }
+        }
+      }
+    },
     "%@. %@" : {
       "localizations" : {
         "en" : {
@@ -737,19 +747,70 @@
         }
       }
     },
+    "defects.empty.subtitle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geschlossene Wartungsmeldungen mit festgestellten Mängeln werden hier angezeigt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Closed maintenance notifications with recorded defects appear here."
+          }
+        }
+      }
+    },
+    "defects.empty.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine abgeschlossenen Mängel"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No closed defect notifications"
+          }
+        }
+      }
+    },
+    "defects.findings" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mängel festgestellt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "defects found"
+          }
+        }
+      }
+    },
     "defects.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erfasste Befunde in diesem lokalen Demobereich"
+            "value" : "Lokal abgeschlossene Wartungsmeldungen mit Mängeln"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recorded findings in this local demo workspace"
+            "value" : "Locally closed maintenance notifications with defects"
           }
         }
       }
@@ -839,6 +900,22 @@
         }
       }
     },
+    "drafts.accessibility.openNotification" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartungsmeldung öffnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open maintenance notification"
+          }
+        }
+      }
+    },
     "drafts.demoNotice" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -862,13 +939,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktuell ist keine lokal gespeicherte Arbeit vorhanden."
+            "value" : "Keine wartenden Vorgänge. Alle lokalen Arbeiten wurden bestätigt oder sind nicht mehr in der Warteschlange."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No locally saved work is available yet."
+            "value" : "There is no work waiting in the local queue."
           }
         }
       }
@@ -879,13 +956,80 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine lokalen Vorgänge"
+            "value" : "Alles synchronisiert"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No local work"
+            "value" : "Everything is synchronized"
+          }
+        }
+      }
+    },
+    "drafts.notification.checks" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfpunkte erfasst"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "checks recorded"
+          }
+        }
+      }
+    },
+    "drafts.notification.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartungsmeldung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maintenance notification"
+          }
+        }
+      }
+    },
+    "drafts.notification.unavailable.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherte Prüfung bleibt erhalten, aber die zugehörige Wartungsmeldung ist im lokalen Cache derzeit nicht verfügbar."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The saved inspection is retained, but its maintenance notification is not currently available in the local cache."
+          }
+        }
+      }
+    },
+    "drafts.notification.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartungsmeldung nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maintenance notification unavailable"
           }
         }
       }
@@ -896,13 +1040,30 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokal gespeicherte Arbeit"
+            "value" : "Offline bearbeitete Vorgänge – lokal gesichert"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Work saved locally"
+            "value" : "Offline work saved locally"
+          }
+        }
+      }
+    },
+    "drafts.sync.action" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronize"
           }
         }
       }
@@ -913,13 +1074,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokale Arbeit"
+            "value" : "Zwischengespeichert"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Local work"
+            "value" : "Saved locally"
           }
         }
       }
@@ -2225,23 +2386,6 @@
         }
       }
     },
-    "notifications.detail.validation.incompleteItem" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ergebnis erforderlich"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Result required"
-          }
-        }
-      }
-    },
     "notifications.detail.action.saved" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2858,6 +3002,23 @@
         }
       }
     },
+    "notifications.detail.validation.incompleteItem" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ergebnis erforderlich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Result required"
+          }
+        }
+      }
+    },
     "notifications.empty.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3209,7 +3370,6 @@
       }
     },
     "offline.sync.unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
