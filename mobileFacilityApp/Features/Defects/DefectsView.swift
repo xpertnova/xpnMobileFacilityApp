@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DefectsView: View {
     let demo: FacilityDemoViewModel
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var showsUnavailableNotificationAlert = false
 
     var body: some View {
@@ -17,6 +18,7 @@ struct DefectsView: View {
                 case .loading:
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 180)
+                        .transition(.opacity)
                 case .failed:
                     ContentUnavailableView {
                         Label("offline.load.error.title", systemImage: "exclamationmark.triangle")
@@ -29,14 +31,19 @@ struct DefectsView: View {
                         .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity, minHeight: 240)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 case .empty, .loaded:
                     defectContent
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
                 }
             }
             .padding(28)
             .frame(maxWidth: 1280, alignment: .leading)
+            .animation(defectContentAnimation, value: demo.offlineWorkStore.state)
+            .animation(defectContentAnimation, value: demo.offlineWorkStore.closedDefectNotificationItems)
         }
         .task {
+            guard demo.offlineWorkStore.state == .loading else { return }
             await demo.offlineWorkStore.load()
         }
         .alert("drafts.notification.unavailable.title", isPresented: $showsUnavailableNotificationAlert) {
@@ -72,6 +79,7 @@ struct DefectsView: View {
                         ClosedDefectNotificationCard(item: item, review: review) {
                             open(review)
                         }
+                        .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
                     }
                 }
             }
@@ -85,6 +93,10 @@ struct DefectsView: View {
                 return
             }
         }
+    }
+
+    private var defectContentAnimation: Animation? {
+        accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0.04)
     }
 }
 

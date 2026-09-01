@@ -3,6 +3,7 @@ import SwiftUI
 struct FacilityShellView: View {
     let demo: FacilityDemoViewModel
     let onSignOut: (() -> Void)?
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isSidebarVisible = true
     @State private var sapPassword = ""
 
@@ -33,8 +34,33 @@ struct FacilityShellView: View {
                     Divider()
                 }
 
-                mainContent
+                ZStack {
+                    mainContent
+                        .id(demo.selection)
+                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
+
+                    if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
+                        NotificationDetailView(
+                            detail: selectedOfflineNotificationDetail,
+                            offlineWorkStore: demo.offlineWorkStore,
+                            backDestination: demo.offlineNotificationDetailReturnDestination,
+                            dismiss: { demo.dismissOfflineNotificationDetail() }
+                        )
+                        .id(selectedOfflineNotificationDetail.summary.id)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .zIndex(1)
+                    }
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .animation(
+                    accessibilityReduceMotion ? nil : .easeInOut(duration: 0.28),
+                    value: demo.selection
+                )
+                .animation(
+                    accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0),
+                    value: demo.selectedOfflineNotificationDetail
+                )
             }
 
             if !isSidebarVisible {
