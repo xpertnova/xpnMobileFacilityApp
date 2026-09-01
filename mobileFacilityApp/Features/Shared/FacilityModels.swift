@@ -76,6 +76,7 @@ struct MaintenanceNotification: Identifiable, Hashable {
     var isTemporarilySaved = false
     var isClosedLocally = false
     var hasLocalDefect = false
+    var structuralFilterMetadata: NotificationStructuralFilterMetadata?
 }
 
 struct Defect: Identifiable, Hashable {

@@ -6,6 +6,7 @@ struct FacilityShellView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isSidebarVisible = true
     @State private var sapPassword = ""
+    @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
 
     private let expandedSidebarWidth: CGFloat = 340
     private let sidebarAnimation = Animation.easeInOut(duration: 0.42)
@@ -72,10 +73,20 @@ struct FacilityShellView: View {
                 .zIndex(1)
             }
 
+            if demo.selection == .notifications, notificationFilterPresentation.isPresented {
+                NotificationStructuralFilterOverlay(
+                    demo: demo,
+                    presentation: $notificationFilterPresentation
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                .zIndex(2)
+            }
+
             if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
                 Color.black.opacity(0.42)
                     .ignoresSafeArea()
-                    .zIndex(2)
+                    .zIndex(3)
                 SAPRefreshPasswordDialog(
                     password: $sapPassword,
                     isRefreshing: demo.sapDataStore.isRefreshing,
@@ -85,7 +96,7 @@ struct FacilityShellView: View {
                     cancel: dismissSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .zIndex(3)
+                .zIndex(4)
             }
         }
         .background(FacilityTheme.canvas)
@@ -300,7 +311,11 @@ struct FacilityShellView: View {
         switch demo.selection {
         case .overview: DashboardView(demo: demo)
         case .scan: ScanView()
-        case .notifications: NotificationsView(demo: demo)
+        case .notifications:
+            NotificationsView(
+                demo: demo,
+                filterPresentation: $notificationFilterPresentation
+            )
         case .manualCapture: ManualCaptureView(demo: demo)
         case .defects: DefectsView(demo: demo)
         case .technicalPlaces: TechnicalPlacesView(demo: demo)

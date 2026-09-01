@@ -12,17 +12,34 @@ struct PageHeader: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 20) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(LocalizedStringKey(titleKey))
-                    .font(.system(size: 29, weight: .bold))
-                    .foregroundStyle(FacilityTheme.ink)
-                Text(LocalizedStringKey(subtitleKey))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+        if let trailing {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .bottom, spacing: 20) {
+                    title
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 12)
+                    trailing
+                }
+
+                VStack(alignment: .leading, spacing: 14) {
+                    title
+                    trailing
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
-            Spacer(minLength: 12)
-            trailing
+        } else {
+            title
+        }
+    }
+
+    private var title: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(LocalizedStringKey(titleKey))
+                .font(.system(size: 29, weight: .bold))
+                .foregroundStyle(FacilityTheme.ink)
+            Text(LocalizedStringKey(subtitleKey))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 }

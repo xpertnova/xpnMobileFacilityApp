@@ -78,9 +78,16 @@ final class FacilityDemoViewModel {
                 totalChecks: 0,
                 isTemporarilySaved: review != nil && !isClosedLocally,
                 isClosedLocally: isClosedLocally,
-                hasLocalDefect: hasLocalDefect
+                hasLocalDefect: hasLocalDefect,
+                structuralFilterMetadata: notification.structuralFilterMetadata
             )
         }
+    }
+
+    var notificationFilterMetadata: [NotificationStructuralFilterMetadata] {
+        isDemoMode
+            ? notifications.compactMap(\.structuralFilterMetadata)
+            : sapDataStore.notificationFilterMetadata
     }
 
     private func locallySavedNotificationReview(for notificationID: String) -> NotificationReviewDraftPayload? {
@@ -169,6 +176,10 @@ final class FacilityDemoViewModel {
     }
 
     func resetDemo() {
+        NotificationStructuralFilterPreferences.reset(
+            workerID: sapDataStore.localWorkerID,
+            isDemoMode: true
+        )
         notifications = MockFacilityData.notifications
         defects = MockFacilityData.defects
         editingManualCaptureID = nil
@@ -182,10 +193,10 @@ final class FacilityDemoViewModel {
 
 private enum MockFacilityData {
     static let notifications: [MaintenanceNotification] = [
-        .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6),
-        .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8),
-        .init(id: "M-30987", title: "Ventilation filter check", location: "Building B · Roof plant", dueDate: "Tomorrow", equipment: "AHU-03", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5),
-        .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", sapStatus: nil, status: .pending, completedChecks: 4, totalChecks: 4)
+        .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM3", functionalLocationName: "Building A")),
+        .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "C", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Building C")),
+        .init(id: "M-30987", title: "Ventilation filter check", location: "Building B · Roof plant", dueDate: "Tomorrow", equipment: "AHU-03", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "B", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "Building B")),
+        .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", sapStatus: nil, status: .pending, completedChecks: 4, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "U", tradeCode: "UTIL", formCode: "TFM1", functionalLocationName: "Utility room"))
     ]
 
     static let defects: [Defect] = [

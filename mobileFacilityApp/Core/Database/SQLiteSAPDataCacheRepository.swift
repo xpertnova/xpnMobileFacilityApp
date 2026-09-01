@@ -1,7 +1,7 @@
 import Foundation
 
 actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
-    private static let currentSchemaVersion: Int32 = 2
+    private static let currentSchemaVersion: Int32 = 3
     private var database: OpaquePointer?
 
     init(databaseURL: URL? = nil) throws {
@@ -83,19 +83,24 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
     func loadNotifications(
         for localWorkerID: String,
         matching searchText: String,
+        structuralFilter: NotificationStructuralFilter,
         limit: Int,
         offset: Int
     ) async throws -> SAPNotificationPage {
         guard let database else { throw SAPReadError.serviceUnavailable }
-        let filter = Self.notificationFilter(for: localWorkerID, matching: searchText)
-        let totalCount = try Self.query(
+        let filter = Self.notificationFilter(
+            for: localWorkerID,
+            matching: searchText,
+            structuralFilter: structuralFilter
+        )
+        let totalCount = Int(try Self.query(
             on: database,
             "SELECT COUNT(*) FROM sap_notifications WHERE \(filter.clause)",
-            bindings: filter.bindings
-        ) { statement in
-            Int(SQLiteC.columnInt(statement, 0))
-        }.first ?? 0
+            bindings: filter.bindings,
+            map: { SQLiteC.columnInt($0, 0) }
+        ).first ?? 0)
         let boundedOffset = min(max(offset, 0), totalCount)
+        let pageBindings = filter.bindings + [String(max(limit, 1)), String(boundedOffset)]
         let notifications = try Self.query(
             on: database,
             """
@@ -106,7 +111,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
             ORDER BY start_date, notification_id
             LIMIT ? OFFSET ?
             """,
-            bindings: filter.bindings + [String(max(limit, 1)), String(boundedOffset)]
+            bindings: pageBindings
         ) { statement in
             SAPNotificationSummary(
                 id: Self.string(at: 0, from: statement),
@@ -129,6 +134,34 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         )
     }
 
+    func loadNotificationFilterMetadata(
+        for localWorkerID: String
+    ) async throws -> [NotificationStructuralFilterMetadata] {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return try Self.query(
+            on: database,
+            """
+            SELECT country_code, location_code, business_entity_code, building_code,
+                   trade_code, form_code, MIN(functional_location_name)
+            FROM sap_notifications
+            WHERE local_worker_id = ? AND business_entity_id != ''
+            GROUP BY country_code, location_code, business_entity_code, building_code,
+                     trade_code, form_code
+            """,
+            bindings: [localWorkerID]
+        ) { statement in
+            NotificationStructuralFilterMetadata(
+                countryCode: Self.string(at: 0, from: statement),
+                locationCode: Self.string(at: 1, from: statement),
+                businessEntityCode: Self.string(at: 2, from: statement),
+                buildingCode: Self.string(at: 3, from: statement),
+                tradeCode: Self.string(at: 4, from: statement),
+                formCode: Self.string(at: 5, from: statement),
+                functionalLocationName: Self.string(at: 6, from: statement)
+            )
+        }
+    }
+
     func replace(
         with snapshot: SAPReadSnapshot,
         for localWorkerID: String,
@@ -139,17 +172,26 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         do {
             try Self.execute(on: database, "DELETE FROM sap_notifications WHERE local_worker_id = ?", bindings: [localWorkerID])
             for notification in snapshot.notifications {
+                let structuralMetadata = notification.structuralFilterMetadata
                 try Self.execute(on: database, """
                     INSERT INTO sap_notifications (
                         local_worker_id, notification_id, client, title, functional_location_id,
                         functional_location_name, start_date, end_date, system_status, user_status,
-                        raw_payload_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        raw_payload_json, country_code, location_code, business_entity_code,
+                        business_entity_id, building_code, trade_code, form_code
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, bindings: [
                         localWorkerID, notification.id, notification.client, notification.title,
                         notification.functionalLocationID, notification.functionalLocationName,
                         notification.startDate, notification.endDate, notification.systemStatus,
-                        notification.userStatus, notification.rawPayloadJSON
+                        notification.userStatus, notification.rawPayloadJSON,
+                        structuralMetadata?.countryCode ?? "",
+                        structuralMetadata?.locationCode ?? "",
+                        structuralMetadata?.businessEntityCode ?? "",
+                        structuralMetadata?.businessEntityID ?? "",
+                        structuralMetadata?.buildingCode ?? "",
+                        structuralMetadata?.tradeCode ?? "",
+                        structuralMetadata?.formCode ?? ""
                     ])
             }
             try Self.execute(on: database, "DELETE FROM sap_worker_profiles WHERE local_worker_id = ?", bindings: [localWorkerID])
@@ -219,6 +261,37 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                 CREATE INDEX IF NOT EXISTS sap_notifications_worker_date_index
                 ON sap_notifications (local_worker_id, start_date, notification_id)
                 """)
+            if version < 3 {
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN country_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN location_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN business_entity_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN business_entity_id TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN building_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN trade_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN form_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try backfillStructuralFilterColumns(on: database)
+            }
+            try execute(on: database, """
+                CREATE INDEX IF NOT EXISTS sap_notifications_worker_hierarchy_date_index
+                ON sap_notifications (
+                    local_worker_id, business_entity_id, building_code, trade_code, form_code,
+                    start_date, notification_id
+                )
+                """)
             try execute(on: database, "PRAGMA user_version = \(currentSchemaVersion)")
             try execute(on: database, "COMMIT")
         } catch {
@@ -256,27 +329,99 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         }
     }
 
-    private static func notificationFilter(for localWorkerID: String, matching searchText: String) -> (clause: String, bindings: [String]) {
+    private static func backfillStructuralFilterColumns(on database: OpaquePointer) throws {
+        let notifications = try query(
+            on: database,
+            """
+            SELECT local_worker_id, notification_id, functional_location_name, raw_payload_json
+            FROM sap_notifications
+            WHERE business_entity_id = ''
+            """
+        ) { statement in
+            (
+                localWorkerID: string(at: 0, from: statement),
+                notificationID: string(at: 1, from: statement),
+                functionalLocationName: string(at: 2, from: statement),
+                rawPayloadJSON: string(at: 3, from: statement)
+            )
+        }
+        for notification in notifications {
+            let summary = SAPNotificationSummary(
+                id: notification.notificationID,
+                client: "",
+                title: "",
+                functionalLocationID: "",
+                functionalLocationName: notification.functionalLocationName,
+                startDate: "",
+                endDate: "",
+                systemStatus: "",
+                userStatus: "",
+                rawPayloadJSON: notification.rawPayloadJSON
+            )
+            guard let metadata = summary.structuralFilterMetadata else { continue }
+            try execute(on: database, """
+                UPDATE sap_notifications
+                SET country_code = ?, location_code = ?, business_entity_code = ?,
+                    business_entity_id = ?, building_code = ?, trade_code = ?, form_code = ?
+                WHERE local_worker_id = ? AND notification_id = ?
+                """, bindings: [
+                    metadata.countryCode,
+                    metadata.locationCode,
+                    metadata.businessEntityCode,
+                    metadata.businessEntityID,
+                    metadata.buildingCode,
+                    metadata.tradeCode,
+                    metadata.formCode,
+                    notification.localWorkerID,
+                    notification.notificationID
+                ])
+        }
+    }
+
+    private static func notificationFilter(
+        for localWorkerID: String,
+        matching searchText: String,
+        structuralFilter: NotificationStructuralFilter
+    ) -> (clause: String, bindings: [String]) {
+        var conditions = ["local_worker_id = ?"]
+        var bindings = [localWorkerID]
+        if structuralFilter.hasBusinessEntity {
+            conditions.append("business_entity_id = ?")
+            bindings.append(structuralFilter.businessEntityID)
+        }
+        if !structuralFilter.buildingCode.isEmpty {
+            conditions.append("building_code = ?")
+            bindings.append(structuralFilter.buildingCode)
+        }
+        if !structuralFilter.tradeCode.isEmpty {
+            conditions.append("trade_code = ?")
+            bindings.append(structuralFilter.tradeCode)
+        }
+        if !structuralFilter.formCode.isEmpty {
+            conditions.append("form_code = ?")
+            bindings.append(structuralFilter.formCode)
+        }
         let normalizedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSearchText.isEmpty else {
-            return ("local_worker_id = ?", [localWorkerID])
+            return (conditions.joined(separator: " AND "), bindings)
         }
         let escapedSearchText = normalizedSearchText
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "%", with: "\\%")
             .replacingOccurrences(of: "_", with: "\\_")
         let pattern = "%\(escapedSearchText)%"
-        return (
+        conditions.append(
             """
-            local_worker_id = ? AND (
+            (
                 notification_id LIKE ? ESCAPE '\\' COLLATE NOCASE OR
                 title LIKE ? ESCAPE '\\' COLLATE NOCASE OR
                 functional_location_id LIKE ? ESCAPE '\\' COLLATE NOCASE OR
                 functional_location_name LIKE ? ESCAPE '\\' COLLATE NOCASE
             )
             """,
-            [localWorkerID, pattern, pattern, pattern, pattern]
         )
+        bindings.append(contentsOf: [pattern, pattern, pattern, pattern])
+        return (conditions.joined(separator: " AND "), bindings)
     }
 
     private static func string(at index: Int32, from statement: OpaquePointer) -> String {
