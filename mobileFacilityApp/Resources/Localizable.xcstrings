@@ -2454,6 +2454,56 @@
         }
       }
     },
+    "notifications.detail.closeConfirmation.confirm" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldung abschließen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close notification"
+          }
+        }
+      }
+    },
+    "notifications.detail.closeConfirmation.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Möchten Sie diese Meldung wirklich abschließen? Sie wird danach schreibgeschützt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Are you sure you want to close this notification? It will become read-only."
+          }
+        }
+      }
+    },
+    "notifications.detail.closeConfirmation.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldung abschließen?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close notification?"
+          }
+        }
+      }
+    },
     "notifications.detail.closeNotification" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2671,6 +2721,7 @@
       }
     },
     "notifications.detail.localOnly" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

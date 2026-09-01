@@ -26,11 +26,6 @@ struct FormsView: View {
                         .accessibilityHint("forms.openPreview")
                     }
                 }
-
-                Label("forms.footer", systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
             }
             .padding(28)
             .frame(maxWidth: 1280, alignment: .leading)

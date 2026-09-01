@@ -31,16 +31,7 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
-                NotificationDetailView(
-                    detail: selectedOfflineNotificationDetail,
-                    offlineWorkStore: demo.offlineWorkStore,
-                    dismiss: { demo.selectedOfflineNotificationDetail = nil }
-                )
-                .id(selectedOfflineNotificationDetail.summary.id)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-                .zIndex(1)
-            } else if let selectedSAPNotification = demo.selectedSAPNotification {
+            if let selectedSAPNotification = demo.selectedSAPNotification {
                 SAPNotificationDetailScreen(
                     summary: selectedSAPNotification,
                     offlineWorkStore: demo.offlineWorkStore,
@@ -55,7 +46,6 @@ struct NotificationsView: View {
             }
         }
         .animation(.snappy(duration: 0.32, extraBounce: 0), value: demo.selectedNotificationID)
-        .animation(.snappy(duration: 0.32, extraBounce: 0), value: demo.selectedOfflineNotificationDetail)
     }
 
     private var notificationOverview: some View {
@@ -239,7 +229,12 @@ private struct SAPNotificationDetailScreen: View {
     }
 
     var body: some View {
-        NotificationDetailView(detail: detail, offlineWorkStore: offlineWorkStore, dismiss: dismiss)
+        NotificationDetailView(
+            detail: detail,
+            offlineWorkStore: offlineWorkStore,
+            backDestination: .notifications,
+            dismiss: dismiss
+        )
     }
 }
 
@@ -381,9 +376,6 @@ private struct NotificationDetailCard: View {
                     .padding(.vertical, 3)
                 }
                 HStack {
-                    Text("notifications.detail.localOnly")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     Spacer()
                     Button("notifications.detail.finish", action: finish)
                         .buttonStyle(.borderedProminent)

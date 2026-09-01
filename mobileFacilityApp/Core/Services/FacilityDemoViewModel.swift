@@ -13,12 +13,17 @@ final class FacilityDemoViewModel {
     var editingManualCaptureID: UUID?
     var selectedNotificationID: String?
     var selectedOfflineNotificationDetail: SAPNotificationDetail?
+    private var offlineNotificationReturnDestination: AppDestination?
     var selectedTechnicalPlaceID: String?
     var shouldPresentSAPRefresh = false
     var notifications = MockFacilityData.notifications
     var defects = MockFacilityData.defects
     let technicalPlaces = MockFacilityData.technicalPlaces
     let forms = MockFacilityData.forms
+
+    var offlineNotificationDetailReturnDestination: AppDestination {
+        offlineNotificationReturnDestination ?? .notifications
+    }
 
     init(
         isDemoMode: Bool,
@@ -112,13 +117,14 @@ final class FacilityDemoViewModel {
     /// New saved reviews carry their own snapshot and therefore reopen without
     /// a live connection or a matching record in the current SAP cache.
     func openSavedNotificationReview(_ review: NotificationReviewDraftPayload) async -> Bool {
+        let returnDestination = selection
         if let snapshot = review.notificationSnapshot {
             selectedNotificationID = nil
             selectedOfflineNotificationDetail = SAPNotificationDetail(
                 offlineSnapshot: snapshot,
                 notificationID: review.notificationID
             )
-            selection = .notifications
+            offlineNotificationReturnDestination = returnDestination
             return true
         }
 
@@ -135,8 +141,17 @@ final class FacilityDemoViewModel {
 
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = SAPNotificationDetail(summary: cachedSummary)
-        selection = .notifications
+        offlineNotificationReturnDestination = returnDestination
         return true
+    }
+
+    /// Saved reviews are presented over their source screen and return there
+    /// when the user closes the detail.
+    func dismissOfflineNotificationDetail() {
+        selectedOfflineNotificationDetail = nil
+        let returnDestination = offlineNotificationReturnDestination ?? .notifications
+        offlineNotificationReturnDestination = nil
+        selection = returnDestination
     }
 
     func requestSAPRefresh() {
@@ -159,6 +174,7 @@ final class FacilityDemoViewModel {
         editingManualCaptureID = nil
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = nil
+        offlineNotificationReturnDestination = nil
         selectedTechnicalPlaceID = nil
         selection = .overview
     }

@@ -68,7 +68,11 @@ struct RoleSelectionView: View {
 
                     VStack(spacing: 13) {
                         ForEach(FacilityUserRole.allCases) { role in
-                            RoleChoiceCard(role: role, isSelected: selectedRole == role) {
+                            RoleChoiceCard(
+                                role: role,
+                                isSelected: selectedRole == role,
+                                isEnabled: role == .technician
+                            ) {
                                 selectedRole = role
                             }
                         }
@@ -289,6 +293,7 @@ private struct XPNMark: View {
 private struct RoleChoiceCard: View {
     let role: FacilityUserRole
     let isSelected: Bool
+    let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
@@ -327,6 +332,7 @@ private struct RoleChoiceCard: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

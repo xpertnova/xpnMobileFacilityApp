@@ -3,6 +3,7 @@ import SwiftUI
 struct NotificationDetailView: View {
     let detail: SAPNotificationDetail
     let offlineWorkStore: OfflineWorkStore
+    let backDestination: AppDestination
     let dismiss: () -> Void
     @State private var performedOn = Date.now
     @State private var comments: [String: String] = [:]
@@ -10,7 +11,9 @@ struct NotificationDetailView: View {
     @State private var photoItemIDs: Set<String> = []
     @State private var editingCommentID: String?
     @State private var isSavingDraft = false
+    @State private var isLoadingStoredReview = true
     @State private var isClosedLocally = false
+    @State private var isCloseConfirmationPresented = false
     @State private var feedback: DetailActionFeedback?
 
     var body: some View {
@@ -39,6 +42,8 @@ struct NotificationDetailView: View {
             }
         }
         .task(id: detail.summary.id) {
+            isLoadingStoredReview = true
+            defer { isLoadingStoredReview = false }
             await offlineWorkStore.load()
             guard let draft = offlineWorkStore.notificationReview(notificationID: detail.summary.id) else { return }
             performedOn = draft.performedOn
@@ -58,13 +63,24 @@ struct NotificationDetailView: View {
                 }
             )
         }
+        .alert(
+            "notifications.detail.closeConfirmation.title",
+            isPresented: $isCloseConfirmationPresented
+        ) {
+            Button("notifications.detail.closeConfirmation.confirm", role: .destructive) {
+                saveReview(isClosedLocally: true)
+            }
+            Button("common.cancel", role: .cancel) { }
+        } message: {
+            Text("notifications.detail.closeConfirmation.message")
+        }
     }
 
     private var header: some View {
         HStack(alignment: .top, spacing: 20) {
             VStack(alignment: .leading, spacing: 7) {
                 Button(action: dismiss) {
-                    Label("notifications.detail.back", systemImage: "chevron.left")
+                    Label(LocalizedStringKey(backDestination.titleKey), systemImage: "chevron.left")
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.plain)
@@ -147,6 +163,7 @@ struct NotificationDetailView: View {
                 )
                 .labelsHidden()
                 .datePickerStyle(.compact)
+                .disabled(isEditingDisabled)
                 .padding(.horizontal, 8)
                 .frame(minHeight: 44)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -217,11 +234,18 @@ struct NotificationDetailView: View {
                         number: index + 1,
                         result: results[item.id],
                         isResultMissing: results[item.id] == nil,
-                        selectResult: { results[item.id] = $0 },
+                        isReadOnly: isEditingDisabled,
+                        selectResult: {
+                            guard !isEditingDisabled else { return }
+                            results[item.id] = $0
+                        },
                         hasPhoto: photoItemIDs.contains(item.id),
                         togglePhoto: { togglePhoto(for: item.id) },
                         comment: comments[item.id, default: ""],
-                        editComment: { editingCommentID = item.id }
+                        editComment: {
+                            guard !isEditingDisabled else { return }
+                            editingCommentID = item.id
+                        }
                     )
                     if index < detail.inspectionItems.count - 1 {
                         Divider().padding(.leading, 22)
@@ -243,6 +267,7 @@ struct NotificationDetailView: View {
         Binding(
             get: { comments[itemID, default: ""] },
             set: { newValue in
+                guard !isEditingDisabled else { return }
                 if newValue.isEmpty {
                     comments.removeValue(forKey: itemID)
                 } else {
@@ -254,10 +279,6 @@ struct NotificationDetailView: View {
 
     private var actionBar: some View {
         HStack(spacing: 14) {
-            Label("notifications.detail.localOnly", systemImage: "lock.fill")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
             Spacer(minLength: 12)
 
             Button("notifications.detail.allGood") {
@@ -267,21 +288,21 @@ struct NotificationDetailView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(FacilityTheme.blue)
-            .disabled(detail.inspectionItems.isEmpty || isSavingDraft)
+            .disabled(isEditingDisabled || detail.inspectionItems.isEmpty || isSavingDraft)
 
             Button("notifications.detail.saveTemporary") {
                 saveReview(isClosedLocally: false)
             }
             .buttonStyle(.bordered)
             .tint(FacilityTheme.ink)
-            .disabled(isSavingDraft)
+            .disabled(isEditingDisabled || isSavingDraft)
 
             Button("notifications.detail.closeNotification") {
-                saveReview(isClosedLocally: true)
+                isCloseConfirmationPresented = true
             }
             .buttonStyle(.borderedProminent)
             .tint(FacilityTheme.accent)
-            .disabled(isSavingDraft || isClosedLocally || !canCloseNotification)
+            .disabled(isEditingDisabled || isSavingDraft || !canCloseNotification)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
@@ -293,7 +314,16 @@ struct NotificationDetailView: View {
         detail.inspectionItems.allSatisfy { results[$0.id] != nil }
     }
 
+    private var isReadOnly: Bool {
+        isClosedLocally
+    }
+
+    private var isEditingDisabled: Bool {
+        isLoadingStoredReview || isReadOnly
+    }
+
     private func togglePhoto(for itemID: String) {
+        guard !isEditingDisabled else { return }
         if photoItemIDs.contains(itemID) {
             photoItemIDs.remove(itemID)
         } else {
@@ -302,7 +332,7 @@ struct NotificationDetailView: View {
     }
 
     private func saveReview(isClosedLocally: Bool) {
-        guard !isSavingDraft else { return }
+        guard !isSavingDraft, !isEditingDisabled else { return }
         guard !isClosedLocally || canCloseNotification else {
             feedback = .incomplete
             return
@@ -409,6 +439,7 @@ private struct InspectionItemRow: View {
     let number: Int
     let result: NotificationReviewResult?
     let isResultMissing: Bool
+    let isReadOnly: Bool
     let selectResult: (NotificationReviewResult) -> Void
     let hasPhoto: Bool
     let togglePhoto: () -> Void
@@ -472,6 +503,7 @@ private struct InspectionItemRow: View {
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
             }
             .buttonStyle(.plain)
+            .disabled(isReadOnly)
             .accessibilityLabel(Text("notifications.detail.photo"))
             .frame(width: 52)
 
@@ -483,6 +515,7 @@ private struct InspectionItemRow: View {
                     .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
             }
             .buttonStyle(.plain)
+            .disabled(isReadOnly)
             .accessibilityLabel(Text("notifications.detail.comment"))
             .frame(width: 58)
         }
@@ -508,5 +541,6 @@ private struct InspectionItemRow: View {
                 .background(result == value ? FacilityTheme.accent : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(isReadOnly)
     }
 }
