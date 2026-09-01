@@ -24,8 +24,10 @@ final class SAPDataStore {
     private(set) var matchingNotificationCount = 0
     private(set) var totalNotificationCount = 0
     private(set) var isLoadingMoreNotifications = false
+    private(set) var notificationFilterMetadata: [NotificationStructuralFilterMetadata] = []
     private var nextNotificationOffset: Int?
     private var notificationSearchText = ""
+    private var notificationStructuralFilter = NotificationStructuralFilter.empty
     private var notificationLoadID = UUID()
 
     init(
@@ -52,6 +54,7 @@ final class SAPDataStore {
             let page = try await repository.loadNotifications(
                 for: localWorkerID,
                 matching: id,
+                structuralFilter: .empty,
                 limit: 1,
                 offset: 0
             )
@@ -71,6 +74,7 @@ final class SAPDataStore {
                 return
             }
             try await loadTotalNotificationCount()
+            try await loadNotificationFilterMetadata()
             try await loadFirstNotificationPage()
             state = .ready
         } catch is CancellationError {
@@ -95,6 +99,19 @@ final class SAPDataStore {
         }
     }
 
+    func updateNotificationStructuralFilter(_ filter: NotificationStructuralFilter) async {
+        guard filter != notificationStructuralFilter else { return }
+        notificationStructuralFilter = filter
+        guard hasCache else { return }
+        do {
+            try await loadFirstNotificationPage()
+        } catch is CancellationError {
+            return
+        } catch {
+            refreshError = .serviceUnavailable
+        }
+    }
+
     func loadMoreNotifications() async {
         guard !isLoadingMoreNotifications, let offset = nextNotificationOffset else { return }
         let loadID = notificationLoadID
@@ -104,6 +121,7 @@ final class SAPDataStore {
             let page = try await repository.loadNotifications(
                 for: localWorkerID,
                 matching: notificationSearchText,
+                structuralFilter: notificationStructuralFilter,
                 limit: notificationPageSize,
                 offset: offset
             )
@@ -139,6 +157,7 @@ final class SAPDataStore {
                 refreshedAt: Date()
             )
             try await loadTotalNotificationCount()
+            try await loadNotificationFilterMetadata()
             try await loadFirstNotificationPage()
             refreshStage = nil
             state = .ready
@@ -169,6 +188,7 @@ final class SAPDataStore {
         let page = try await repository.loadNotifications(
             for: localWorkerID,
             matching: notificationSearchText,
+            structuralFilter: notificationStructuralFilter,
             limit: notificationPageSize,
             offset: 0
         )
@@ -182,10 +202,17 @@ final class SAPDataStore {
         let page = try await repository.loadNotifications(
             for: localWorkerID,
             matching: "",
+            structuralFilter: .empty,
             limit: 1,
             offset: 0
         )
         totalNotificationCount = page.totalCount
+    }
+
+    private func loadNotificationFilterMetadata() async throws {
+        notificationFilterMetadata = try await repository.loadNotificationFilterMetadata(
+            for: localWorkerID
+        )
     }
 
     private func resetNotificationPage() {
@@ -193,6 +220,7 @@ final class SAPDataStore {
         notifications = []
         matchingNotificationCount = 0
         totalNotificationCount = 0
+        notificationFilterMetadata = []
         nextNotificationOffset = nil
     }
 }

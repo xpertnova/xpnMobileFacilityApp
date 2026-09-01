@@ -1,5 +1,49 @@
 import Foundation
 
+/// The confirmed legacy hierarchy embedded in a notification's cached SAP
+/// payload. It is intentionally read-only and remains entirely local.
+struct NotificationStructuralFilter: Codable, Equatable, Hashable, Sendable {
+    var businessEntityID: String = ""
+    var buildingCode: String = ""
+    var tradeCode: String = ""
+    var formCode: String = ""
+
+    static let empty = NotificationStructuralFilter()
+
+    var hasBusinessEntity: Bool {
+        !businessEntityID.isEmpty
+    }
+
+    func matches(_ metadata: NotificationStructuralFilterMetadata?) -> Bool {
+        guard hasBusinessEntity else { return true }
+        guard let metadata, metadata.businessEntityID == businessEntityID else { return false }
+        return (buildingCode.isEmpty || metadata.buildingCode == buildingCode)
+            && (tradeCode.isEmpty || metadata.tradeCode == tradeCode)
+            && (formCode.isEmpty || metadata.formCode == formCode)
+    }
+}
+
+struct NotificationStructuralFilterMetadata: Codable, Equatable, Hashable, Sendable, Identifiable {
+    let countryCode: String
+    let locationCode: String
+    let businessEntityCode: String
+    let buildingCode: String
+    let tradeCode: String
+    let formCode: String
+    let functionalLocationName: String
+
+    var id: String {
+        [countryCode, locationCode, businessEntityCode, buildingCode, tradeCode, formCode]
+            .joined(separator: "-")
+    }
+
+    var businessEntityID: String {
+        [countryCode, locationCode, businessEntityCode]
+            .filter { !$0.isEmpty }
+            .joined(separator: "-")
+    }
+}
+
 struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let client: String
@@ -30,6 +74,56 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
         [systemStatus, userStatus]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
+    }
+
+    var structuralFilterMetadata: NotificationStructuralFilterMetadata? {
+        guard
+            let data = rawPayloadJSON.data(using: .utf8),
+            var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return nil
+        }
+
+        // Older caches can contain the original FELDWERT rather than its
+        // decoded contents. Preserve their usefulness without a cache reset.
+        if value(named: "T_PLPOD", in: payload) == nil,
+           let feldwert = value(named: "FELDWERT", in: payload) as? String,
+           let planData = decodeSAPNotificationPayload(fromFeldwert: feldwert) {
+            payload.merge(planData) { _, planValue in planValue }
+        }
+
+        let businessEntityCode = stringValue(named: "TPWEH", in: payload)
+        guard !businessEntityCode.isEmpty else { return nil }
+        let positions = value(named: "T_PLPOD", in: payload) as? [Any]
+        let firstPosition = positions?.first as? [String: Any]
+        let directFormCode = stringValue(named: "STEUS", in: payload)
+
+        return NotificationStructuralFilterMetadata(
+            countryCode: stringValue(named: "TPLND", in: payload),
+            locationCode: stringValue(named: "TPORT", in: payload),
+            businessEntityCode: businessEntityCode,
+            buildingCode: stringValue(named: "TPGEB", in: payload),
+            tradeCode: stringValue(named: "TPGSG", in: payload),
+            formCode: directFormCode.isEmpty
+                ? stringValue(named: "STEUS", in: firstPosition ?? [:])
+                : directFormCode,
+            functionalLocationName: functionalLocationName
+        )
+    }
+
+    private func value(named key: String, in dictionary: [String: Any]) -> Any? {
+        dictionary.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
+    }
+
+    private func stringValue(named key: String, in dictionary: [String: Any]) -> String {
+        switch value(named: key, in: dictionary) {
+        case let value as String:
+            value.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let value as NSNumber:
+            value.stringValue
+        default:
+            ""
+        }
     }
 }
 
@@ -189,9 +283,13 @@ protocol SAPDataCacheRepository: Sendable {
     func loadNotifications(
         for localWorkerID: String,
         matching searchText: String,
+        structuralFilter: NotificationStructuralFilter,
         limit: Int,
         offset: Int
     ) async throws -> SAPNotificationPage
+    func loadNotificationFilterMetadata(
+        for localWorkerID: String
+    ) async throws -> [NotificationStructuralFilterMetadata]
     func replace(
         with snapshot: SAPReadSnapshot,
         for localWorkerID: String,
@@ -269,6 +367,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
     func loadNotifications(
         for localWorkerID: String,
         matching searchText: String,
+        structuralFilter: NotificationStructuralFilter,
         limit: Int,
         offset: Int
     ) async throws -> SAPNotificationPage {
@@ -280,6 +379,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             $0.functionalLocationID.localizedCaseInsensitiveContains(normalizedSearchText) ||
             $0.functionalLocationName.localizedCaseInsensitiveContains(normalizedSearchText)
         })
+        .filter { structuralFilter.matches($0.structuralFilterMetadata) }
         .sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
         let boundedOffset = min(max(offset, 0), matchingNotifications.count)
         let endIndex = min(boundedOffset + max(limit, 1), matchingNotifications.count)
@@ -289,6 +389,12 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             nextOffset: endIndex < matchingNotifications.count ? endIndex : nil,
             totalCount: matchingNotifications.count
         )
+    }
+
+    func loadNotificationFilterMetadata(
+        for localWorkerID: String
+    ) async throws -> [NotificationStructuralFilterMetadata] {
+        dataByWorkerID[localWorkerID]?.notifications.compactMap(\.structuralFilterMetadata) ?? []
     }
 
     func replace(
@@ -317,9 +423,16 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
     func loadNotifications(
         for localWorkerID: String,
         matching searchText: String,
+        structuralFilter: NotificationStructuralFilter,
         limit: Int,
         offset: Int
     ) async throws -> SAPNotificationPage {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadNotificationFilterMetadata(
+        for localWorkerID: String
+    ) async throws -> [NotificationStructuralFilterMetadata] {
         throw SAPReadError.serviceUnavailable
     }
 
