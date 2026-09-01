@@ -36,6 +36,28 @@ enum NotificationReviewResult: String, Codable, Equatable, Sendable {
     case yes
 }
 
+/// The minimum notification detail required to reopen an inspection without
+/// depending on the current SAP cache. It deliberately contains no SAP SDK
+/// types or transport payload.
+struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
+    struct InspectionItem: Codable, Equatable, Sendable {
+        let id: String
+        let title: String
+        let information: String
+    }
+
+    let title: String
+    let functionalLocationID: String
+    let functionalLocationName: String
+    let startDate: String
+    let endDate: String
+    let systemStatus: String
+    let userStatus: String
+    let structure: String
+    let equipmentID: String
+    let inspectionItems: [InspectionItem]
+}
+
 struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     var notificationID: String
     var performedOn: Date
@@ -43,6 +65,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     var comments: [String: String]
     var photoItemIDs: [String]
     var isClosedLocally: Bool
+    var notificationSnapshot: OfflineNotificationSnapshot? = nil
 }
 
 enum OfflineWorkPayload: Equatable, Sendable {

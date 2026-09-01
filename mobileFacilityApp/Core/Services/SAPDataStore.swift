@@ -45,6 +45,22 @@ final class SAPDataStore {
     var hasCache: Bool { cachedData.metadata != nil }
     var hasMoreNotifications: Bool { nextNotificationOffset != nil }
 
+    /// Looks up one notification directly in the persisted cache without
+    /// replacing the list currently shown in the notifications screen.
+    func cachedNotification(id: String) async -> SAPNotificationSummary? {
+        do {
+            let page = try await repository.loadNotifications(
+                for: localWorkerID,
+                matching: id,
+                limit: 1,
+                offset: 0
+            )
+            return page.notifications.first { $0.id == id }
+        } catch {
+            return nil
+        }
+    }
+
     func loadCachedData() async {
         state = .loadingCache
         do {

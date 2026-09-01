@@ -192,7 +192,7 @@ struct FacilityShellView: View {
                 Text("offline.localWork.drafts")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(demo.offlineWorkStore.draftCount)")
+                Text("\(demo.offlineWorkStore.savedNotificationCount)")
                     .font(.subheadline.weight(.bold))
             }
 
@@ -263,8 +263,8 @@ struct FacilityShellView: View {
     private func badge(for destination: AppDestination) -> Int? {
         switch destination {
         case .notifications: demo.allNotificationCount
-        case .defects: demo.defects.count
-        case .drafts: demo.offlineWorkStore.draftCount
+        case .defects: demo.offlineWorkStore.closedDefectNotificationCount
+        case .drafts: demo.offlineWorkStore.savedNotificationCount
         default: nil
         }
     }

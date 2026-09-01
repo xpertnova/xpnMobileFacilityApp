@@ -21,8 +21,44 @@ final class OfflineWorkStore {
         self.workerID = workerID
     }
 
-    var draftCount: Int {
-        items.filter { $0.status == .draft }.count
+    /// Work still kept on the device. A server-confirmed item is deliberately
+    /// excluded from the temporary-save queue.
+    var activeQueueItems: [OfflineWorkItem] {
+        items.filter { $0.status != .synchronized }
+    }
+
+    var activeQueueCount: Int {
+        activeQueueItems.count
+    }
+
+    var savedNotificationItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .notificationReview }
+    }
+
+    /// The Local work screen intentionally contains only notification reviews
+    /// that are still drafts or have been closed locally.
+    var localWorkNotificationItems: [OfflineWorkItem] {
+        savedNotificationItems.filter { item in
+            guard let review = item.payload.notificationReview else { return false }
+            return item.status == .draft || review.isClosedLocally
+        }
+    }
+
+    var savedNotificationCount: Int {
+        localWorkNotificationItems.count
+    }
+
+    /// A defect is a failed checklist result from a notification that was
+    /// closed locally. Open or draft notifications never appear as defects.
+    var closedDefectNotificationItems: [OfflineWorkItem] {
+        localWorkNotificationItems.filter { item in
+            guard let review = item.payload.notificationReview else { return false }
+            return review.isClosedLocally && review.results.values.contains(.yes)
+        }
+    }
+
+    var closedDefectNotificationCount: Int {
+        closedDefectNotificationItems.count
     }
 
     func load() async {
