@@ -5131,7 +5131,6 @@
       }
     },
     "forms.qualification.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7424,6 +7423,363 @@
         }
       }
     },
+    "qualification.checklist.answer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durchgeführt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completed"
+          }
+        }
+      }
+    },
+    "qualification.checklist.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aus SAP geladenen Prüfpunkte, Antworten und Bemerkungen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checklist items, answers, and comments loaded from SAP."
+          }
+        }
+      }
+    },
+    "qualification.checklist.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualifikationsprüfung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualification check"
+          }
+        }
+      }
+    },
+    "qualification.completed.saveFailed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der abgeschlossene Qualifikationsnachweis konnte nicht lokal gespeichert werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The completed proof of qualification could not be saved locally."
+          }
+        }
+      }
+    },
+    "qualification.coordinator" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koordinator*in"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coordinator"
+          }
+        }
+      }
+    },
+    "qualification.executionEnd" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausführung bis"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Execution to"
+          }
+        }
+      }
+    },
+    "qualification.executionStart" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausführung von"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Execution from"
+          }
+        }
+      }
+    },
+    "qualification.form.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontrolle des Qualifikationsnachweises einer Partnerfirma"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check a partner company's proof of qualification"
+          }
+        }
+      }
+    },
+    "qualification.form.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qualifikationsnachweis"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proof of qualification"
+          }
+        }
+      }
+    },
+    "qualification.instructedEmployee" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingewiesene Person"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instructed person"
+          }
+        }
+      }
+    },
+    "qualification.instructor" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einweiser/Abnehmer"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instructor/inspector"
+          }
+        }
+      }
+    },
+    "qualification.masterData.unavailable.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisieren Sie die SAP-Daten. Benötigt werden der Plan TFMQ_001 und Partnerfirmen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh SAP data. Plan TFMQ_001 and partner companies are required."
+          }
+        }
+      }
+    },
+    "qualification.masterData.unavailable.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Daten für den Qualifikationsnachweis fehlen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proof-of-qualification SAP data is unavailable"
+          }
+        }
+      }
+    },
+    "qualification.organizationUnit" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E.ON-Organisationseinheit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "E.ON organization unit"
+          }
+        }
+      }
+    },
+    "qualification.pdf.failure" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Qualifikationsnachweis konnte nicht als PDF erstellt werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The proof-of-qualification PDF could not be created."
+          }
+        }
+      }
+    },
+    "qualification.signature.coordinator" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digitale Unterschrift (Koordinator*in)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digital signature (coordinator)"
+          }
+        }
+      }
+    },
+    "qualification.signature.instructedPerson" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digitale Unterschrift (eingewiesene Person)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digital signature (instructed person)"
+          }
+        }
+      }
+    },
+    "qualification.signatures.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beide Unterschriften werden in das PDF übernommen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Both signatures are included in the PDF."
+          }
+        }
+      }
+    },
+    "qualification.signatures.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterschriften"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signatures"
+          }
+        }
+      }
+    },
+    "qualification.validation.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte füllen Sie alle markierten Pflichtfelder und Unterschriften aus."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complete all marked required fields and signatures."
+          }
+        }
+      }
+    },
+    "qualification.workLocation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leistungs-/Arbeitsort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Work location"
+          }
+        }
+      }
+    },
     "role.centralControl.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -7812,23 +8168,6 @@
     "Safety briefing" : {
 
     },
-    "safetyForms.context.title" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arbeitskontext"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Work context"
-          }
-        }
-      }
-    },
     "safetyForms.buildings.empty.message" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7859,6 +8198,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No buildings available"
+          }
+        }
+      }
+    },
+    "safetyForms.context.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arbeitskontext"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Work context"
           }
         }
       }

@@ -34,12 +34,14 @@ struct DraftsView: View {
                 case .loaded:
                     if demo.offlineWorkStore.localWorkNotificationItems.isEmpty
                         && demo.offlineWorkStore.briefingItems.isEmpty
-                        && demo.offlineWorkStore.electricalSafetyItems.isEmpty {
+                        && demo.offlineWorkStore.electricalSafetyItems.isEmpty
+                        && demo.offlineWorkStore.proofOfQualificationItems.isEmpty {
                         emptyState
                     } else {
                         savedNotificationList
                         savedBriefingList
                         savedElectricalSafetyList
+                        savedProofOfQualificationList
                     }
                 }
 
@@ -159,6 +161,48 @@ struct DraftsView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Text(electrical.workDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 6) {
+                            OfflineStatusPill(status: item.status)
+                            Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(17)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .facilityCard(padding: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedProofOfQualificationList: some View {
+        ForEach(demo.offlineWorkStore.proofOfQualificationItems) { item in
+            if let qualification = item.payload.proofOfQualification {
+                Button {
+                    demo.openProofOfQualificationDraft(item.id)
+                } label: {
+                    HStack(spacing: 15) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(FacilityTheme.accent)
+                            .frame(width: 44, height: 44)
+                            .background(FacilityTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("forms.qualification.title")
+                                .font(.headline)
+                                .foregroundStyle(FacilityTheme.ink)
+                            Text(qualification.workLocation)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(qualification.taskDescription)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)

@@ -14,6 +14,7 @@ final class FacilityDemoViewModel {
     var editingManualCaptureID: UUID?
     var selectedBriefingDraftID: UUID?
     var selectedElectricalSafetyDraftID: UUID?
+    var selectedProofOfQualificationDraftID: UUID?
     var selectedNotificationID: String?
     var selectedOfflineNotificationDetail: SAPNotificationDetail?
     private var offlineNotificationReturnDestination: AppDestination?
@@ -135,6 +136,11 @@ final class FacilityDemoViewModel {
         selection = .forms
     }
 
+    func openProofOfQualificationDraft(_ itemID: UUID) {
+        selectedProofOfQualificationDraftID = itemID
+        selection = .forms
+    }
+
     /// New saved reviews carry their own snapshot and therefore reopen without
     /// a live connection or a matching record in the current SAP cache.
     func openSavedNotificationReview(_ review: NotificationReviewDraftPayload) async -> Bool {
@@ -199,6 +205,7 @@ final class FacilityDemoViewModel {
         editingManualCaptureID = nil
         selectedBriefingDraftID = nil
         selectedElectricalSafetyDraftID = nil
+        selectedProofOfQualificationDraftID = nil
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = nil
         offlineNotificationReturnDestination = nil

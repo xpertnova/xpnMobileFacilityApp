@@ -26,7 +26,8 @@ struct FormsView: View {
                                 Button {
                                     demo.selectedBriefingDraftID = nil
                                     demo.selectedElectricalSafetyDraftID = nil
-                                    if form.id == "briefing" || (!demo.isDemoMode && (form.id == "fire" || form.id == "electrical")) {
+                                    demo.selectedProofOfQualificationDraftID = nil
+                                    if form.id == "briefing" || form.id == "qualification" || (!demo.isDemoMode && (form.id == "fire" || form.id == "electrical")) {
                                         selectedActiveForm = form
                                     } else {
                                         selectedPreviewForm = form
@@ -51,7 +52,10 @@ struct FormsView: View {
                 .presentationDetents([.medium, .large])
         }
         .onAppear {
-            if let draftID = demo.selectedElectricalSafetyDraftID,
+            if let draftID = demo.selectedProofOfQualificationDraftID,
+               demo.offlineWorkStore.item(id: draftID)?.payload.proofOfQualification != nil {
+                selectedActiveForm = demo.forms.first(where: { $0.id == "qualification" })
+            } else if let draftID = demo.selectedElectricalSafetyDraftID,
                demo.offlineWorkStore.item(id: draftID)?.payload.electricalSafety != nil {
                 selectedActiveForm = demo.forms.first(where: { $0.id == "electrical" })
             } else if let draftID = demo.selectedBriefingDraftID,
@@ -78,6 +82,12 @@ struct FormsView: View {
                 existingDraft: demo.offlineWorkStore.item(id: demo.selectedElectricalSafetyDraftID),
                 onClose: closeActiveForm
             )
+        case "qualification":
+            ProofOfQualificationWorkflowView(
+                workspace: demo,
+                existingDraft: demo.offlineWorkStore.item(id: demo.selectedProofOfQualificationDraftID),
+                onClose: closeActiveForm
+            )
         default:
             EmptyView()
         }
@@ -86,6 +96,7 @@ struct FormsView: View {
     private func closeActiveForm() {
         demo.selectedBriefingDraftID = nil
         demo.selectedElectricalSafetyDraftID = nil
+        demo.selectedProofOfQualificationDraftID = nil
         selectedActiveForm = nil
     }
 }
