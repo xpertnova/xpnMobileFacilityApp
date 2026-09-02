@@ -1,7 +1,7 @@
 import Foundation
 
 actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
-    private static let currentSchemaVersion: Int32 = 3
+    private static let currentSchemaVersion: Int32 = 4
     private var database: OpaquePointer?
 
     init(databaseURL: URL? = nil) throws {
@@ -77,7 +77,56 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         } else {
             metadata = nil
         }
-        return SAPCachedData(notifications: [], workerProfile: profile, metadata: metadata)
+        let briefingPartners = try Self.query(
+            on: database,
+            """
+            SELECT partner_id, client, function, name, contact_name, search_term_1,
+                   search_term_2, street, house_number, postal_code, city, country, email
+            FROM sap_briefing_partners
+            WHERE local_worker_id = ?
+            ORDER BY name COLLATE NOCASE, partner_id
+            """,
+            bindings: [localWorkerID]
+        ) { statement in
+            SAPBriefingPartner(
+                id: Self.string(at: 0, from: statement),
+                client: Self.string(at: 1, from: statement),
+                function: Self.string(at: 2, from: statement),
+                name: Self.string(at: 3, from: statement),
+                contactName: Self.string(at: 4, from: statement),
+                searchTerm1: Self.string(at: 5, from: statement),
+                searchTerm2: Self.string(at: 6, from: statement),
+                street: Self.string(at: 7, from: statement),
+                houseNumber: Self.string(at: 8, from: statement),
+                postalCode: Self.string(at: 9, from: statement),
+                city: Self.string(at: 10, from: statement),
+                country: Self.string(at: 11, from: statement),
+                email: Self.string(at: 12, from: statement)
+            )
+        }
+        let briefingTemplateJSON: [String] = try Self.query(
+            on: database,
+            """
+            SELECT template_json
+            FROM sap_briefing_templates
+            WHERE local_worker_id = ?
+            ORDER BY template_id
+            """,
+            bindings: [localWorkerID]
+        ) { statement in
+            Self.string(at: 0, from: statement)
+        }
+        let briefingTemplates: [SAPBriefingTemplate] = briefingTemplateJSON.compactMap { json in
+            guard let data = json.data(using: .utf8) else { return nil }
+            return try? JSONDecoder().decode(SAPBriefingTemplate.self, from: data)
+        }
+        return SAPCachedData(
+            notifications: [],
+            workerProfile: profile,
+            briefingPartners: briefingPartners,
+            briefingTemplates: briefingTemplates,
+            metadata: metadata
+        )
     }
 
     func loadNotifications(
@@ -205,6 +254,48 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                         localWorkerID, profile.personnelNumber, profile.firstName, profile.lastName,
                         profile.organizationUnit, profile.role, profile.email, profile.isActive,
                         profile.roleCode
+                ])
+            }
+            try Self.execute(
+                on: database,
+                "DELETE FROM sap_briefing_partners WHERE local_worker_id = ?",
+                bindings: [localWorkerID]
+            )
+            for partner in snapshot.briefingPartners {
+                try Self.execute(on: database, """
+                    INSERT INTO sap_briefing_partners (
+                        local_worker_id, partner_id, client, function, name, contact_name,
+                        search_term_1, search_term_2, street, house_number, postal_code,
+                        city, country, email
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, bindings: [
+                        localWorkerID, partner.id, partner.client, partner.function, partner.name,
+                        partner.contactName, partner.searchTerm1, partner.searchTerm2,
+                        partner.street, partner.houseNumber, partner.postalCode, partner.city,
+                        partner.country, partner.email
+                    ])
+            }
+            try Self.execute(
+                on: database,
+                "DELETE FROM sap_briefing_templates WHERE local_worker_id = ?",
+                bindings: [localWorkerID]
+            )
+            let encoder = JSONEncoder()
+            for template in snapshot.briefingTemplates {
+                guard
+                    let encodedTemplate = try? encoder.encode(template),
+                    let templateJSON = String(data: encodedTemplate, encoding: .utf8)
+                else {
+                    throw SAPReadError.malformedPayload
+                }
+                try Self.execute(on: database, """
+                    INSERT INTO sap_briefing_templates (
+                        local_worker_id, template_id, equipment_type, planner_group, plan_type,
+                        plan_number, template_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, bindings: [
+                        localWorkerID, template.id, template.equipmentType, template.plannerGroup,
+                        template.planType, template.planNumber, templateJSON
                     ])
             }
             try Self.execute(on: database, """
@@ -257,6 +348,36 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                     last_successful_refresh_at TEXT NOT NULL
                 )
                 """)
+            if version < 4 {
+                try execute(on: database, """
+                    CREATE TABLE IF NOT EXISTS sap_briefing_partners (
+                        local_worker_id TEXT NOT NULL, partner_id TEXT NOT NULL,
+                        client TEXT NOT NULL, function TEXT NOT NULL, name TEXT NOT NULL,
+                        contact_name TEXT NOT NULL, search_term_1 TEXT NOT NULL,
+                        search_term_2 TEXT NOT NULL, street TEXT NOT NULL,
+                        house_number TEXT NOT NULL, postal_code TEXT NOT NULL,
+                        city TEXT NOT NULL, country TEXT NOT NULL, email TEXT NOT NULL,
+                        PRIMARY KEY (local_worker_id, partner_id)
+                    )
+                    """)
+                try execute(on: database, """
+                    CREATE TABLE IF NOT EXISTS sap_briefing_templates (
+                        local_worker_id TEXT NOT NULL, template_id TEXT NOT NULL,
+                        equipment_type TEXT NOT NULL, planner_group TEXT NOT NULL,
+                        plan_type TEXT NOT NULL, plan_number TEXT NOT NULL,
+                        template_json TEXT NOT NULL,
+                        PRIMARY KEY (local_worker_id, template_id)
+                    )
+                    """)
+                try execute(on: database, """
+                    CREATE INDEX IF NOT EXISTS sap_briefing_partners_worker_name_index
+                    ON sap_briefing_partners (local_worker_id, name, partner_id)
+                    """)
+                try execute(on: database, """
+                    CREATE INDEX IF NOT EXISTS sap_briefing_templates_worker_plan_index
+                    ON sap_briefing_templates (local_worker_id, equipment_type, plan_number)
+                    """)
+            }
             try execute(on: database, """
                 CREATE INDEX IF NOT EXISTS sap_notifications_worker_date_index
                 ON sap_notifications (local_worker_id, start_date, notification_id)

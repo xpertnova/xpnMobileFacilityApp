@@ -3,6 +3,7 @@ import Foundation
 enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case manualCapture
     case notificationReview
+    case briefing
 }
 
 enum OfflineWorkStatus: String, Codable, CaseIterable, Sendable {
@@ -68,9 +69,70 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     var notificationSnapshot: OfflineNotificationSnapshot? = nil
 }
 
+/// Worker-scoped, locally retained briefing data. It preserves SAP answer
+/// keys and source identifiers so presentation text never becomes a backend
+/// contract. A pending briefing is not considered SAP-synchronized.
+struct BriefingDraftPayload: Codable, Equatable, Sendable {
+    var templateID: String
+    var businessEntityID: String
+    var businessEntityTitle: String
+    var buildingCode: String
+    var buildingTitle: String
+    var coordinator: String
+    var instructedPerson: String
+    var selectedPartnerID: String
+    var temporaryPartner: BriefingTemporaryPartner?
+    var partnerEmail: String
+    var taskDescription: String
+    var startDate: Date
+    var endDate: Date
+    var selectedOptionalSectionIDs: Set<String>
+    var answerKeysByItemID: [String: String]
+    var commentsByItemID: [String: String]
+    var instructorSignature: Data?
+    var instructedPersonSignature: Data?
+    var completedAt: Date?
+}
+
+/// A partner entered for this briefing only. The legacy workflow calls these
+/// `NEU…` partners and defers SAP submission until a sanctioned write payload
+/// exists, so the complete value-help input stays in the local draft.
+struct BriefingTemporaryPartner: Codable, Equatable, Sendable {
+    var id: String
+    var company: String
+    var title: String
+    var contactName: String
+    var email: String
+    var telephone: String
+    var street: String
+    var houseNumber: String
+    var postalCode: String
+    var city: String
+    var country: String
+
+    var asSAPPartner: SAPBriefingPartner {
+        SAPBriefingPartner(
+            id: id,
+            client: "",
+            function: "ZT",
+            name: company,
+            contactName: contactName,
+            searchTerm1: "",
+            searchTerm2: "",
+            street: street,
+            houseNumber: houseNumber,
+            postalCode: postalCode,
+            city: city,
+            country: country,
+            email: email
+        )
+    }
+}
+
 enum OfflineWorkPayload: Equatable, Sendable {
     case manualCapture(ManualCaptureDraftPayload)
     case notificationReview(NotificationReviewDraftPayload)
+    case briefing(BriefingDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -79,6 +141,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var notificationReview: NotificationReviewDraftPayload? {
         guard case let .notificationReview(payload) = self else { return nil }
+        return payload
+    }
+
+    var briefing: BriefingDraftPayload? {
+        guard case let .briefing(payload) = self else { return nil }
         return payload
     }
 }

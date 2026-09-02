@@ -32,10 +32,11 @@ struct DraftsView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 240)
                 case .loaded:
-                    if demo.offlineWorkStore.localWorkNotificationItems.isEmpty {
+                    if demo.offlineWorkStore.localWorkNotificationItems.isEmpty && demo.offlineWorkStore.briefingItems.isEmpty {
                         emptyState
                     } else {
                         savedNotificationList
+                        savedBriefingList
                     }
                 }
 
@@ -86,6 +87,48 @@ struct DraftsView: View {
                         open(review)
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedBriefingList: some View {
+        ForEach(demo.offlineWorkStore.briefingItems) { item in
+            if let briefing = item.payload.briefing {
+                Button {
+                    demo.openBriefingDraft(item.id)
+                } label: {
+                    HStack(spacing: 15) {
+                        Image(systemName: "figure.stand")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(FacilityTheme.blue)
+                            .frame(width: 44, height: 44)
+                            .background(FacilityTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Safety briefing")
+                                .font(.headline)
+                                .foregroundStyle(FacilityTheme.ink)
+                            Text("\(briefing.businessEntityTitle) · \(briefing.buildingTitle)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Text(briefing.taskDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 6) {
+                            OfflineStatusPill(status: item.status)
+                            Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(17)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .facilityCard(padding: 0)
             }
         }
     }

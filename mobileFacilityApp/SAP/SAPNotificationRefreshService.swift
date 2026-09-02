@@ -231,6 +231,8 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         try await waitForIncomingData(requestID: fromRequestID, connection: synchronizationConnection)
 
         var notificationsByID: [String: SAPNotificationSummary] = [:]
+        var briefingPartnersByID: [String: SAPBriefingPartner] = [:]
+        var briefingTemplatesByID: [String: SAPBriefingTemplate] = [:]
         var workerProfile: SAPWorkerProfile?
         var openInspectionRowCount = 0
         var isLastPack = false
@@ -248,6 +250,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             for notification in pack.notifications {
                 notificationsByID[notification.id] = notification
             }
+            for partner in pack.briefingPartners {
+                briefingPartnersByID[partner.id] = partner
+            }
+            for template in pack.briefingTemplates {
+                briefingTemplatesByID[template.id] = template
+            }
             openInspectionRowCount += pack.openInspectionRowCount
             if let profile = pack.workerProfile {
                 workerProfile = profile
@@ -263,7 +271,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         let snapshot = SAPReadSnapshot(
             sapWorkerID: sapWorkerID,
             notifications: notificationsByID.values.sorted { $0.id < $1.id },
-            workerProfile: workerProfile
+            workerProfile: workerProfile,
+            briefingPartners: briefingPartnersByID.values.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            },
+            briefingTemplates: briefingTemplatesByID.values.sorted { $0.id < $1.id }
         )
         SAPSynchronizationDiagnostics.logSynchronizationCompleted(notificationCount: snapshot.notifications.count, businessEntityCount: 0)
         return snapshot
@@ -656,6 +668,8 @@ fileprivate struct SAPReadAuthorization {
 fileprivate struct SAPInboundPack {
     let notifications: [SAPNotificationSummary]
     let workerProfile: SAPWorkerProfile?
+    let briefingPartners: [SAPBriefingPartner]
+    let briefingTemplates: [SAPBriefingTemplate]
     let openInspectionRowCount: Int
     let isLastPack: Bool
 }
@@ -813,6 +827,12 @@ private enum SAPLegacyDataExchangeCodec {
         let profileRows = structures.flatMap {
             value(named: "T_0153", in: $0) as? [[String: Any]] ?? []
         }
+        let briefingPartnerRows = structures.flatMap {
+            value(named: "T_0298", in: $0) as? [[String: Any]] ?? []
+        }
+        let briefingTemplateRows = structures.flatMap {
+            value(named: "T_0267", in: $0) as? [[String: Any]] ?? []
+        }
         let openInspectionRowCount = notificationRows.filter {
             stringValue(value(named: "QMART", in: $0)).uppercased() == "I1" &&
                 stringValue(value(named: "STTXT", in: $0)).uppercased() != "MMAB"
@@ -820,6 +840,8 @@ private enum SAPLegacyDataExchangeCodec {
         return SAPInboundPack(
             notifications: notificationRows.compactMap(notification(from:)),
             workerProfile: profileRows.compactMap(workerProfile(from:)).first,
+            briefingPartners: briefingPartnerRows.compactMap(briefingPartner(from:)),
+            briefingTemplates: briefingTemplateRows.compactMap(briefingTemplate(from:)),
             openInspectionRowCount: openInspectionRowCount,
             isLastPack: isLastPack
         )
@@ -864,6 +886,180 @@ private enum SAPLegacyDataExchangeCodec {
             isActive: stringValue(value(named: "AKTIV", in: row)),
             roleCode: stringValue(value(named: "RCDEX", in: row))
         )
+    }
+
+    private static func briefingPartner(from row: [String: Any]) -> SAPBriefingPartner? {
+        var data = row
+        if let payload = feldwertValue(from: stringValue(value(named: "FELDWERT", in: row))) as? [String: Any] {
+            data.merge(payload) { _, payloadValue in payloadValue }
+        }
+        let identifier = stringValue(value(named: "ADDRNUMBER", in: data))
+        let name = stringValue(value(named: "NAME1", in: data))
+        guard !identifier.isEmpty, !name.isEmpty else { return nil }
+        return SAPBriefingPartner(
+            id: identifier,
+            client: firstSAPString(["MANDT", "CLIENT"], from: data),
+            function: stringValue(value(named: "PARVW", in: data)),
+            name: name,
+            contactName: stringValue(value(named: "NAME2", in: data)),
+            searchTerm1: stringValue(value(named: "SORT1", in: data)),
+            searchTerm2: stringValue(value(named: "SORT2", in: data)),
+            street: stringValue(value(named: "STREET", in: data)),
+            houseNumber: stringValue(value(named: "HOUSE_NUM1", in: data)),
+            postalCode: stringValue(value(named: "POST_CODE1", in: data)),
+            city: stringValue(value(named: "CITY1", in: data)),
+            country: stringValue(value(named: "COUNTRY", in: data)),
+            email: stringValue(value(named: "SMTP_ADDR", in: data))
+        )
+    }
+
+    private static func briefingTemplate(from row: [String: Any]) -> SAPBriefingTemplate? {
+        guard let decodedPayload = feldwertValue(from: stringValue(value(named: "FELDWERT", in: row))) else {
+            return nil
+        }
+        let payload: [String: Any]
+        let rawRows: [Any]
+        if let objectPayload = decodedPayload as? [String: Any],
+           let nestedRows = value(named: "T_PLPOD", in: objectPayload) as? [Any] {
+            payload = objectPayload
+            rawRows = nestedRows
+        } else if let directRows = decodedPayload as? [Any] {
+            payload = [:]
+            rawRows = directRows
+        } else {
+            return nil
+        }
+
+        let equipmentType = firstSAPString(["EQART"], from: row, fallback: payload)
+        let plannerGroup = firstSAPString(["INGRP"], from: row, fallback: payload)
+        let planType = firstSAPString(["PLNTY"], from: row, fallback: payload)
+        let planNumber = firstSAPString(["PLNNR"], from: row, fallback: payload)
+        let sortedRows = rawRows.enumerated().sorted { left, right in
+            let leftPosition = stringValue(value(named: "VORNR", in: left.element as? [String: Any] ?? [:]))
+            let rightPosition = stringValue(value(named: "VORNR", in: right.element as? [String: Any] ?? [:]))
+            let leftOrder = Int(leftPosition) ?? Int.max
+            let rightOrder = Int(rightPosition) ?? Int.max
+            if leftOrder != rightOrder { return leftOrder < rightOrder }
+            if leftPosition != rightPosition { return leftPosition < rightPosition }
+            return left.offset < right.offset
+        }
+
+        var sections: [SAPBriefingTemplateSection] = []
+        var activeSectionID: String?
+        for (index, rawValue) in sortedRows {
+            guard let position = rawValue as? [String: Any] else { continue }
+            let userType = stringValue(value(named: "USR00", in: position))
+            let rowTypeValue = (userType.isEmpty ? stringValue(value(named: "DNAME", in: position)) : userType).uppercased()
+            let control = stringValue(value(named: "STEUS", in: position))
+            let operation = stringValue(value(named: "VORNR", in: position))
+            let identifier = "\(control)\(operation)"
+            let title = briefingPositionTitle(position)
+
+            if rowTypeValue == "HEADER" {
+                let sectionID = identifier.isEmpty ? "section-\(index)" : identifier
+                sections.append(SAPBriefingTemplateSection(
+                    id: sectionID,
+                    title: title,
+                    isOptional: stringValue(value(named: "USR10", in: position)).uppercased() == "X",
+                    items: []
+                ))
+                activeSectionID = sectionID
+                continue
+            }
+
+            guard !title.isEmpty else { continue }
+            if activeSectionID == nil {
+                let sectionID = "section-default"
+                sections.append(SAPBriefingTemplateSection(id: sectionID, title: "", isOptional: false, items: []))
+                activeSectionID = sectionID
+            }
+            guard let activeSectionID,
+                  let sectionIndex = sections.lastIndex(where: { $0.id == activeSectionID })
+            else { continue }
+
+            let symbols = briefingSymbols(from: position)
+            let item = SAPBriefingTemplateItem(
+                id: identifier.isEmpty ? "item-\(index)" : identifier,
+                orderIdentifier: operation,
+                rowType: SAPBriefingTemplateRowType(sapValue: rowTypeValue),
+                title: title,
+                answerOptions: briefingAnswerOptions(from: position),
+                documentSymbolID: symbols.document,
+                warningSymbolID: symbols.warning
+            )
+            let section = sections[sectionIndex]
+            sections[sectionIndex] = SAPBriefingTemplateSection(
+                id: section.id,
+                title: section.title,
+                isOptional: section.isOptional,
+                items: section.items + [item]
+            )
+        }
+
+        guard sections.contains(where: { !$0.items.isEmpty }) else { return nil }
+        let identifier = [equipmentType, plannerGroup, planType, planNumber, sections.first?.id ?? ""]
+            .filter { !$0.isEmpty }
+            .joined(separator: "|")
+        return SAPBriefingTemplate(
+            id: identifier.isEmpty ? "briefing-template" : identifier,
+            equipmentType: equipmentType,
+            plannerGroup: plannerGroup,
+            planType: planType,
+            planNumber: planNumber,
+            sections: sections
+        )
+    }
+
+    private static func firstSAPString(
+        _ keys: [String],
+        from primary: [String: Any],
+        fallback: [String: Any] = [:]
+    ) -> String {
+        for key in keys {
+            let primaryValue = stringValue(value(named: key, in: primary))
+            if !primaryValue.isEmpty { return primaryValue }
+            let fallbackValue = stringValue(value(named: key, in: fallback))
+            if !fallbackValue.isEmpty { return fallbackValue }
+        }
+        return ""
+    }
+
+    private static func briefingPositionTitle(_ row: [String: Any]) -> String {
+        let title = stringValue(value(named: "LTXA1", in: row))
+        let details = stringValue(value(named: "LTXA2", in: row))
+        guard !details.isEmpty else { return title }
+        guard !title.isEmpty else { return details }
+        return "\(title):\n\(details)"
+    }
+
+    private static func briefingSymbols(from row: [String: Any]) -> (document: String?, warning: String?) {
+        var warning = stringValue(value(named: "USR01", in: row))
+        var document = stringValue(value(named: "USR02", in: row))
+        if warning.count == 1 || document.count > 1 { swap(&warning, &document) }
+        return (document.isEmpty ? nil : document, warning.isEmpty ? nil : warning)
+    }
+
+    private static func briefingAnswerOptions(from row: [String: Any]) -> [SAPBriefingAnswerOption] {
+        guard let properties = value(named: "T_PROPS", in: row) as? [Any],
+              let property = properties.first as? [String: Any]
+        else { return [] }
+        let keys = semicolonSeparatedValues(stringValue(value(named: "DFVAL", in: property)))
+        let titles = semicolonSeparatedValues(stringValue(value(named: "DFVAL_TXT", in: property)))
+        var seen: Set<String> = []
+        return keys.enumerated().compactMap { index, key in
+            let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedKey.isEmpty, seen.insert(trimmedKey).inserted else { return nil }
+            let title = titles.indices.contains(index)
+                ? titles[index].trimmingCharacters(in: .whitespacesAndNewlines)
+                : ""
+            return SAPBriefingAnswerOption(key: trimmedKey, title: title.isEmpty ? trimmedKey : title)
+        }
+    }
+
+    private static func semicolonSeparatedValues(_ value: String) -> [String] {
+        var normalized = value
+        if normalized.hasSuffix(";") { normalized.removeLast() }
+        return normalized.isEmpty ? [] : normalized.components(separatedBy: ";")
     }
 
     private static func throwBackendMessage(in envelopes: [Envelope]) throws {
@@ -960,11 +1156,9 @@ private enum SAPLegacyDataExchangeCodec {
         }
     }
 
-    /// Decodes the SAP `T_0271.FELDWERT` structure using the same layered
-    /// Base64/DEFLATE path as the legacy SwiftUI client. The merged payload is
-    /// cached with the notification so the detail screen can be rebuilt offline
-    /// without another SAP call.
-    private static func notificationData(fromFeldwert feldwert: String) -> [String: Any]? {
+    /// Decodes the common SAP `FELDWERT` transport used by both notification
+    /// rows and briefing master data: Base64, DEFLATE/gzip, Base64, then JSON.
+    private static func feldwertValue(from feldwert: String) -> Any? {
         guard !feldwert.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
@@ -980,10 +1174,7 @@ private enum SAPLegacyDataExchangeCodec {
         var index = 0
         while index < candidates.count, candidates.count < 16 {
             let candidate = candidates[index]
-            if let payload = try? JSONSerialization.jsonObject(with: candidate) as? [String: Any],
-               value(named: "T_PLPOD", in: payload) != nil {
-                return payload
-            }
+            if let payload = try? JSONSerialization.jsonObject(with: candidate) { return payload }
             if let string = String(data: candidate, encoding: .utf8) {
                 base64Candidates(from: string).forEach(appendCandidate)
             }
@@ -1006,6 +1197,15 @@ private enum SAPLegacyDataExchangeCodec {
             index += 1
         }
         return nil
+    }
+
+    /// Decodes the SAP `T_0271.FELDWERT` structure using the shared legacy
+    /// transport decoder and retains only payloads with inspection positions.
+    private static func notificationData(fromFeldwert feldwert: String) -> [String: Any]? {
+        guard let payload = feldwertValue(from: feldwert) as? [String: Any],
+              value(named: "T_PLPOD", in: payload) != nil
+        else { return nil }
+        return payload
     }
 
     /// Extract the RFC 1952 DEFLATE member without requiring SAP's response

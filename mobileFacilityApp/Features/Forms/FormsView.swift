@@ -2,7 +2,8 @@ import SwiftUI
 
 struct FormsView: View {
     let demo: FacilityDemoViewModel
-    @State private var selectedForm: FacilityForm?
+    @State private var selectedPreviewForm: FacilityForm?
+    @State private var selectedBriefingForm: FacilityForm?
 
     private let columns = [
         GridItem(.flexible(minimum: 240), spacing: 15),
@@ -11,29 +12,59 @@ struct FormsView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                PageHeader("forms.title", subtitle: "forms.subtitle")
+        Group {
+            if selectedBriefingForm != nil {
+                BriefingWorkflowView(
+                    workspace: demo,
+                    existingDraft: demo.offlineWorkStore.item(id: demo.selectedBriefingDraftID),
+                    onClose: closeBriefing
+                )
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
+                        PageHeader("forms.title", subtitle: "forms.subtitle")
 
-                LazyVGrid(columns: columns, spacing: 15) {
-                    ForEach(demo.forms) { form in
-                        Button {
-                            selectedForm = form
-                        } label: {
-                            FormCard(form: form)
+                        LazyVGrid(columns: columns, spacing: 15) {
+                            ForEach(demo.forms) { form in
+                                Button {
+                                    demo.selectedBriefingDraftID = nil
+                                    if form.id == "briefing" {
+                                        selectedBriefingForm = form
+                                    } else {
+                                        selectedPreviewForm = form
+                                    }
+                                } label: {
+                                    FormCard(form: form)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("forms.openPreview")
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("forms.openPreview")
                     }
+                    .padding(28)
+                    .frame(maxWidth: 1280, alignment: .leading)
                 }
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
         }
-        .sheet(item: $selectedForm) { form in
+        .animation(.easeInOut(duration: 0.28), value: selectedBriefingForm?.id)
+        .sheet(item: $selectedPreviewForm) { form in
             FormWorkflowPreview(form: form)
                 .presentationDetents([.medium, .large])
         }
+        .onAppear {
+            guard
+                let draftID = demo.selectedBriefingDraftID,
+                demo.offlineWorkStore.item(id: draftID)?.payload.briefing != nil,
+                let briefing = demo.forms.first(where: { $0.id == "briefing" })
+            else { return }
+            selectedBriefingForm = briefing
+        }
+    }
+
+    private func closeBriefing() {
+        demo.selectedBriefingDraftID = nil
+        selectedBriefingForm = nil
     }
 }
 

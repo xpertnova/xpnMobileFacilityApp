@@ -10,7 +10,9 @@ final class FacilityDemoViewModel {
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     var selection: AppDestination = .overview
+    var isSidebarVisible = true
     var editingManualCaptureID: UUID?
+    var selectedBriefingDraftID: UUID?
     var selectedNotificationID: String?
     var selectedOfflineNotificationDetail: SAPNotificationDetail?
     private var offlineNotificationReturnDestination: AppDestination?
@@ -121,6 +123,11 @@ final class FacilityDemoViewModel {
         selection = .manualCapture
     }
 
+    func openBriefingDraft(_ itemID: UUID) {
+        selectedBriefingDraftID = itemID
+        selection = .forms
+    }
+
     /// New saved reviews carry their own snapshot and therefore reopen without
     /// a live connection or a matching record in the current SAP cache.
     func openSavedNotificationReview(_ review: NotificationReviewDraftPayload) async -> Bool {
@@ -183,6 +190,7 @@ final class FacilityDemoViewModel {
         notifications = MockFacilityData.notifications
         defects = MockFacilityData.defects
         editingManualCaptureID = nil
+        selectedBriefingDraftID = nil
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = nil
         offlineNotificationReturnDestination = nil

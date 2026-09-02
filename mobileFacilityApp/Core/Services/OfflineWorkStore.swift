@@ -48,6 +48,14 @@ final class OfflineWorkStore {
         localWorkNotificationItems.count
     }
 
+    var localWorkCount: Int {
+        localWorkNotificationItems.count + briefingItems.count
+    }
+
+    var briefingItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .briefing }
+    }
+
     /// A defect is a failed checklist result from a notification that was
     /// closed locally. Open or draft notifications never appear as defects.
     var closedDefectNotificationItems: [OfflineWorkItem] {
@@ -111,6 +119,28 @@ final class OfflineWorkStore {
             type: .notificationReview,
             status: .draft,
             payload: .notificationReview(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func saveBriefing(
+        id: UUID? = nil,
+        payload: BriefingDraftPayload,
+        status: OfflineWorkStatus = .draft
+    ) async throws -> OfflineWorkItem {
+        let existing = id.flatMap { requestedID in items.first { $0.id == requestedID } }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .briefing,
+            status: status,
+            payload: .briefing(payload),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             syncError: nil

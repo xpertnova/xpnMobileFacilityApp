@@ -4,7 +4,6 @@ struct FacilityShellView: View {
     let demo: FacilityDemoViewModel
     let onSignOut: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @State private var isSidebarVisible = true
     @State private var sapPassword = ""
     @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
 
@@ -25,13 +24,13 @@ struct FacilityShellView: View {
         ZStack(alignment: .topLeading) {
             HStack(spacing: 0) {
                 sidebar(selection: $demo.selection)
-                    .opacity(isSidebarVisible ? 1 : 0)
-                    .offset(x: isSidebarVisible ? 0 : -expandedSidebarWidth)
-                    .allowsHitTesting(isSidebarVisible)
-                    .frame(width: isSidebarVisible ? expandedSidebarWidth : 0, alignment: .leading)
+                    .opacity(demo.isSidebarVisible ? 1 : 0)
+                    .offset(x: demo.isSidebarVisible ? 0 : -expandedSidebarWidth)
+                    .allowsHitTesting(demo.isSidebarVisible)
+                    .frame(width: demo.isSidebarVisible ? expandedSidebarWidth : 0, alignment: .leading)
                     .clipped()
 
-                if isSidebarVisible {
+                if demo.isSidebarVisible {
                     Divider()
                 }
 
@@ -64,9 +63,9 @@ struct FacilityShellView: View {
                 )
             }
 
-            if !isSidebarVisible {
+            if !demo.isSidebarVisible {
                 sidebarToggleButton(symbol: "sidebar.right", labelKey: "sidebar.show") {
-                    isSidebarVisible = true
+                    demo.isSidebarVisible = true
                 }
                 .padding(.top, 14)
                 .padding(.leading, 16)
@@ -100,7 +99,7 @@ struct FacilityShellView: View {
             }
         }
         .background(FacilityTheme.canvas)
-        .animation(sidebarAnimation, value: isSidebarVisible)
+        .animation(sidebarAnimation, value: demo.isSidebarVisible)
         .task(id: demo.offlineWorkStore.workerID) {
             await demo.offlineWorkStore.load()
             if !demo.isDemoMode {
@@ -110,12 +109,12 @@ struct FacilityShellView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 28)
                 .onEnded { value in
-                    if isSidebarVisible, value.translation.width < -70 {
-                        isSidebarVisible = false
-                    } else if !isSidebarVisible,
+                    if demo.isSidebarVisible, value.translation.width < -70 {
+                        demo.isSidebarVisible = false
+                    } else if !demo.isSidebarVisible,
                               value.startLocation.x < 72,
                               value.translation.width > 70 {
-                        isSidebarVisible = true
+                        demo.isSidebarVisible = true
                     }
                 }
         )
@@ -143,7 +142,7 @@ struct FacilityShellView: View {
                 Spacer()
                 
                 sidebarToggleButton(symbol: "sidebar.left", labelKey: "sidebar.hide") {
-                    isSidebarVisible = false
+                    demo.isSidebarVisible = false
                 }
             }
             .padding(.bottom, 28)
@@ -229,7 +228,7 @@ struct FacilityShellView: View {
                 Text("offline.localWork.drafts")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(demo.offlineWorkStore.savedNotificationCount)")
+                Text("\(demo.offlineWorkStore.localWorkCount)")
                     .font(.subheadline.weight(.bold))
             }
 
@@ -301,7 +300,7 @@ struct FacilityShellView: View {
         switch destination {
         case .notifications: demo.allNotificationCount
         case .defects: demo.offlineWorkStore.closedDefectNotificationCount
-        case .drafts: demo.offlineWorkStore.savedNotificationCount
+        case .drafts: demo.offlineWorkStore.localWorkCount
         default: nil
         }
     }
