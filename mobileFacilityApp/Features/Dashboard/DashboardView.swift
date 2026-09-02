@@ -19,16 +19,16 @@ struct DashboardView: View {
                 dashboardHeader
 
                 LazyVGrid(columns: metricColumns, spacing: 14) {
-                    MetricCard(count: demo.allNotificationCount, titleKey: "dashboard.metrics.notifications", symbol: "checklist", tint: FacilityTheme.blue) {
+                    MetricCard(count: demo.allNotificationCount, titleKey: "dashboard.metrics.notifications", icon: "📋", tint: FacilityTheme.blue) {
                         demo.open(.notifications)
                     }
-                    MetricCard(count: visibleDefectCount, titleKey: "dashboard.metrics.defects", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
+                    MetricCard(count: visibleDefectCount, titleKey: "dashboard.metrics.defects", icon: "⚠️", tint: FacilityTheme.red) {
                         demo.open(.defects)
                     }
-                    MetricCard(count: demo.offlineWorkStore.savedNotificationCount, titleKey: "dashboard.metrics.drafts", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
+                    MetricCard(count: demo.offlineWorkStore.savedNotificationCount, titleKey: "dashboard.metrics.drafts", icon: "💾", tint: FacilityTheme.orange) {
                         demo.open(.drafts)
                     }
-                    MetricCard(count: visibleTechnicalPlaceCount, titleKey: "dashboard.metrics.places", symbol: "square.split.2x2", tint: FacilityTheme.accent) {
+                    MetricCard(count: visibleTechnicalPlaceCount, titleKey: "dashboard.metrics.places", icon: "🏗️", tint: FacilityTheme.accent) {
                         demo.open(.technicalPlaces)
                     }
                 }
@@ -86,22 +86,22 @@ struct DashboardView: View {
                 .textCase(.uppercase)
 
             LazyVGrid(columns: actionColumns, spacing: 14) {
-                DashboardActionCard(titleKey: "dashboard.tile.scan", subtitleKey: "dashboard.tile.scan.subtitle", symbol: "qrcode.viewfinder", tint: FacilityTheme.accent) {
+                DashboardActionCard(titleKey: "dashboard.tile.scan", subtitleKey: "dashboard.tile.scan.subtitle", icon: "⌗", tint: FacilityTheme.accent) {
                     demo.open(.scan)
                 }
-                DashboardActionCard(titleKey: "dashboard.action.capture", subtitleKey: "dashboard.action.capture.subtitle", symbol: "square.and.pencil", tint: FacilityTheme.accent) {
+                DashboardActionCard(titleKey: "dashboard.action.capture", subtitleKey: "dashboard.action.capture.subtitle", icon: "✎", tint: FacilityTheme.accent) {
                     demo.openManualCapture()
                 }
-                DashboardActionCard(titleKey: "dashboard.action.drafts", subtitleKey: "dashboard.action.drafts.subtitle", symbol: "tray.and.arrow.down", tint: FacilityTheme.orange) {
+                DashboardActionCard(titleKey: "dashboard.action.drafts", subtitleKey: "dashboard.action.drafts.subtitle", icon: "↓", tint: FacilityTheme.accent) {
                     demo.open(.drafts)
                 }
-                DashboardActionCard(titleKey: "dashboard.tile.defects", subtitleKey: "dashboard.tile.defects.subtitle", symbol: "exclamationmark.triangle", tint: FacilityTheme.red) {
+                DashboardActionCard(titleKey: "dashboard.tile.defects", subtitleKey: "dashboard.tile.defects.subtitle", icon: "⚠", tint: FacilityTheme.accent) {
                     demo.open(.defects)
                 }
-                DashboardActionCard(titleKey: "dashboard.tile.places", subtitleKey: "dashboard.tile.places.subtitle", symbol: "square.split.2x2", tint: FacilityTheme.accent) {
+                DashboardActionCard(titleKey: "dashboard.tile.places", subtitleKey: "dashboard.tile.places.subtitle", icon: "🏗", tint: FacilityTheme.accent) {
                     demo.open(.technicalPlaces)
                 }
-                DashboardActionCard(titleKey: "dashboard.tile.forms", subtitleKey: "dashboard.tile.forms.subtitle", symbol: "doc.text", tint: FacilityTheme.blue) {
+                DashboardActionCard(titleKey: "dashboard.tile.forms", subtitleKey: "dashboard.tile.forms.subtitle", icon: "📄", tint: FacilityTheme.accent) {
                     demo.open(.forms)
                 }
             }
@@ -158,18 +158,18 @@ private struct SAPConnectionBadge: View {
 private struct DashboardActionCard: View {
     let titleKey: String
     let subtitleKey: String
-    let symbol: String
+    let icon: String
     let tint: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 13) {
-                Image(systemName: symbol)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(tint)
+                Text(icon)
+                    .font(.title3)
                     .frame(width: 44, height: 44)
                     .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .accessibilityHidden(true)
                 Text(LocalizedStringKey(titleKey))
                     .font(.headline)
                     .foregroundStyle(FacilityTheme.ink)
@@ -199,14 +199,12 @@ private struct NotificationActivityRow: View {
         }
     }
 
-    private var symbol: String {
+    private var templateIcon: String {
         switch notification.status {
-        case .attention: "exclamationmark.triangle.fill"
-        case .draft: "tray.and.arrow.down.fill"
-        case .pending: "arrow.triangle.2.circlepath"
-        case .complete: "checkmark.square.fill"
-        case .closedLocally: "checkmark.circle.fill"
-        case .open: "checklist"
+        case .attention: "⚠️"
+        case .draft, .pending: "💾"
+        case .complete, .closedLocally: "✅"
+        case .open: "📋"
         }
     }
 
@@ -218,11 +216,11 @@ private struct NotificationActivityRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 13) {
-            Image(systemName: symbol)
-                .foregroundStyle(tint)
-                .font(.title3.weight(.semibold))
+            Text(templateIcon)
+                .font(.title3)
                 .frame(width: 44, height: 44)
                 .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(notification.title)
                     .font(.headline)

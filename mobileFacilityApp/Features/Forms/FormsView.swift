@@ -104,22 +104,37 @@ struct FormsView: View {
 private struct FormCard: View {
     let form: FacilityForm
 
-    private var tint: Color {
-        switch form.tint {
-        case "red": FacilityTheme.red
-        case "orange": FacilityTheme.orange
-        case "green": FacilityTheme.accent
-        default: FacilityTheme.blue
+    private var icon: String {
+        switch form.id {
+        case "briefing": "🦺"
+        case "fire": "🔥"
+        case "electrical": "⚡"
+        default: "📄"
+        }
+    }
+
+    private var iconBackground: Color {
+        switch form.id {
+        case "briefing":
+            Color(red: 234 / 255, green: 243 / 255, blue: 1)
+        case "fire":
+            Color(red: 1, green: 236 / 255, blue: 235 / 255)
+        case "electrical":
+            Color(red: 1, green: 244 / 255, blue: 224 / 255)
+        default:
+            FacilityTheme.accentSoft
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Image(systemName: form.symbol)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(tint)
-                .frame(width: 50, height: 50)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            // The Forms cards use the native Unicode icon set from the MFM HTML
+            // reference rather than SF Symbols.
+            Text(icon)
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(iconBackground, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .accessibilityHidden(true)
             Text(LocalizedStringKey(form.titleKey))
                 .font(.headline)
                 .foregroundStyle(FacilityTheme.ink)

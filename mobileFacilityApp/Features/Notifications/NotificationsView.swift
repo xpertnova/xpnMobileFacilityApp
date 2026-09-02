@@ -229,8 +229,9 @@ struct NotificationsView: View {
 
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
+            Text("🔍")
+                .font(.body)
+                .accessibilityHidden(true)
             TextField("notifications.search", text: $query)
                 .textFieldStyle(.plain)
         }
@@ -760,10 +761,11 @@ private struct NotificationRow: View {
             HStack(alignment: .top, spacing: 16) {
                 let iconConfig = iconFor(status: notification.status)
                 
-                Image(systemName: iconConfig.name)
-                    .foregroundStyle(iconConfig.tint)
+                Text(iconConfig.icon)
+                    .font(.title3)
                     .frame(width: 44, height: 44)
                     .background(iconConfig.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
                 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("\(notification.title) · Meldung \(notification.id.replacingOccurrences(of: "M-", with: "47100000"))")
@@ -787,12 +789,7 @@ private struct NotificationRow: View {
                         
                         Spacer()
                         
-                        Text("KG 300")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.purple)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(Color.purple.opacity(0.12), in: Capsule())
+                        FacilityTemplateBadge(text: "KG 300", style: .costGroup)
                         
                         NotificationStatusBadges(notification: notification)
                         
@@ -814,16 +811,16 @@ private struct NotificationRow: View {
         .buttonStyle(.plain)
     }
     
-    private func iconFor(status: WorkStatus) -> (name: String, tint: Color) {
+    private func iconFor(status: WorkStatus) -> (icon: String, tint: Color) {
         switch status {
         case .attention:
-            return ("exclamationmark.triangle", FacilityTheme.red)
-        case .draft:
-            return ("floppy.disk", FacilityTheme.orange)
-        case .closedLocally:
-            return ("checkmark.circle", FacilityTheme.accent)
-        default:
-            return ("list.clipboard", FacilityTheme.blue)
+            return ("⚠", FacilityTheme.red)
+        case .draft, .pending:
+            return ("💾", FacilityTheme.orange)
+        case .complete, .closedLocally:
+            return ("✅", FacilityTheme.accent)
+        case .open:
+            return ("📋", FacilityTheme.blue)
         }
     }
 }
@@ -836,9 +833,28 @@ private struct NotificationStatusBadges: View {
     var body: some View {
         HStack(spacing: 6) {
             if notification.hasLocalDefect {
-                StatusPill(status: .attention)
+                FacilityTemplateBadge(
+                    localized: .init(WorkStatus.attention.titleKey),
+                    style: .attention
+                )
             }
-            StatusPill(status: notification.status)
+            FacilityTemplateBadge(
+                localized: .init(notification.status.titleKey),
+                style: style(for: notification.status)
+            )
+        }
+    }
+
+    private func style(for status: WorkStatus) -> FacilityTemplateBadgeStyle {
+        switch status {
+        case .open:
+            .open
+        case .attention:
+            .attention
+        case .draft, .pending:
+            .temporarilySaved
+        case .complete, .closedLocally:
+            .complete
         }
     }
 }
