@@ -1,0 +1,1347 @@
+import Observation
+import PencilKit
+import SwiftUI
+import UIKit
+
+struct BriefingWorkflowView: View {
+    let workspace: FacilityDemoViewModel
+    let onClose: () -> Void
+    @State private var viewModel: BriefingWorkflowViewModel
+
+    init(
+        workspace: FacilityDemoViewModel,
+        existingDraft: OfflineWorkItem? = nil,
+        onClose: @escaping () -> Void
+    ) {
+        self.workspace = workspace
+        self.onClose = onClose
+        _viewModel = State(
+            initialValue: BriefingWorkflowViewModel(
+                source: .make(for: workspace),
+                existingDraft: existingDraft
+            )
+        )
+    }
+
+    var body: some View {
+        @Bindable var viewModel = viewModel
+        BriefingFormScreen(
+            viewModel: viewModel,
+            workspace: workspace,
+            onClose: onClose
+        )
+        .background(FacilityTheme.canvas.ignoresSafeArea())
+        .fullScreenCover(item: $viewModel.pdfArtifact) { artifact in
+            BriefingPDFPreview(artifact: artifact) {
+                Task {
+                    if await viewModel.markPendingSynchronization(using: workspace.offlineWorkStore) {
+                        onClose()
+                    } else {
+                        viewModel.pdfArtifact = nil
+                    }
+                }
+            }
+        }
+        .overlay {
+            if viewModel.isRenderingPDF {
+                BriefingPDFRenderingOverlay()
+            }
+        }
+        .alert("forms.briefing.title", isPresented: Binding(
+            get: { viewModel.validationMessage != nil },
+            set: { if !$0 { viewModel.validationMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { viewModel.validationMessage = nil }
+        } message: {
+            Text(viewModel.validationMessage ?? "")
+        }
+    }
+}
+
+private struct BriefingFormScreen: View {
+    let viewModel: BriefingWorkflowViewModel
+    let workspace: FacilityDemoViewModel
+    let onClose: () -> Void
+    @State private var isShowingPartnerEditor = false
+    @State private var isShowingBusinessEntityEditor = false
+    @State private var isBuildingPickerPresented = false
+    @State private var isOptionalSectionsExpanded = false
+
+    var body: some View {
+        @Bindable var viewModel = viewModel
+        VStack(spacing: 0) {
+            header
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    if !viewModel.hasRequiredMasterData {
+                        unavailableBanner
+                    }
+                    briefingDataForm
+                    optionalSectionsCard
+                    checklist
+                    signatureFields
+                }
+                .padding(28)
+                .frame(maxWidth: 1280, alignment: .leading)
+            }
+        }
+        .background(FacilityTheme.canvas.ignoresSafeArea())
+        .safeAreaInset(edge: .bottom) {
+            actionBar
+        }
+        .overlay {
+            ZStack {
+                LegacyBriefingPartnerEditorOverlay(isPresented: isShowingBusinessEntityEditor) {
+                    BriefingBusinessEntitySelectionEditor(viewModel: viewModel) {
+                        isShowingBusinessEntityEditor = false
+                    }
+                }
+
+                LegacyBriefingPartnerEditorOverlay(isPresented: isShowingPartnerEditor) {
+                    BriefingPartnerSelectionEditor(viewModel: viewModel) {
+                        isShowingPartnerEditor = false
+                    }
+                }
+            }
+        }
+        .animation(.easeOut(duration: 0.16), value: isShowingPartnerEditor)
+        .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityEditor)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .leading, spacing: 7) {
+                Button(action: onClose) {
+                    Label("forms.title", systemImage: "chevron.left")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(FacilityTheme.blue)
+                .frame(minHeight: 44, alignment: .leading)
+                .padding(.leading, workspace.isSidebarVisible ? 0 : 50)
+
+                Text("briefing.form.title")
+                    .font(.system(size: 29, weight: .bold))
+                    .foregroundStyle(FacilityTheme.ink)
+
+                Text("briefing.form.subtitle")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 12)
+
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 18)
+        .background(FacilityTheme.surface)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var unavailableBanner: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(FacilityTheme.orange)
+                .frame(width: 42, height: 42)
+                .background(FacilityTheme.orange.opacity(0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("briefing.masterData.unavailable.title")
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+                Text("briefing.masterData.unavailable.message")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .background(FacilityTheme.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(FacilityTheme.orange.opacity(0.22))
+        }
+    }
+
+    private var briefingDataForm: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            briefingFieldPair {
+                briefingGridField("externalCompany.name", isRequired: true) {
+                    Button {
+                        isShowingPartnerEditor = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(viewModel.selectedPartner?.selectionLabel ?? String(localized: "briefing.partner.placeholder"))
+                                .foregroundStyle(viewModel.selectedPartner == nil ? .secondary : .primary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Image(systemName: "rectangle.on.rectangle")
+                                .foregroundStyle(FacilityTheme.blue)
+                        }
+                        .briefingFieldChrome(invalid: viewModel.isInvalid(.partner))
+                    }
+                    .buttonStyle(.plain)
+                }
+            } trailing: {
+                briefingGridField("safetyInstrucForm.instructor") {
+                    readOnlyFormValue(instructorDisplayValue)
+                }
+            }
+
+            briefingGridField("briefing.businessEntity", isRequired: true) {
+                Button {
+                    isShowingBusinessEntityEditor = true
+                } label: {
+                    valueHelpLabel(
+                        viewModel.selectedBusinessEntity?.businessEntityTitle,
+                        placeholder: "briefing.businessEntity.placeholder",
+                        isEnabled: !viewModel.businessEntities.isEmpty
+                    )
+                    .briefingFieldChrome(invalid: viewModel.isInvalid(.businessEntity))
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.businessEntities.isEmpty)
+            }
+
+            briefingFieldPair {
+                briefingGridField("briefing.dateTime", isRequired: true) {
+                    DatePicker(
+                        "briefing.dateTime",
+                        selection: Binding(get: { viewModel.startDate }, set: viewModel.setStartDate),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .briefingFieldChrome(invalid: false)
+                }
+            } trailing: {
+                briefingGridField("safetyInstrucForm.opertaionArea", isRequired: true) {
+                    Button {
+                        isBuildingPickerPresented = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(viewModel.selectedContext?.buildingTitle ?? String(localized: "briefing.building.placeholder"))
+                                .foregroundStyle(viewModel.selectedContext == nil ? .secondary : .primary)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(viewModel.selectedBusinessEntityID == nil ? .secondary : FacilityTheme.blue)
+                        }
+                        .briefingFieldChrome(invalid: viewModel.isInvalid(.building))
+                    }
+                    .buttonStyle(.plain)
+                    .popover(
+                        isPresented: $isBuildingPickerPresented,
+                        attachmentAnchor: .rect(.bounds),
+                        arrowEdge: .top
+                    ) {
+                        buildingPicker
+                            .presentationCompactAdaptation(.popover)
+                    }
+                    .disabled(viewModel.selectedBusinessEntityID == nil || viewModel.availableBuildings.isEmpty)
+                }
+            }
+
+            briefingGridField("safetyInstrucForm.workOrder", isRequired: true) {
+                TextField(
+                    "safetyInstrucForm.workOrder",
+                    text: Binding(get: { viewModel.taskDescription }, set: viewModel.setTaskDescription)
+                )
+                .briefingFieldChrome(invalid: viewModel.isInvalid(.taskDescription))
+            }
+
+            briefingFieldPair {
+                briefingGridField("safetyInstrucForm.instructedEmployee", isRequired: true) {
+                    TextField(
+                        "safetyInstrucForm.instructedEmployee",
+                        text: Binding(get: { viewModel.instructedPerson }, set: viewModel.setInstructedPerson)
+                    )
+                    .briefingFieldChrome(invalid: viewModel.isInvalid(.instructedPerson))
+                }
+            } trailing: {
+                briefingGridField("externalCompany.eMail", isRequired: true) {
+                    TextField(
+                        "externalCompany.eMail",
+                        text: Binding(get: { viewModel.partnerEmail }, set: { viewModel.partnerEmail = $0 })
+                    )
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .briefingFieldChrome(invalid: viewModel.isInvalid(.partnerEmail))
+                }
+            }
+
+            briefingGridField("externalCompany.address") {
+                readOnlyFormValue(viewModel.selectedPartner?.address ?? "")
+            }
+        }
+        .padding(20)
+        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.black.opacity(0.055), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.045), radius: 12, y: 5)
+    }
+
+    private var optionalSectionsCard: some View {
+        let sections = viewModel.template?.sections.filter(\.isOptional) ?? []
+        return Group {
+            if !sections.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("briefing.optionalSections.title")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            isOptionalSectionsExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            let selectedSections = sections.filter { viewModel.selectedOptionalSectionIDs.contains($0.id) }
+                            if selectedSections.isEmpty {
+                                Text("briefing.optionalSections.placeholder")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 8) {
+                                        ForEach(selectedSections) { section in
+                                            Text(section.title)
+                                                .lineLimit(1)
+                                                .font(.subheadline)
+                                                .foregroundStyle(FacilityTheme.ink)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                        }
+                                    }
+                                }
+                                .allowsHitTesting(false)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(FacilityTheme.blue)
+                                .rotationEffect(.degrees(isOptionalSectionsExpanded ? 180 : 0))
+                        }
+                        .padding(.horizontal, 16)
+                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                        .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(isOptionalSectionsExpanded ? FacilityTheme.accent.opacity(0.55) : Color.black.opacity(0.06))
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    if isOptionalSectionsExpanded {
+                        VStack(spacing: 0) {
+                            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                                let isSelected = viewModel.selectedOptionalSectionIDs.contains(section.id)
+                                Button {
+                                    viewModel.setOptionalSection(section.id, selected: !isSelected)
+                                } label: {
+                                    HStack(alignment: .top, spacing: 12) {
+                                        Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                                            .font(.title3)
+                                            .foregroundStyle(isSelected ? FacilityTheme.accent : .secondary)
+                                        Text(section.title)
+                                            .foregroundStyle(FacilityTheme.ink)
+                                            .multilineTextAlignment(.leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 13)
+                                    .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                if index < sections.count - 1 {
+                                    Divider().padding(.leading, 52)
+                                }
+                            }
+                        }
+                        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(Color.black.opacity(0.08))
+                        }
+                    }
+                }
+                .facilityCard(padding: 20)
+            }
+        }
+    }
+
+    private var buildingPicker: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "building.2")
+                    .foregroundStyle(FacilityTheme.accent)
+                Text("briefing.building.placeholder")
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+
+            Divider()
+
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(viewModel.availableBuildings) { context in
+                        let isSelected = context.buildingCode == viewModel.selectedBuildingCode
+
+                        Button {
+                            viewModel.selectBuilding(context.buildingCode)
+                            isBuildingPickerPresented = false
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(context.buildingTitle)
+                                        .font(.body.weight(.medium))
+                                        .foregroundStyle(FacilityTheme.ink)
+                                    if context.buildingTitle != context.buildingCode {
+                                        Text(context.buildingCode)
+                                            .font(.caption.monospaced())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                Spacer(minLength: 12)
+
+                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(isSelected ? FacilityTheme.accent : .secondary)
+                            }
+                            .padding(.horizontal, 18)
+                            .frame(minHeight: 58)
+                            .background(isSelected ? FacilityTheme.accentSoft : FacilityTheme.surface)
+                        }
+                        .buttonStyle(.plain)
+
+                        if context.id != viewModel.availableBuildings.last?.id {
+                            Divider().padding(.leading, 18)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 300)
+        }
+        .frame(width: 340)
+        .background(FacilityTheme.surface)
+    }
+
+    private var checklist: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle("briefing.checklist.title", subtitle: "briefing.checklist.subtitle")
+            VStack(spacing: 0) {
+                BriefingChecklistTableHeader()
+                ForEach(Array(viewModel.activeSections.enumerated()), id: \.element.id) { index, section in
+                    BriefingChecklistSectionHeader(number: index + 1, title: section.title)
+                    ForEach(section.items) { item in
+                        BriefingChecklistRow(
+                            item: item,
+                            number: viewModel.number(for: item, in: section),
+                            answerKey: viewModel.answerKeysByItemID[item.id],
+                            comment: viewModel.commentsByItemID[item.id] ?? "",
+                            setAnswer: { viewModel.answerKeysByItemID[item.id] = $0 },
+                            setComment: { viewModel.commentsByItemID[item.id] = $0 }
+                        )
+                    }
+                }
+            }
+            .background(FacilityTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(FacilityTheme.ink.opacity(0.12), lineWidth: 1)
+            }
+        }
+    }
+
+    private var signatureFields: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionTitle("briefing.signatures.title", subtitle: "briefing.signatures.subtitle")
+
+            VStack(spacing: 16) {
+                signatureField(for: .instructor)
+                signatureField(for: .instructedPerson)
+            }
+        }
+    }
+
+    private func signatureField(for role: BriefingSignatureRole) -> some View {
+        BriefingInlineSignatureField(
+            title: LocalizedStringKey(role.titleKey),
+            signatureData: role == .instructor ? viewModel.instructorSignature : viewModel.instructedPersonSignature,
+            isInvalid: viewModel.isInvalid(role == .instructor ? .instructorSignature : .instructedPersonSignature)
+        ) { data in
+            viewModel.setSignature(data, for: role)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: 14) {
+            Spacer(minLength: 12)
+
+            Button("briefing.closeBriefing") { viewModel.requestCompletion() }
+                .buttonStyle(.borderedProminent)
+                .tint(FacilityTheme.accent)
+                .disabled(viewModel.template == nil || viewModel.isRenderingPDF)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+
+    private func valueHelpLabel(
+        _ value: String?,
+        placeholder: String,
+        isEnabled: Bool
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(value ?? String(localized: String.LocalizationValue(placeholder)))
+                .foregroundStyle(value == nil ? .secondary : .primary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Image(systemName: "square.on.square")
+                .foregroundStyle(isEnabled ? FacilityTheme.blue : .secondary)
+        }
+    }
+
+    private var instructorDisplayValue: String {
+        viewModel.instructorName
+    }
+
+    private func briefingGridField<Content: View>(
+        _ title: LocalizedStringKey,
+        isRequired: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 0) {
+                Text(title)
+                if isRequired {
+                    Text(verbatim: " *")
+                        .foregroundStyle(.red)
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+
+            content()
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func briefingFieldPair<Leading: View, Trailing: View>(
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 16) {
+                leading()
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                trailing()
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+
+            VStack(alignment: .leading, spacing: 14) {
+                leading()
+                trailing()
+            }
+        }
+    }
+
+
+
+    private func readOnlyFormValue(_ value: String) -> some View {
+        Text(value)
+            .lineLimit(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .briefingReadOnlyValue()
+    }
+
+}
+
+/// The form keeps both signatures visible, while retaining the same
+/// PencilKit input behavior and clear action as the legacy briefing dialog.
+private struct BriefingInlineSignatureField: View {
+    let title: LocalizedStringKey
+    let signatureData: Data?
+    let isInvalid: Bool
+    let setSignature: (Data?) -> Void
+
+    @State private var drawing = PKDrawing()
+    @State private var showsStoredSignature: Bool
+
+    init(
+        title: LocalizedStringKey,
+        signatureData: Data?,
+        isInvalid: Bool,
+        setSignature: @escaping (Data?) -> Void
+    ) {
+        self.title = title
+        self.signatureData = signatureData
+        self.isInvalid = isInvalid
+        self.setSignature = setSignature
+        _showsStoredSignature = State(initialValue: signatureData != nil)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+
+                Spacer(minLength: 12)
+
+                Button("flEQ.briefing.signature.clear") {
+                    drawing = PKDrawing()
+                    showsStoredSignature = false
+                    setSignature(nil)
+                }
+                .buttonStyle(.plain)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(FacilityTheme.blue)
+                .frame(minHeight: 44)
+                .disabled(drawing.bounds.isEmpty && !showsStoredSignature)
+            }
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.white)
+
+                if showsStoredSignature,
+                   let signatureData,
+                   let image = UIImage(data: signatureData) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .padding(16)
+                } else {
+                    BriefingSignatureCanvas(drawing: $drawing)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    if drawing.bounds.isEmpty {
+                        Text("briefing.signature.placeholder")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+            .frame(minHeight: 160)
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isInvalid ? FacilityTheme.red : Color.black.opacity(0.12), lineWidth: isInvalid ? 2 : 1)
+            }
+        }
+        .padding(18)
+        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.black.opacity(0.055))
+        }
+        .onChange(of: drawing) { _, newDrawing in
+            guard !newDrawing.bounds.isEmpty else {
+                if !showsStoredSignature { setSignature(nil) }
+                return
+            }
+            showsStoredSignature = false
+            let image = newDrawing.image(
+                from: newDrawing.bounds.insetBy(dx: -12, dy: -12),
+                scale: 2
+            )
+            setSignature(image.pngData())
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct BriefingChecklistTableHeader: View {
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("briefing.checklist.number").frame(width: 70)
+            Text("briefing.checklist.type").frame(maxWidth: .infinity, alignment: .leading)
+            Text("notifications.detail.result.no").frame(width: 96)
+            Text("//").frame(width: 28)
+            Text("notifications.detail.result.yes").frame(width: 96)
+            Color.clear.frame(width: 54)
+            Text("briefing.checklist.info").frame(width: 64)
+            Text("briefing.checklist.comment").frame(width: 96)
+        }
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(FacilityTheme.ink)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 52)
+        .background(FacilityTheme.canvas)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+}
+
+private struct BriefingChecklistSectionHeader: View {
+    let number: Int
+    let title: String
+    
+    @State private var isExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            let parts = title.components(separatedBy: "\n")
+            let shortText = parts.first ?? title
+            let hasLongText = parts.count > 1
+            
+            if hasLongText {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text("\(number). \(shortText)")
+                            .font(.headline)
+                            .foregroundStyle(FacilityTheme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                        
+                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(FacilityTheme.blue)
+                            .padding(.top, 4)
+                    }
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text("\(number). \(shortText)")
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
+            }
+            
+            if isExpanded, hasLongText {
+                let longText = parts.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                Text(longText)
+                    .font(.subheadline)
+                    .lineSpacing(3)
+                    .foregroundStyle(FacilityTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(FacilityTheme.navy.opacity(0.06))
+        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct BriefingChecklistRow: View {
+    let item: SAPBriefingTemplateItem
+    let number: String
+    let answerKey: String?
+    let comment: String
+    let setAnswer: (String) -> Void
+    let setComment: (String) -> Void
+    @State private var referenceDocument: BriefingReferenceDocument?
+    @State private var isEditingComment = false
+    @State private var isExpanded = false
+
+    var body: some View {
+        tableRow
+            .background(FacilityTheme.surface)
+        .overlay(alignment: .bottom) { Divider() }
+        .fullScreenCover(item: $referenceDocument) { document in
+            BriefingReferenceDocumentPreview(document: document)
+        }
+        .sheet(isPresented: $isEditingComment) {
+            BriefingChecklistCommentEditor(initialComment: comment, onSave: setComment)
+        }
+    }
+
+    private var tableRow: some View {
+        HStack(alignment: .center, spacing: 0) {
+            Text(number)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 70)
+            VStack(alignment: .leading, spacing: 6) {
+                let parts = item.title.components(separatedBy: "\n")
+                let shortText = parts.first ?? item.title
+                let hasLongText = parts.count > 1
+                
+                if hasLongText {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(shortText)
+                                .font(.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                                .foregroundStyle(FacilityTheme.ink)
+                            
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(FacilityTheme.blue)
+                                .padding(.top, 4)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(shortText)
+                        .font(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .multilineTextAlignment(.leading)
+                        .foregroundStyle(FacilityTheme.ink)
+                }
+                
+                if isExpanded, hasLongText {
+                    // Combine the rest of the parts if there were multiple newlines
+                    let longText = parts.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+                    Text(longText)
+                        .font(.body)
+                        .lineSpacing(3)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 20)
+            answerControl
+                .frame(width: 220)
+            documentControl
+                .frame(width: 54, height: 48)
+            informationControl
+                .frame(width: 64, height: 48)
+            commentControl
+                .frame(width: 96, height: 72)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 88, alignment: .top)
+    }
+
+    private var answerControl: some View {
+        HStack(spacing: 4) {
+            ForEach(item.answerOptions.normalizedForLegacyYesNoControl) { option in
+                let isSelected = answerKey == option.key
+                let isYes = option.isAffirmativeBriefingAnswer
+                Button { setAnswer(option.key) } label: {
+                    Text(verbatim: option.localizedControlTitle)
+                        .lineLimit(1)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isSelected ? .white : .secondary)
+                        .frame(maxWidth: .infinity, minHeight: 32)
+                        .background(
+                            isSelected ? (isYes ? FacilityTheme.accent : FacilityTheme.red) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Color(uiColor: .systemGray6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityLabel("Answer")
+    }
+
+    @ViewBuilder private var documentControl: some View {
+        if let document = BriefingReferenceDocument(symbolID: item.documentSymbolID) {
+            Button { referenceDocument = document } label: {
+                Image(systemName: "paperclip")
+                    .font(.title2)
+                    .foregroundStyle(FacilityTheme.blue)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(document.title)
+        } else {
+            Color.clear
+        }
+    }
+
+    @ViewBuilder private var informationControl: some View {
+        if let assetName = BriefingSafetySymbol.assetName(for: item.warningSymbolID) {
+            Image(assetName)
+                .resizable()
+                .scaledToFit()
+                .padding(7)
+                .accessibilityLabel("briefing.checklist.safetySign")
+        } else if item.warningSymbolID != nil {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(FacilityTheme.orange)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            Color.clear
+        }
+    }
+
+    private var commentControl: some View {
+        Button { isEditingComment = true } label: {
+            Image(systemName: comment.isEmpty ? "pencil" : "pencil.circle.fill")
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(comment.isEmpty ? FacilityTheme.ink.opacity(0.75) : FacilityTheme.accent)
+                .frame(width: 60, height: 60)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("briefing.checklist.comment")
+        .accessibilityValue(
+            Text(LocalizedStringKey(comment.isEmpty ? "briefing.comment.none" : "briefing.comment.added"))
+        )
+    }
+}
+
+private struct BriefingChecklistCommentEditor: View {
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var comment: String
+
+    init(initialComment: String, onSave: @escaping (String) -> Void) {
+        self.onSave = onSave
+        _comment = State(initialValue: initialComment)
+    }
+
+    var body: some View {
+        NavigationStack {
+            TextEditor(text: $comment)
+                .padding(12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(FacilityTheme.canvas)
+                .padding(24)
+                .navigationTitle("briefing.checklist.comment")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("common.cancel", action: dismiss.callAsFunction)
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("briefing.comment.save") { onSave(comment); dismiss() }
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+private extension SAPBriefingAnswerOption {
+    var isNegativeBriefingAnswer: Bool {
+        Self.negativeValues.contains(normalizedBriefingAnswer)
+            || Self.negativeValues.contains(title.normalizedBriefingAnswer)
+    }
+
+    var isAffirmativeBriefingAnswer: Bool {
+        Self.affirmativeValues.contains(normalizedBriefingAnswer)
+            || Self.affirmativeValues.contains(title.normalizedBriefingAnswer)
+    }
+
+    /// The legacy briefing control is always a localized Nein/Ja pair. SAP's
+    /// key stays untouched so local drafts and generated PDFs retain the
+    /// source value rather than a translated display value.
+    var localizedControlTitle: String {
+        isNegativeBriefingAnswer
+            ? String(localized: "notifications.detail.result.no")
+            : String(localized: "notifications.detail.result.yes")
+    }
+
+    private var normalizedBriefingAnswer: String {
+        key.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+
+    private static let negativeValues = ["0", "FALSE", "N", "NEIN", "NO"]
+    private static let affirmativeValues = ["1", "TRUE", "J", "JA", "YES"]
+}
+
+private extension String {
+    var normalizedBriefingAnswer: String {
+        trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    }
+}
+
+private extension Array where Element == SAPBriefingAnswerOption {
+    /// SAP occasionally supplies only one side of the boolean pair. The
+    /// reference briefing app completes it for display and preserves supplied
+    /// keys wherever they are available.
+    var normalizedForLegacyYesNoControl: [SAPBriefingAnswerOption] {
+        [
+            first(where: \.isNegativeBriefingAnswer)
+                ?? SAPBriefingAnswerOption(key: "NO", title: "No"),
+            first(where: \.isAffirmativeBriefingAnswer)
+                ?? SAPBriefingAnswerOption(key: "YES", title: "Yes")
+        ]
+    }
+}
+
+private enum BriefingSafetySymbol {
+    static func assetName(for identifier: String?) -> String? {
+        switch identifier?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "I001": "BriefingSafety_I001"
+        case "M014": "BriefingSafety_M014"
+        case "P002": "BriefingSafety_P002"
+        case "W001": "BriefingSafety_W001"
+        case "W002": "BriefingSafety_W002"
+        case "W003": "BriefingSafety_W003"
+        case "X001": "BriefingSafety_X001"
+        default: nil
+        }
+    }
+}
+
+struct BriefingReferenceDocument: Identifiable {
+    let symbolID: String
+    let fileName: String
+    let title: String
+    var id: String { symbolID }
+
+    init?(symbolID: String?) {
+        guard let symbolID else { return nil }
+        switch symbolID {
+        case "1": self.init(symbolID: symbolID, fileName: "EinweisungsDienstleistungen", title: "Einweisungsformular nur für Dienstleistungen")
+        case "2": self.init(symbolID: symbolID, fileName: "SichOrdnEnerUmwelt", title: "Sicherheits-, Ordnungs-, Energie- und Umweltvorschriften")
+        case "3": self.init(symbolID: symbolID, fileName: "SicherheitsCheckliste", title: "Sicherheits-Checkliste")
+        case "4": self.init(symbolID: symbolID, fileName: "Matrix", title: "Matrix")
+        case "5": self.init(symbolID: symbolID, fileName: "GasFeuerLoeschanlage", title: "Gas-Feuerlöschanlage")
+        case "6": self.init(symbolID: symbolID, fileName: "Sicherheitsbereich", title: "Sicherheitsbereich")
+        case "7": self.init(symbolID: symbolID, fileName: "Qualifikationsnachweis", title: "Qualifikationsnachweis")
+        default: return nil
+        }
+    }
+
+    private init(symbolID: String, fileName: String, title: String) {
+        self.symbolID = symbolID
+        self.fileName = fileName
+        self.title = title
+    }
+}
+
+enum BriefingSignatureRole: String, Identifiable {
+    case instructor
+    case instructedPerson
+
+    var id: String { rawValue }
+    var titleKey: String {
+        self == .instructor
+            ? "flEQ.briefing.signature.instructor"
+            : "flEQ.briefing.signature.instructedPerson"
+    }
+}
+
+@MainActor
+@Observable
+final class BriefingWorkflowViewModel {
+    struct Context: Identifiable, Hashable {
+        let businessEntityID: String
+        let businessEntityTitle: String
+        let buildingCode: String
+        let buildingTitle: String
+        var id: String { "\(businessEntityID)|\(buildingCode)" }
+    }
+    struct Source {
+        let isDemo: Bool
+        let contexts: [Context]
+        let partners: [SAPBriefingPartner]
+        let templates: [SAPBriefingTemplate]
+        let workerProfile: SAPWorkerProfile?
+        let workerName: String
+        let offlineWorkStore: OfflineWorkStore
+
+        @MainActor static func make(for workspace: FacilityDemoViewModel) -> Self {
+            if workspace.isDemoMode { return .demo(workspace.offlineWorkStore, workerName: workspace.effectiveWorkerDisplayName) }
+            let contexts: [Context] = Dictionary(grouping: workspace.notificationFilterMetadata, by: { "\($0.businessEntityID)|\($0.buildingCode)" })
+                .values.compactMap { group in
+                    guard let first = group.first, !first.buildingCode.isEmpty else { return nil }
+                    return Context(businessEntityID: first.businessEntityID, businessEntityTitle: first.businessEntityID, buildingCode: first.buildingCode, buildingTitle: "\(first.buildingCode) · \(first.functionalLocationName)")
+                }.sorted { $0.id < $1.id }
+            return Self(isDemo: false, contexts: contexts, partners: workspace.sapDataStore.cachedData.briefingPartners, templates: workspace.sapDataStore.cachedData.briefingTemplates, workerProfile: workspace.sapDataStore.workerProfile, workerName: workspace.effectiveWorkerDisplayName, offlineWorkStore: workspace.offlineWorkStore)
+        }
+
+        private static func demo(_ store: OfflineWorkStore, workerName: String) -> Self {
+            let partner = SAPBriefingPartner(id: "1000001", client: "100", function: "ZT", name: "Westnetz Service GmbH", contactName: "Demo contact", searchTerm1: "Westnetz", searchTerm2: "", street: "Florianstraße", houseNumber: "15", postalCode: "44139", city: "Dortmund", country: "DE", email: "service@westnetz.example")
+            let template = SAPBriefingTemplate(id: "TFMINSTRUC|I3|A|TFMB_001", equipmentType: "TFMINSTRUC", plannerGroup: "I3", planType: "A", planNumber: "TFMB_001", sections: [
+                SAPBriefingTemplateSection(id: "header-general", title: "Allgemeine Sicherheit", isOptional: false, items: [
+                    SAPBriefingTemplateItem(id: "TFM10010", orderIdentifier: "0010", rowType: .position, title: "Zugangswege und Fluchtwege wurden erläutert.", answerOptions: [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")], documentSymbolID: nil, warningSymbolID: nil),
+                    SAPBriefingTemplateItem(id: "TFM10020", orderIdentifier: "0020", rowType: .position, title: "Persönliche Schutzausrüstung wurde geprüft.", answerOptions: [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")], documentSymbolID: "3", warningSymbolID: "W001")
+                ]),
+                SAPBriefingTemplateSection(id: "header-fire", title: "Brandschutz", isOptional: true, items: [
+                    SAPBriefingTemplateItem(id: "TFM10030", orderIdentifier: "0030", rowType: .position, title: "Standorte der Feuerlöscher wurden erläutert.", answerOptions: [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")], documentSymbolID: nil, warningSymbolID: "F001")
+                ])
+            ])
+            return Self(isDemo: true, contexts: [Context(businessEntityID: "DE-ESS-11248", businessEntityTitle: "DE-ESS-11248", buildingCode: "A", buildingTitle: "A · Baumstr. 25")], partners: [partner], templates: [template], workerProfile: nil, workerName: workerName, offlineWorkStore: store)
+        }
+    }
+
+    let source: Source
+    var selectedBusinessEntityID: String?
+    var selectedBuildingCode: String?
+    var selectedTemplateID: String = ""
+    var coordinator = ""
+    var instructedPerson = ""
+    var selectedPartnerID = ""
+    var partnerEmail = ""
+    var taskDescription = ""
+    var startDate = Calendar.current.startOfDay(for: .now)
+    var endDate = Calendar.current.startOfDay(for: .now)
+    var selectedOptionalSectionIDs: Set<String> = []
+    var answerKeysByItemID: [String: String] = [:]
+    var commentsByItemID: [String: String] = [:]
+    var instructorSignature: Data?
+    var instructedPersonSignature: Data?
+    var pdfArtifact: BriefingPDFArtifact?
+    var isRenderingPDF = false
+    var validationMessage: String?
+
+    var hasAttemptedCompletion = false
+
+    enum BriefingValidationIssue {
+        case instructedPerson
+        case businessEntity
+        case building
+        case partner
+        case partnerEmail
+        case taskDescription
+        case instructorSignature
+        case instructedPersonSignature
+    }
+
+    var validationIssues: Set<BriefingValidationIssue> {
+        var issues: Set<BriefingValidationIssue> = []
+        if selectedBusinessEntityID == nil { issues.insert(.businessEntity) }
+        if selectedContext == nil { issues.insert(.building) }
+        if selectedPartnerID.isEmpty { issues.insert(.partner) }
+        if instructedPerson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.instructedPerson) }
+        if taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.taskDescription) }
+        if !partnerEmail.contains("@") || !partnerEmail.contains(".") { issues.insert(.partnerEmail) }
+        if instructorSignature == nil { issues.insert(.instructorSignature) }
+        if instructedPersonSignature == nil { issues.insert(.instructedPersonSignature) }
+        return issues
+    }
+
+    func isInvalid(_ issue: BriefingValidationIssue) -> Bool {
+        hasAttemptedCompletion && validationIssues.contains(issue)
+    }
+
+    var partners: [SAPBriefingPartner]
+    var temporaryPartner: BriefingTemporaryPartner?
+    private var savedWorkID: UUID?
+
+    init(source: Source, existingDraft: OfflineWorkItem? = nil) {
+        self.source = source
+        partners = source.partners
+        selectedTemplateID = source.templates.first(where: \.isStandardBriefing)?.id ?? source.templates.first?.id ?? ""
+        guard let existingDraft, let draft = existingDraft.payload.briefing else { return }
+        savedWorkID = existingDraft.id
+        selectedBusinessEntityID = draft.businessEntityID
+        selectedBuildingCode = draft.buildingCode
+        selectedTemplateID = draft.templateID
+        coordinator = draft.coordinator
+        instructedPerson = draft.instructedPerson
+        selectedPartnerID = draft.selectedPartnerID
+        temporaryPartner = draft.temporaryPartner
+        if let temporaryPartner { partners.append(temporaryPartner.asSAPPartner) }
+        partnerEmail = draft.partnerEmail
+        taskDescription = draft.taskDescription
+        startDate = draft.startDate
+        endDate = draft.endDate
+        selectedOptionalSectionIDs = draft.selectedOptionalSectionIDs
+        answerKeysByItemID = draft.answerKeysByItemID
+        commentsByItemID = draft.commentsByItemID
+        instructorSignature = draft.instructorSignature
+        instructedPersonSignature = draft.instructedPersonSignature
+    }
+    var businessEntities: [Context] { Array(Dictionary(grouping: source.contexts, by: \.businessEntityID).values.compactMap(\.first)).sorted { $0.businessEntityTitle < $1.businessEntityTitle } }
+    var availableBuildings: [Context] { source.contexts.filter { $0.businessEntityID == selectedBusinessEntityID }.sorted { $0.buildingTitle < $1.buildingTitle } }
+    var selectedBusinessEntity: Context? { businessEntities.first { $0.businessEntityID == selectedBusinessEntityID } }
+    var selectedContext: Context? { source.contexts.first { $0.businessEntityID == selectedBusinessEntityID && $0.buildingCode == selectedBuildingCode } }
+    var template: SAPBriefingTemplate? { source.templates.first { $0.id == selectedTemplateID } }
+    var selectedPartner: SAPBriefingPartner? { partners.first { $0.id == selectedPartnerID } }
+    var instructorName: String { if let profile = source.workerProfile { return profile.displayName.isEmpty ? source.workerName : profile.displayName }; return source.workerName }
+    var organizationUnit: String { source.workerProfile?.organizationUnit ?? (source.isDemo ? "XPN Facility Management" : "") }
+    var hasRequiredMasterData: Bool { !source.contexts.isEmpty && template != nil }
+    var canSaveDraft: Bool { selectedContext != nil && template != nil }
+    var activeSections: [SAPBriefingTemplateSection] { (template?.sections ?? []).filter { !$0.isOptional || selectedOptionalSectionIDs.contains($0.id) } }
+
+    func selectBusinessEntity(_ value: String) {
+        let selection = value.isEmpty ? nil : value
+        guard selection != selectedBusinessEntityID else { return }
+        selectedBusinessEntityID = selection
+        selectedBuildingCode = nil
+    }
+    func selectBuilding(_ value: String) { selectedBuildingCode = value.isEmpty ? nil : value }
+    func setStartDate(_ value: Date) {
+        startDate = value
+        if endDate < value {
+            endDate = value
+        }
+    }
+    func setInstructedPerson(_ value: String) { instructedPerson = String(value.prefix(29)) }
+    func setTaskDescription(_ value: String) { taskDescription = String(value.prefix(300)) }
+    func selectPartner(_ value: String) {
+        selectedPartnerID = value
+        partnerEmail = selectedPartner?.email ?? ""
+    }
+    func addTemporaryPartner(_ partner: BriefingTemporaryPartner) {
+        temporaryPartner = partner
+        partners.append(partner.asSAPPartner)
+        partners.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        selectedPartnerID = partner.id
+        partnerEmail = partner.email
+    }
+    func setOptionalSection(_ id: String, selected: Bool) { if selected { selectedOptionalSectionIDs.insert(id) } else { selectedOptionalSectionIDs.remove(id) } }
+    func number(for item: SAPBriefingTemplateItem, in section: SAPBriefingTemplateSection) -> String { guard item.rowType != .subposition else { return "" }; let itemIndex = section.items.firstIndex(where: { $0.id == item.id }) ?? 0; let number = section.items.prefix(itemIndex + 1).filter { $0.rowType != .subposition }.count; let sectionNumber = activeSections.firstIndex(where: { $0.id == section.id }).map { $0 + 1 } ?? 1; return "\(sectionNumber).\(String(format: "%02d", number))" }
+    func setSignature(_ data: Data?, for role: BriefingSignatureRole) {
+        if role == .instructor {
+            instructorSignature = data
+        } else {
+            instructedPersonSignature = data
+        }
+    }
+    func requestCompletion() {
+        guard !isRenderingPDF, validate(), let payload = makePDFPayload() else { return }
+        isRenderingPDF = true
+        Task {
+            let artifact = await Task.detached(priority: .userInitiated) {
+                try? LegacyBriefingPDFRenderer().render(payload)
+            }.value
+            isRenderingPDF = false
+            guard let artifact else {
+                instructorSignature = nil
+                instructedPersonSignature = nil
+                validationMessage = String(localized: "briefing.pdf.createFailed")
+                return
+            }
+            pdfArtifact = artifact
+        }
+    }
+    func saveDraft(using store: OfflineWorkStore) async {
+        guard let payload = draftPayload() else {
+            validationMessage = String(localized: "briefing.draft.contextRequired")
+            return
+        }
+        do {
+            let item = try await store.saveBriefing(id: savedWorkID, payload: payload, status: .draft)
+            savedWorkID = item.id
+            validationMessage = String(localized: "briefing.draft.saved")
+        } catch {
+            validationMessage = String(localized: "briefing.draft.saveFailed")
+        }
+    }
+    func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
+        guard var payload = draftPayload() else { return false }
+        payload.completedAt = pdfArtifact?.createdAt ?? .now
+        do {
+            let item = try await store.saveBriefing(
+                id: savedWorkID,
+                payload: payload,
+                status: .pendingSynchronization
+            )
+            savedWorkID = item.id
+            return true
+        } catch {
+            validationMessage = String(localized: "briefing.completed.saveFailed")
+            return false
+        }
+    }
+
+    private func validate() -> Bool {
+        hasAttemptedCompletion = true
+        let isValid = validationIssues.isEmpty
+        if !isValid {
+            validationMessage = String(localized: "briefing.validation.message")
+        }
+        return isValid
+    }
+    private func draftPayload() -> BriefingDraftPayload? { guard let context = selectedContext, let template else { return nil }; return BriefingDraftPayload(templateID: template.id, businessEntityID: context.businessEntityID, businessEntityTitle: context.businessEntityTitle, buildingCode: context.buildingCode, buildingTitle: context.buildingTitle, coordinator: coordinator, instructedPerson: instructedPerson, selectedPartnerID: selectedPartnerID, temporaryPartner: temporaryPartner, partnerEmail: partnerEmail, taskDescription: taskDescription, startDate: startDate, endDate: endDate, selectedOptionalSectionIDs: selectedOptionalSectionIDs, answerKeysByItemID: answerKeysByItemID, commentsByItemID: commentsByItemID, instructorSignature: instructorSignature, instructedPersonSignature: instructedPersonSignature, completedAt: nil) }
+    private func makePDFPayload() -> BriefingPDFPayload? {
+        guard
+            let draft = draftPayload(),
+            let template,
+            let partner = selectedPartner,
+            let instructorSignature,
+            let instructedPersonSignature
+        else {
+            validationMessage = String(localized: "briefing.pdf.createFailed")
+            return nil
+        }
+
+        let renderedSections = activeSections.enumerated().map { sectionOffset, section in
+            let renderedItems = section.items.enumerated().map { itemOffset, item in
+                let number: String
+                if item.rowType == .subposition {
+                    number = ""
+                } else {
+                    let positionNumber = section.items
+                        .prefix(itemOffset + 1)
+                        .filter { $0.rowType != .subposition }
+                        .count
+                    number = "\(sectionOffset + 1).\(String(format: "%02d", positionNumber))"
+                }
+                return BriefingPDFPayload.Item(
+                    id: item.id,
+                    number: number,
+                    rowType: item.rowType,
+                    title: item.title,
+                    answer: pdfAnswer(for: item),
+                    comment: commentsByItemID[item.id] ?? "",
+                    warningSymbolID: item.warningSymbolID
+                )
+            }
+            return BriefingPDFPayload.Section(
+                id: section.id,
+                title: section.title,
+                number: sectionOffset + 1,
+                items: renderedItems
+            )
+        }
+
+        return BriefingPDFPayload(
+            planNumber: template.planNumber,
+            instructorName: instructorName,
+            organizationUnit: organizationUnit,
+            coordinator: draft.coordinator,
+            partnerName: partner.name,
+            partnerAddress: partner.address,
+            instructedPerson: draft.instructedPerson,
+            businessEntity: draft.businessEntityTitle,
+            workLocation: draft.buildingTitle,
+            taskDescription: draft.taskDescription,
+            startDate: draft.startDate,
+            endDate: draft.endDate,
+            completedAt: .now,
+            localeIdentifier: Locale.current.identifier,
+            instructorSignature: instructorSignature,
+            instructedPersonSignature: instructedPersonSignature,
+            sections: renderedSections
+        )
+    }
+
+    private func pdfAnswer(
+        for item: SAPBriefingTemplateItem
+    ) -> BriefingPDFPayload.Item.Answer {
+        guard
+            let selectedKey = answerKeysByItemID[item.id],
+            let option = item.answerOptions.first(where: { $0.key == selectedKey })
+        else {
+            return .notApplicable
+        }
+        if option.isAffirmativeBriefingAnswer {
+            return .yes(key: option.key, title: option.title)
+        }
+        return .no(key: option.key, title: option.title)
+    }
+}

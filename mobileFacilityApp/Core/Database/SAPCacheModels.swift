@@ -144,6 +144,98 @@ struct SAPWorkerProfile: Codable, Equatable, Sendable {
     }
 }
 
+/// Partner-company master data supplied by SAP table `T_0298` during the same
+/// worker-scoped refresh as notifications. The values remain SAP data rather
+/// than localized app copy, because a briefing must reproduce the source row.
+struct SAPBriefingPartner: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let client: String
+    let function: String
+    let name: String
+    let contactName: String
+    let searchTerm1: String
+    let searchTerm2: String
+    let street: String
+    let houseNumber: String
+    let postalCode: String
+    let city: String
+    let country: String
+    let email: String
+
+    var address: String {
+        let streetLine = [street, houseNumber]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        let cityLine = [postalCode, city]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return [streetLine, cityLine, country]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
+    var selectionLabel: String {
+        [name, contactName, id]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+}
+
+/// The SAP row type found in `T_0267.FELDWERT.T_PLPOD`. It determines how a
+/// briefing row is numbered, not how its SAP-provided text is displayed.
+enum SAPBriefingTemplateRowType: String, Codable, Equatable, Sendable {
+    case header = "HEADER"
+    case position = "POSITION"
+    case subposition = "UNTERPOSITION"
+
+    init(sapValue: String) {
+        self = Self(rawValue: sapValue.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()) ?? .position
+    }
+}
+
+struct SAPBriefingAnswerOption: Codable, Equatable, Identifiable, Sendable {
+    let key: String
+    let title: String
+
+    var id: String { key }
+}
+
+struct SAPBriefingTemplateItem: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let orderIdentifier: String
+    let rowType: SAPBriefingTemplateRowType
+    /// A dynamic SAP row title. Do not localize or rewrite it in the UI.
+    let title: String
+    let answerOptions: [SAPBriefingAnswerOption]
+    let documentSymbolID: String?
+    let warningSymbolID: String?
+}
+
+struct SAPBriefingTemplateSection: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    /// A dynamic SAP section title. Do not localize or rewrite it in the UI.
+    let title: String
+    let isOptional: Bool
+    let items: [SAPBriefingTemplateItem]
+}
+
+/// The complete briefing plan decoded from a `T_0267` row and retained in the
+/// local SAP cache. `EQART` and `PLNNR` identify the standard briefing plan
+/// (`TFMINSTRUC` / `TFMB_001`) used by the legacy app.
+struct SAPBriefingTemplate: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let equipmentType: String
+    let plannerGroup: String
+    let planType: String
+    let planNumber: String
+    let sections: [SAPBriefingTemplateSection]
+
+    var isStandardBriefing: Bool {
+        equipmentType.caseInsensitiveCompare("TFMINSTRUC") == .orderedSame
+            && planNumber.caseInsensitiveCompare("TFMB_001") == .orderedSame
+    }
+}
+
 struct SAPCacheMetadata: Codable, Equatable, Sendable {
     let sapWorkerID: String
     let lastSuccessfulRefreshAt: Date
@@ -153,14 +245,52 @@ struct SAPReadSnapshot: Equatable, Sendable {
     let sapWorkerID: String
     let notifications: [SAPNotificationSummary]
     let workerProfile: SAPWorkerProfile?
+    let briefingPartners: [SAPBriefingPartner]
+    let briefingTemplates: [SAPBriefingTemplate]
+
+    init(
+        sapWorkerID: String,
+        notifications: [SAPNotificationSummary],
+        workerProfile: SAPWorkerProfile?,
+        briefingPartners: [SAPBriefingPartner] = [],
+        briefingTemplates: [SAPBriefingTemplate] = []
+    ) {
+        self.sapWorkerID = sapWorkerID
+        self.notifications = notifications
+        self.workerProfile = workerProfile
+        self.briefingPartners = briefingPartners
+        self.briefingTemplates = briefingTemplates
+    }
 }
 
 struct SAPCachedData: Equatable, Sendable {
     let notifications: [SAPNotificationSummary]
     let workerProfile: SAPWorkerProfile?
+    let briefingPartners: [SAPBriefingPartner]
+    let briefingTemplates: [SAPBriefingTemplate]
     let metadata: SAPCacheMetadata?
 
-    static let empty = SAPCachedData(notifications: [], workerProfile: nil, metadata: nil)
+    static let empty = SAPCachedData(
+        notifications: [],
+        workerProfile: nil,
+        briefingPartners: [],
+        briefingTemplates: [],
+        metadata: nil
+    )
+
+    init(
+        notifications: [SAPNotificationSummary],
+        workerProfile: SAPWorkerProfile?,
+        briefingPartners: [SAPBriefingPartner] = [],
+        briefingTemplates: [SAPBriefingTemplate] = [],
+        metadata: SAPCacheMetadata?
+    ) {
+        self.notifications = notifications
+        self.workerProfile = workerProfile
+        self.briefingPartners = briefingPartners
+        self.briefingTemplates = briefingTemplates
+        self.metadata = metadata
+    }
 }
 
 struct SAPNotificationPage: Equatable, Sendable {
@@ -361,7 +491,13 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
 
     func load(for localWorkerID: String) async throws -> SAPCachedData {
         guard let data = dataByWorkerID[localWorkerID] else { return .empty }
-        return SAPCachedData(notifications: [], workerProfile: data.workerProfile, metadata: data.metadata)
+        return SAPCachedData(
+            notifications: [],
+            workerProfile: data.workerProfile,
+            briefingPartners: data.briefingPartners,
+            briefingTemplates: data.briefingTemplates,
+            metadata: data.metadata
+        )
     }
 
     func loadNotifications(
@@ -405,13 +541,21 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
         let data = SAPCachedData(
             notifications: snapshot.notifications,
             workerProfile: snapshot.workerProfile,
+            briefingPartners: snapshot.briefingPartners,
+            briefingTemplates: snapshot.briefingTemplates,
             metadata: SAPCacheMetadata(
                 sapWorkerID: snapshot.sapWorkerID,
                 lastSuccessfulRefreshAt: refreshedAt
             )
         )
         dataByWorkerID[localWorkerID] = data
-        return SAPCachedData(notifications: [], workerProfile: data.workerProfile, metadata: data.metadata)
+        return SAPCachedData(
+            notifications: [],
+            workerProfile: data.workerProfile,
+            briefingPartners: data.briefingPartners,
+            briefingTemplates: data.briefingTemplates,
+            metadata: data.metadata
+        )
     }
 }
 
