@@ -47,14 +47,6 @@ struct BriefingWorkflowView: View {
                 BriefingPDFRenderingOverlay()
             }
         }
-        .alert("forms.briefing.title", isPresented: Binding(
-            get: { viewModel.validationMessage != nil },
-            set: { if !$0 { viewModel.validationMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { viewModel.validationMessage = nil }
-        } message: {
-            Text(viewModel.validationMessage ?? "")
-        }
     }
 }
 
@@ -72,18 +64,30 @@ private struct BriefingFormScreen: View {
         VStack(spacing: 0) {
             header
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if !viewModel.hasRequiredMasterData {
-                        unavailableBanner
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if !viewModel.hasRequiredMasterData {
+                            unavailableBanner
+                        }
+                        briefingDataForm
+                        optionalSectionsCard
+                        checklist
+                        signatureFields
                     }
-                    briefingDataForm
-                    optionalSectionsCard
-                    checklist
-                    signatureFields
+                    .padding(28)
+                    .frame(maxWidth: 1280, alignment: .leading)
                 }
-                .padding(28)
-                .frame(maxWidth: 1280, alignment: .leading)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: viewModel.validationMessage) { _, message in
+                    guard message == nil, let issue = viewModel.firstValidationIssue else { return }
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 180_000_000)
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(issue, anchor: .center)
+                        }
+                    }
+                }
             }
         }
         .background(FacilityTheme.canvas.ignoresSafeArea())
@@ -107,6 +111,14 @@ private struct BriefingFormScreen: View {
         }
         .animation(.easeOut(duration: 0.16), value: isShowingPartnerEditor)
         .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityEditor)
+        .alert("forms.briefing.title", isPresented: Binding(
+            get: { viewModel.validationMessage != nil },
+            set: { if !$0 { viewModel.validationMessage = nil } }
+        )) {
+            Button("common.ok", role: .cancel) { viewModel.validationMessage = nil }
+        } message: {
+            Text(viewModel.validationMessage ?? "")
+        }
     }
 
     private var header: some View {
@@ -184,6 +196,7 @@ private struct BriefingFormScreen: View {
                         .briefingFieldChrome(invalid: viewModel.isInvalid(.partner))
                     }
                     .buttonStyle(.plain)
+                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.partner)
                 }
             } trailing: {
                 briefingGridField("safetyInstrucForm.instructor") {
@@ -204,6 +217,7 @@ private struct BriefingFormScreen: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(viewModel.businessEntities.isEmpty)
+                .id(BriefingWorkflowViewModel.BriefingValidationIssue.businessEntity)
             }
 
             briefingFieldPair {
@@ -243,6 +257,7 @@ private struct BriefingFormScreen: View {
                             .presentationCompactAdaptation(.popover)
                     }
                     .disabled(viewModel.selectedBusinessEntityID == nil || viewModel.availableBuildings.isEmpty)
+                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.building)
                 }
             }
 
@@ -252,6 +267,7 @@ private struct BriefingFormScreen: View {
                     text: Binding(get: { viewModel.taskDescription }, set: viewModel.setTaskDescription)
                 )
                 .briefingFieldChrome(invalid: viewModel.isInvalid(.taskDescription))
+                .id(BriefingWorkflowViewModel.BriefingValidationIssue.taskDescription)
             }
 
             briefingFieldPair {
@@ -261,6 +277,7 @@ private struct BriefingFormScreen: View {
                         text: Binding(get: { viewModel.instructedPerson }, set: viewModel.setInstructedPerson)
                     )
                     .briefingFieldChrome(invalid: viewModel.isInvalid(.instructedPerson))
+                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.instructedPerson)
                 }
             } trailing: {
                 briefingGridField("externalCompany.eMail", isRequired: true) {
@@ -272,6 +289,7 @@ private struct BriefingFormScreen: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .briefingFieldChrome(invalid: viewModel.isInvalid(.partnerEmail))
+                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.partnerEmail)
                 }
             }
 
@@ -481,12 +499,22 @@ private struct BriefingFormScreen: View {
     private func signatureField(for role: BriefingSignatureRole) -> some View {
         BriefingInlineSignatureField(
             title: LocalizedStringKey(role.titleKey),
-            signatureData: role == .instructor ? viewModel.instructorSignature : viewModel.instructedPersonSignature,
+            signatureData: Binding(
+                get: {
+                    role == .instructor
+                        ? viewModel.instructorSignature
+                        : viewModel.instructedPersonSignature
+                },
+                set: { viewModel.setSignature($0, for: role) }
+            ),
             isInvalid: viewModel.isInvalid(role == .instructor ? .instructorSignature : .instructedPersonSignature)
-        ) { data in
-            viewModel.setSignature(data, for: role)
-        }
+        )
         .frame(maxWidth: .infinity)
+        .id(
+            role == .instructor
+                ? BriefingWorkflowViewModel.BriefingValidationIssue.instructorSignature
+                : BriefingWorkflowViewModel.BriefingValidationIssue.instructedPersonSignature
+        )
     }
 
     private var actionBar: some View {
@@ -578,26 +606,23 @@ private struct BriefingFormScreen: View {
 
 /// The form keeps both signatures visible, while retaining the same
 /// PencilKit input behavior and clear action as the legacy briefing dialog.
-private struct BriefingInlineSignatureField: View {
+struct BriefingInlineSignatureField: View {
     let title: LocalizedStringKey
-    let signatureData: Data?
+    @Binding private var signatureData: Data?
     let isInvalid: Bool
-    let setSignature: (Data?) -> Void
 
     @State private var drawing = PKDrawing()
     @State private var showsStoredSignature: Bool
 
     init(
         title: LocalizedStringKey,
-        signatureData: Data?,
-        isInvalid: Bool,
-        setSignature: @escaping (Data?) -> Void
+        signatureData: Binding<Data?>,
+        isInvalid: Bool
     ) {
         self.title = title
-        self.signatureData = signatureData
+        _signatureData = signatureData
         self.isInvalid = isInvalid
-        self.setSignature = setSignature
-        _showsStoredSignature = State(initialValue: signatureData != nil)
+        _showsStoredSignature = State(initialValue: signatureData.wrappedValue != nil)
     }
 
     var body: some View {
@@ -612,7 +637,7 @@ private struct BriefingInlineSignatureField: View {
                 Button("flEQ.briefing.signature.clear") {
                     drawing = PKDrawing()
                     showsStoredSignature = false
-                    setSignature(nil)
+                    signatureData = nil
                 }
                 .buttonStyle(.plain)
                 .font(.subheadline.weight(.semibold))
@@ -647,7 +672,10 @@ private struct BriefingInlineSignatureField: View {
             .frame(minHeight: 160)
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isInvalid ? FacilityTheme.red : Color.black.opacity(0.12), lineWidth: isInvalid ? 2 : 1)
+                    .stroke(
+                        isInvalid && signatureData == nil ? FacilityTheme.red : Color.black.opacity(0.12),
+                        lineWidth: isInvalid && signatureData == nil ? 2 : 1
+                    )
             }
         }
         .padding(18)
@@ -656,19 +684,30 @@ private struct BriefingInlineSignatureField: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.black.opacity(0.055))
         }
+        // UIKit delegates only update local drawing state. Persist from SwiftUI's
+        // state-change transaction so validation observes the same signature the
+        // worker sees on screen.
         .onChange(of: drawing) { _, newDrawing in
-            guard !newDrawing.bounds.isEmpty else {
-                if !showsStoredSignature { setSignature(nil) }
-                return
-            }
-            showsStoredSignature = false
-            let image = newDrawing.image(
-                from: newDrawing.bounds.insetBy(dx: -12, dy: -12),
-                scale: 2
-            )
-            setSignature(image.pngData())
+            persistSignature(from: newDrawing)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func persistSignature(from drawing: PKDrawing) {
+        guard !drawing.bounds.isEmpty else {
+            if !showsStoredSignature {
+                signatureData = nil
+            }
+            return
+        }
+
+        showsStoredSignature = false
+        let image = drawing.image(
+            from: drawing.bounds.insetBy(dx: -12, dy: -12),
+            scale: 2
+        )
+        guard let data = image.pngData(), !data.isEmpty else { return }
+        signatureData = data
     }
 }
 
@@ -1132,6 +1171,20 @@ final class BriefingWorkflowViewModel {
         return issues
     }
 
+    var firstValidationIssue: BriefingValidationIssue? {
+        let ordered: [BriefingValidationIssue] = [
+            .partner,
+            .businessEntity,
+            .building,
+            .taskDescription,
+            .instructedPerson,
+            .partnerEmail,
+            .instructorSignature,
+            .instructedPersonSignature
+        ]
+        return ordered.first { validationIssues.contains($0) }
+    }
+
     func isInvalid(_ issue: BriefingValidationIssue) -> Bool {
         hasAttemptedCompletion && validationIssues.contains(issue)
     }
@@ -1212,6 +1265,16 @@ final class BriefingWorkflowViewModel {
         }
     }
     func requestCompletion() {
+        guard !isRenderingPDF else { return }
+        Task { @MainActor [weak self] in
+            // Allow the final PencilKit stroke to flow through the signature
+            // field's SwiftUI `onChange` before validating this briefing.
+            await Task.yield()
+            self?.finishCompletionRequest()
+        }
+    }
+
+    private func finishCompletionRequest() {
         guard !isRenderingPDF, validate(), let payload = makePDFPayload() else { return }
         isRenderingPDF = true
         Task {

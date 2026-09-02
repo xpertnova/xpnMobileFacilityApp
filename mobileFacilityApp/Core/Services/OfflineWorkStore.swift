@@ -49,11 +49,15 @@ final class OfflineWorkStore {
     }
 
     var localWorkCount: Int {
-        localWorkNotificationItems.count + briefingItems.count
+        localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
     }
 
     var briefingItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .briefing }
+    }
+
+    var electricalSafetyItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .electricalSafety }
     }
 
     /// A defect is a failed checklist result from a notification that was
@@ -141,6 +145,28 @@ final class OfflineWorkStore {
             type: .briefing,
             status: status,
             payload: .briefing(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func saveElectricalSafety(
+        id: UUID? = nil,
+        payload: ElectricalSafetyDraftPayload,
+        status: OfflineWorkStatus = .draft
+    ) async throws -> OfflineWorkItem {
+        let existing = id.flatMap { requestedID in items.first { $0.id == requestedID } }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .electricalSafety,
+            status: status,
+            payload: .electricalSafety(payload),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             syncError: nil

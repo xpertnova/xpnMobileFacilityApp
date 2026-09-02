@@ -606,6 +606,13 @@ struct BriefingSignatureCanvas: UIViewRepresentable {
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
             drawing.wrappedValue = canvasView.drawing
         }
+
+        func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
+            // PencilKit can batch the last drawing-change callback. Updating the
+            // local binding here guarantees that SwiftUI persists the completed
+            // stroke before a worker can close the form.
+            drawing.wrappedValue = canvasView.drawing
+        }
     }
 }
 
