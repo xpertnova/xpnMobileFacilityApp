@@ -3,7 +3,7 @@ import SwiftUI
 struct FormsView: View {
     let demo: FacilityDemoViewModel
     @State private var selectedPreviewForm: FacilityForm?
-    @State private var selectedBriefingForm: FacilityForm?
+    @State private var selectedActiveForm: FacilityForm?
 
     private let columns = [
         GridItem(.flexible(minimum: 240), spacing: 15),
@@ -13,12 +13,8 @@ struct FormsView: View {
 
     var body: some View {
         Group {
-            if selectedBriefingForm != nil {
-                BriefingWorkflowView(
-                    workspace: demo,
-                    existingDraft: demo.offlineWorkStore.item(id: demo.selectedBriefingDraftID),
-                    onClose: closeBriefing
-                )
+            if let selectedActiveForm {
+                activeWorkflow(for: selectedActiveForm)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             } else {
                 ScrollView {
@@ -29,8 +25,9 @@ struct FormsView: View {
                             ForEach(demo.forms) { form in
                                 Button {
                                     demo.selectedBriefingDraftID = nil
-                                    if form.id == "briefing" {
-                                        selectedBriefingForm = form
+                                    demo.selectedElectricalSafetyDraftID = nil
+                                    if form.id == "briefing" || (!demo.isDemoMode && (form.id == "fire" || form.id == "electrical")) {
+                                        selectedActiveForm = form
                                     } else {
                                         selectedPreviewForm = form
                                     }
@@ -39,6 +36,7 @@ struct FormsView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityHint("forms.openPreview")
+                                .disabled(demo.isDemoMode && (form.id == "fire" || form.id == "electrical"))
                             }
                         }
                     }
@@ -47,24 +45,48 @@ struct FormsView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.28), value: selectedBriefingForm?.id)
+        .animation(.easeInOut(duration: 0.28), value: selectedActiveForm?.id)
         .sheet(item: $selectedPreviewForm) { form in
             FormWorkflowPreview(form: form)
                 .presentationDetents([.medium, .large])
         }
         .onAppear {
-            guard
-                let draftID = demo.selectedBriefingDraftID,
-                demo.offlineWorkStore.item(id: draftID)?.payload.briefing != nil,
-                let briefing = demo.forms.first(where: { $0.id == "briefing" })
-            else { return }
-            selectedBriefingForm = briefing
+            if let draftID = demo.selectedElectricalSafetyDraftID,
+               demo.offlineWorkStore.item(id: draftID)?.payload.electricalSafety != nil {
+                selectedActiveForm = demo.forms.first(where: { $0.id == "electrical" })
+            } else if let draftID = demo.selectedBriefingDraftID,
+                      demo.offlineWorkStore.item(id: draftID)?.payload.briefing != nil {
+                selectedActiveForm = demo.forms.first(where: { $0.id == "briefing" })
+            }
         }
     }
 
-    private func closeBriefing() {
+    @ViewBuilder
+    private func activeWorkflow(for form: FacilityForm) -> some View {
+        switch form.id {
+        case "briefing":
+            BriefingWorkflowView(
+                workspace: demo,
+                existingDraft: demo.offlineWorkStore.item(id: demo.selectedBriefingDraftID),
+                onClose: closeActiveForm
+            )
+        case "fire":
+            FirePermitWorkflowView(workspace: demo, onClose: closeActiveForm)
+        case "electrical":
+            ElectricalSafetyWorkflowView(
+                workspace: demo,
+                existingDraft: demo.offlineWorkStore.item(id: demo.selectedElectricalSafetyDraftID),
+                onClose: closeActiveForm
+            )
+        default:
+            EmptyView()
+        }
+    }
+
+    private func closeActiveForm() {
         demo.selectedBriefingDraftID = nil
-        selectedBriefingForm = nil
+        demo.selectedElectricalSafetyDraftID = nil
+        selectedActiveForm = nil
     }
 }
 

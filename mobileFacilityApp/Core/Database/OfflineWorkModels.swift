@@ -4,6 +4,7 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case manualCapture
     case notificationReview
     case briefing
+    case electricalSafety
 }
 
 enum OfflineWorkStatus: String, Codable, CaseIterable, Sendable {
@@ -133,6 +134,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case manualCapture(ManualCaptureDraftPayload)
     case notificationReview(NotificationReviewDraftPayload)
     case briefing(BriefingDraftPayload)
+    case electricalSafety(ElectricalSafetyDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -146,6 +148,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var briefing: BriefingDraftPayload? {
         guard case let .briefing(payload) = self else { return nil }
+        return payload
+    }
+
+    var electricalSafety: ElectricalSafetyDraftPayload? {
+        guard case let .electricalSafety(payload) = self else { return nil }
         return payload
     }
 }

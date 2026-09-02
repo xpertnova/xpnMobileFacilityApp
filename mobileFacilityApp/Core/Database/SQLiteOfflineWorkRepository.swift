@@ -96,6 +96,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 payload = .notificationReview(try decoder.decode(NotificationReviewDraftPayload.self, from: data))
             case .briefing:
                 payload = .briefing(try decoder.decode(BriefingDraftPayload.self, from: data))
+            case .electricalSafety:
+                payload = .electricalSafety(try decoder.decode(ElectricalSafetyDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -111,6 +113,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         case let (.notificationReview, .notificationReview(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         case let (.briefing, .briefing(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.electricalSafety, .electricalSafety(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil

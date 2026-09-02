@@ -416,11 +416,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
             return CGRect(x: x, y: y, width: width, height: height)
         }
         rects.forEach { drawCell($0, context: context) }
-        drawText(
-            item.number,
-            in: rects[0].insetBy(dx: 1, dy: 4),
-            font: UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-        )
+        drawChecklistNumber(item.number, in: rects[0].insetBy(dx: 3, dy: 4))
         drawText(item.title, in: rects[1].insetBy(dx: 4, dy: 4), font: Layout.bodyFont)
         drawAnswer(
             item.answer,
@@ -537,7 +533,28 @@ struct LegacyBriefingPDFRenderer: Sendable {
     }
 
     private var checklistColumnWidths: [CGFloat] {
-        [contentWidth * 0.05, contentWidth * 0.50, contentWidth * 0.30, contentWidth * 0.15]
+        // Section/item identifiers can be multi-digit (for example, 12.08).
+        // Keep their column wide enough to preserve a single-line identifier.
+        [contentWidth * 0.08, contentWidth * 0.47, contentWidth * 0.30, contentWidth * 0.15]
+    }
+
+    private func drawChecklistNumber(_ number: String, in rect: CGRect) {
+        let baseFont = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+        let naturalWidth = (number as NSString).size(withAttributes: [.font: baseFont]).width
+        let fittedSize = naturalWidth > rect.width
+            ? max(7, baseFont.pointSize * rect.width / naturalWidth)
+            : baseFont.pointSize
+        let font = UIFont.monospacedDigitSystemFont(ofSize: fittedSize, weight: .regular)
+
+        // `draw(in:withAttributes:)` is intentionally single-line. A checklist
+        // identifier must never break between its section and item components.
+        (number as NSString).draw(
+            in: rect,
+            withAttributes: [
+                .font: font,
+                .foregroundColor: UIColor.black
+            ]
+        )
     }
 
     private var contentWidth: CGFloat {

@@ -32,11 +32,14 @@ struct DraftsView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 240)
                 case .loaded:
-                    if demo.offlineWorkStore.localWorkNotificationItems.isEmpty && demo.offlineWorkStore.briefingItems.isEmpty {
+                    if demo.offlineWorkStore.localWorkNotificationItems.isEmpty
+                        && demo.offlineWorkStore.briefingItems.isEmpty
+                        && demo.offlineWorkStore.electricalSafetyItems.isEmpty {
                         emptyState
                     } else {
                         savedNotificationList
                         savedBriefingList
+                        savedElectricalSafetyList
                     }
                 }
 
@@ -112,6 +115,50 @@ struct DraftsView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                             Text(briefing.taskDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 6) {
+                            OfflineStatusPill(status: item.status)
+                            Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(17)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .facilityCard(padding: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedElectricalSafetyList: some View {
+        ForEach(demo.offlineWorkStore.electricalSafetyItems) { item in
+            if let electrical = item.payload.electricalSafety {
+                Button {
+                    demo.openElectricalSafetyDraft(item.id)
+                } label: {
+                    HStack(spacing: 15) {
+                        Image(systemName: "bolt.fill")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(FacilityTheme.orange)
+                            .frame(width: 44, height: 44)
+                            .background(FacilityTheme.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("forms.electrical.title")
+                                .font(.headline)
+                                .foregroundStyle(FacilityTheme.ink)
+                            if let context = electrical.context {
+                                Text("\(context.businessEntityTitle) · \(context.buildingTitle)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(electrical.workDescription)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
