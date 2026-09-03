@@ -47,7 +47,7 @@ struct PageHeader: View {
 struct MetricCard: View {
     let count: Int
     let titleKey: String
-    let symbol: String
+    let icon: String
     let tint: Color
     let action: () -> Void
 
@@ -64,12 +64,17 @@ struct MetricCard: View {
                         .multilineTextAlignment(.leading)
                 }
                 Spacer(minLength: 6)
-                Image(systemName: symbol)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(tint)
+                // Keep the visual language of the MFM HTML reference. Its dashboard
+                // metrics intentionally use native Unicode icons rather than SF Symbols.
+                Text(icon)
+                    .font(.title3)
                     .frame(width: 42, height: 42)
                     .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .accessibilityHidden(true)
             }
+            // The localized labels have different line counts. Keep every dashboard
+            // metric button aligned to the reference card height in both languages.
+            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
             .facilityCard()
         }
         .buttonStyle(.plain)
@@ -118,5 +123,59 @@ struct EmptyDemoState: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 56)
         .facilityCard()
+    }
+}
+
+/// Compact status chips shared by list rows that follow the MFM HTML template.
+enum FacilityTemplateBadgeStyle {
+    case costGroup
+    case open
+    case attention
+    case temporarilySaved
+    case complete
+
+    var foreground: Color {
+        switch self {
+        case .costGroup: Color(red: 94 / 255, green: 92 / 255, blue: 230 / 255)
+        case .open: Color(red: 0, green: 122 / 255, blue: 1)
+        case .attention: Color(red: 1, green: 59 / 255, blue: 48 / 255)
+        case .temporarilySaved: Color(red: 181 / 255, green: 106 / 255, blue: 0)
+        case .complete: Color(red: 11 / 255, green: 125 / 255, blue: 87 / 255)
+        }
+    }
+
+    var background: Color {
+        switch self {
+        case .costGroup: Color(red: 240 / 255, green: 236 / 255, blue: 253 / 255)
+        case .open: Color(red: 234 / 255, green: 243 / 255, blue: 1)
+        case .attention: Color(red: 1, green: 236 / 255, blue: 235 / 255)
+        case .temporarilySaved: Color(red: 1, green: 244 / 255, blue: 224 / 255)
+        case .complete: Color(red: 230 / 255, green: 246 / 255, blue: 240 / 255)
+        }
+    }
+}
+
+struct FacilityTemplateBadge: View {
+    private let title: Text
+    let style: FacilityTemplateBadgeStyle
+
+    init(text: String, style: FacilityTemplateBadgeStyle) {
+        title = Text(text)
+        self.style = style
+    }
+
+    init(localized titleKey: LocalizedStringKey, style: FacilityTemplateBadgeStyle) {
+        title = Text(titleKey)
+        self.style = style
+    }
+
+    var body: some View {
+        title
+            .font(.system(size: 11.5, weight: .bold))
+            .foregroundStyle(style.foreground)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(style.background, in: Capsule())
     }
 }

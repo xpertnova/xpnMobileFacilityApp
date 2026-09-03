@@ -73,7 +73,7 @@ struct DefectsView: View {
                 subtitleKey: "defects.empty.subtitle"
             )
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 15)], spacing: 15) {
+            LazyVStack(spacing: 12) {
                 ForEach(demo.offlineWorkStore.closedDefectNotificationItems) { item in
                     if let review = item.payload.notificationReview {
                         ClosedDefectNotificationCard(item: item, review: review) {
@@ -83,6 +83,7 @@ struct DefectsView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -110,60 +111,110 @@ private struct ClosedDefectNotificationCard: View {
         return title.isEmpty ? String(localized: "drafts.notification.title") : title
     }
 
-    private var location: String {
+    private var technicalPlace: String {
         guard let snapshot = review.notificationSnapshot else { return review.notificationID }
-        return snapshot.functionalLocationName.isEmpty ? snapshot.functionalLocationID : snapshot.functionalLocationName
-    }
-
-    private var defectCount: Int {
-        review.results.values.filter { $0 == .yes }.count
+        return snapshot.functionalLocationID.isEmpty ? snapshot.functionalLocationName : snapshot.functionalLocationID
     }
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(FacilityTheme.red)
-                        .frame(width: 42, height: 42)
-                        .background(FacilityTheme.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 6) {
-                        StatusPill(status: .attention)
-                        StatusPill(status: .closedLocally)
-                    }
-                }
+            HStack(alignment: .center, spacing: 16) {
+                DefectPhotoTile(photoCount: review.photoItemIDs.count)
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title)
                         .font(.headline)
                         .foregroundStyle(FacilityTheme.ink)
-                    Text(location)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(defectCount) \(String(localized: "defects.findings"))")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
+                        .lineLimit(2)
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 14) {
+                            notificationMetadata
+                            technicalPlaceMetadata
+                            updatedAtMetadata
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 14) {
+                                notificationMetadata
+                                technicalPlaceMetadata
+                            }
+                            updatedAtMetadata
+                        }
+                    }
                 }
 
-                Divider()
+                Spacer(minLength: 12)
 
-                HStack {
-                    Text(review.notificationID)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.blue)
-                    Spacer()
-                    Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                HStack(spacing: 8) {
+                    FacilityTemplateBadge(
+                        localized: .init(WorkStatus.attention.titleKey),
+                        style: .attention
+                    )
+                    FacilityTemplateBadge(
+                        localized: .init(WorkStatus.closedLocally.titleKey),
+                        style: .complete
+                    )
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .padding(18)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityHint(Text("drafts.accessibility.openNotification"))
-        .facilityCard(padding: 0)
+        .facilityCard()
+    }
+
+    private var notificationMetadata: some View {
+        Text(review.notificationID)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private var technicalPlaceMetadata: some View {
+        Text(technicalPlace)
+            .font(.subheadline.monospaced())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+
+    private var updatedAtMetadata: some View {
+        Text(item.updatedAt, format: .dateTime.day().month(.twoDigits).year())
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+    }
+}
+
+private struct DefectPhotoTile: View {
+    let photoCount: Int
+
+    var body: some View {
+        Text("📷")
+            .font(.title3)
+            .frame(width: 52, height: 52)
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color(red: 201 / 255, green: 214 / 255, blue: 226 / 255),
+                        Color(red: 143 / 255, green: 168 / 255, blue: 189 / 255)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(alignment: .topTrailing) {
+                if photoCount > 0 {
+                    Text(photoCount, format: .number)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 20, minHeight: 20)
+                        .background(FacilityTheme.accent, in: Circle())
+                        .offset(x: 6, y: -6)
+                }
+            }
+            .accessibilityHidden(true)
     }
 }
