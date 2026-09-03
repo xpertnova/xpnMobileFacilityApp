@@ -86,8 +86,18 @@ struct DraftsView: View {
         )
     }
 
-    private var savedNotificationList: some View {
-        VStack(spacing: 12) {
+    private var savedWorkList: some View {
+        LazyVStack(spacing: 12) {
+            savedNotificationRows
+            savedBriefingRows
+            savedElectricalSafetyRows
+            savedProofOfQualificationRows
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var savedNotificationRows: some View {
             ForEach(demo.offlineWorkStore.localWorkNotificationItems) { item in
                 if let review = item.payload.notificationReview {
                     SavedNotificationRow(item: item, review: review) {
@@ -95,91 +105,36 @@ struct DraftsView: View {
                     }
                 }
             }
-        }
     }
 
     @ViewBuilder
-    private var savedBriefingList: some View {
+    private var savedBriefingRows: some View {
         ForEach(demo.offlineWorkStore.briefingItems) { item in
             if let briefing = item.payload.briefing {
-                Button {
-                    demo.openBriefingDraft(item.id)
-                } label: {
-                    HStack(spacing: 15) {
-                        Image(systemName: "figure.stand")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(FacilityTheme.blue)
-                            .frame(width: 44, height: 44)
-                            .background(FacilityTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Safety briefing")
-                                .font(.headline)
-                                .foregroundStyle(FacilityTheme.ink)
-                            Text("\(briefing.businessEntityTitle) · \(briefing.buildingTitle)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text(briefing.taskDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 6) {
-                            OfflineStatusPill(status: item.status)
-                            Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .padding(17)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .facilityCard(padding: 0)
+                LocalWorkTemplateRow(
+                    icon: "📄",
+                    title: Text("forms.briefing.title"),
+                    subtitle: Text("\(briefing.businessEntityTitle) · \(briefing.buildingTitle)"),
+                    status: .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openBriefingDraft(item.id) }
+                )
             }
         }
     }
 
     @ViewBuilder
-    private var savedElectricalSafetyList: some View {
+    private var savedElectricalSafetyRows: some View {
         ForEach(demo.offlineWorkStore.electricalSafetyItems) { item in
             if let electrical = item.payload.electricalSafety {
-                Button {
-                    demo.openElectricalSafetyDraft(item.id)
-                } label: {
-                    HStack(spacing: 15) {
-                        Image(systemName: "bolt.fill")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(FacilityTheme.orange)
-                            .frame(width: 44, height: 44)
-                            .background(FacilityTheme.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("forms.electrical.title")
-                                .font(.headline)
-                                .foregroundStyle(FacilityTheme.ink)
-                            if let context = electrical.context {
-                                Text("\(context.businessEntityTitle) · \(context.buildingTitle)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(electrical.workDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 6) {
-                            OfflineStatusPill(status: item.status)
-                            Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .padding(17)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .facilityCard(padding: 0)
+                LocalWorkTemplateRow(
+                    icon: "⚡",
+                    title: Text("forms.electrical.title"),
+                    subtitle: Text(electrical.context.map { "\($0.businessEntityTitle) · \($0.buildingTitle)" } ?? electrical.workDescription),
+                    status: .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openElectricalSafetyDraft(item.id) }
+                )
             }
         }
     }
@@ -218,40 +173,14 @@ struct DraftsView: View {
     private var savedProofOfQualificationList: some View {
         ForEach(demo.offlineWorkStore.proofOfQualificationItems) { item in
             if let qualification = item.payload.proofOfQualification {
-                Button {
-                    demo.openProofOfQualificationDraft(item.id)
-                } label: {
-                    HStack(spacing: 15) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(FacilityTheme.accent)
-                            .frame(width: 44, height: 44)
-                            .background(FacilityTheme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("forms.qualification.title")
-                                .font(.headline)
-                                .foregroundStyle(FacilityTheme.ink)
-                            Text(qualification.workLocation)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Text(qualification.taskDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 6) {
-                            OfflineStatusPill(status: item.status)
-                            Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .padding(17)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .facilityCard(padding: 0)
+                LocalWorkTemplateRow(
+                    icon: "📄",
+                    title: Text("forms.qualification.title"),
+                    subtitle: Text(qualification.workLocation),
+                    status: .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openProofOfQualificationDraft(item.id) }
+                )
             }
         }
     }
@@ -276,100 +205,105 @@ private struct SavedNotificationRow: View {
         return savedTitle.isEmpty ? String(localized: "drafts.notification.title") : savedTitle
     }
 
-    private var technicalPlace: String? {
-        guard let snapshot = review.notificationSnapshot else { return nil }
-        let values = [snapshot.functionalLocationID, snapshot.functionalLocationName]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !values.isEmpty else { return nil }
-        return values.joined(separator: " · ")
+    var body: some View {
+        LocalWorkTemplateRow(
+            icon: "📋",
+            title: Text(title),
+            subtitle: Text("\(review.notificationID) · \(review.results.count) \(String(localized: "drafts.notification.checks"))"),
+            status: review.isClosedLocally ? .closedLocally : .offline(item.status),
+            syncError: item.syncError,
+            action: action
+        )
+        .accessibilityHint(Text("drafts.accessibility.openNotification"))
     }
+}
 
-    private var equipment: String? {
-        guard let value = review.notificationSnapshot?.equipmentID.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value
-    }
+private enum LocalWorkTemplateStatus {
+    case offline(OfflineWorkStatus)
+    case closedLocally
 
-    private var dateRange: String? {
-        guard let snapshot = review.notificationSnapshot else { return nil }
-        let start = snapshot.startDate.trimmingCharacters(in: .whitespacesAndNewlines)
-        let end = snapshot.endDate.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch (start.isEmpty, end.isEmpty) {
-        case (true, true): return nil
-        case (false, true): return start
-        case (true, false): return end
-        case (false, false) where start == end: return start
-        case (false, false): return "\(start) – \(end)"
+    var titleKey: String {
+        switch self {
+        case let .offline(status): status.titleKey
+        case .closedLocally: WorkStatus.closedLocally.titleKey
         }
     }
 
+    var badgeStyle: FacilityTemplateBadgeStyle {
+        switch self {
+        case .closedLocally, .offline(.synchronized): .complete
+        case .offline(.failed), .offline(.conflict): .attention
+        case .offline(.draft), .offline(.pendingSynchronization): .temporarilySaved
+        case .offline(.synchronizing): .open
+        }
+    }
+}
+
+private struct LocalWorkTemplateRow: View {
+    let icon: String
+    let title: Text
+    let subtitle: Text
+    let status: LocalWorkTemplateStatus
+    let syncError: String?
+    let action: () -> Void
+
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 15) {
-                Image(systemName: "checklist")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(FacilityTheme.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            HStack(alignment: .center, spacing: 16) {
+                LocalWorkTemplateIcon(icon: icon)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
+                    title
                         .font(.headline)
                         .foregroundStyle(FacilityTheme.ink)
-                    Text(review.notificationID)
+                        .lineLimit(2)
+                    subtitle
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    if let technicalPlace {
-                        Label(technicalPlace, systemImage: "mappin.and.ellipse")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    if equipment != nil || dateRange != nil {
-                        HStack(spacing: 14) {
-                            if let equipment {
-                                Label(equipment, systemImage: "wrench.and.screwdriver")
-                            }
-                            if let dateRange {
-                                Label(dateRange, systemImage: "calendar")
-                            }
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    }
-                    Text("\(review.results.count) \(String(localized: "drafts.notification.checks"))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
 
                 Spacer(minLength: 12)
 
                 VStack(alignment: .trailing, spacing: 6) {
-                    if review.isClosedLocally {
-                        StatusPill(status: .closedLocally)
-                    } else {
-                        OfflineStatusPill(status: item.status)
-                    }
-                    Text(item.updatedAt, format: .dateTime.day().month().year().hour().minute())
+                    FacilityTemplateBadge(
+                        localized: .init(status.titleKey),
+                        style: status.badgeStyle
+                    )
+
+                    if let syncError, !syncError.isEmpty {
+                        HStack(spacing: 4) {
+                            Text("⚠")
+                                .accessibilityHidden(true)
+                            Text(syncError)
+                        }
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    if let syncError = item.syncError, !syncError.isEmpty {
-                        Label(syncError, systemImage: "exclamationmark.circle")
-                            .font(.caption2)
-                            .foregroundStyle(FacilityTheme.red)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.trailing)
-                            .frame(maxWidth: 190, alignment: .trailing)
+                        .foregroundStyle(FacilityTheme.red)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 190, alignment: .trailing)
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(17)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(Text("drafts.accessibility.openNotification"))
-        .facilityCard(padding: 0)
+        .facilityCard()
+    }
+}
+
+private struct LocalWorkTemplateIcon: View {
+    let icon: String
+
+    var body: some View {
+        Text(icon)
+            .font(.title3)
+            .frame(width: 44, height: 44)
+            .background(
+                Color(red: 1, green: 244 / 255, blue: 224 / 255),
+                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            )
+            .accessibilityHidden(true)
     }
 }

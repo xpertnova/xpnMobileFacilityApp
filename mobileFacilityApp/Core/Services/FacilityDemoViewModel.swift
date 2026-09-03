@@ -183,7 +183,6 @@ final class FacilityDemoViewModel {
     func requestSAPRefresh() {
         guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
-        selection = .notifications
         shouldPresentSAPRefresh = true
     }
 

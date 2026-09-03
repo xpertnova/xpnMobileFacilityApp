@@ -29,12 +29,12 @@
         }
       }
     },
-    "%@ · Meldung %@" : {
+    "%@ · %@ %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ · Meldung %2$@"
+            "value" : "%1$@ · %2$@ %3$@"
           }
         }
       }
@@ -54,7 +54,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%1$@ %2$@"
+            "value" : "%1$@ · Meldung %2$@"
           }
         }
       }
@@ -68,6 +68,15 @@
           }
         }
       }
+    },
+    "⚠" : {
+
+    },
+    "📷" : {
+
+    },
+    "🔍" : {
+
     },
     "activity.defect" : {
       "extractionState" : "stale",
@@ -1627,13 +1636,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lokal gesichert"
+            "value" : "Zwischengespeichert"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saved locally"
+            "value" : "Temporarily saved"
           }
         }
       }
@@ -1644,13 +1653,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Offene Prüfungen"
+            "value" : "Offene Wartungsmeldungen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Open inspections"
+            "value" : "Open maintenance notifications"
           }
         }
       }
@@ -1661,13 +1670,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Technische Plätze"
+            "value" : "Technische Plätze (DIN 276)"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Technical places"
+            "value" : "Technical places (DIN 276)"
           }
         }
       }
@@ -4834,7 +4843,6 @@
       }
     },
     "forms.briefing.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7100,6 +7108,7 @@
       }
     },
     "offline.localWork.drafts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9055,9 +9064,6 @@
         }
       }
     },
-    "Safety briefing" : {
-
-    },
     "safetyForms.buildings.empty.message" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -9516,6 +9522,7 @@
       }
     },
     "sap.data.lastRefresh" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9532,6 +9539,7 @@
       }
     },
     "sap.data.notRefreshed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9547,24 +9555,8 @@
         }
       }
     },
-    "sap.data.refreshHint" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In Wartungsmeldungen aktualisieren"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Refresh from Maintenance notifications"
-          }
-        }
-      }
-    },
     "sap.data.title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9654,13 +9646,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktualisieren"
+            "value" : "Synchronisieren"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Refresh"
+            "value" : "Synchronize"
           }
         }
       }
@@ -9924,13 +9916,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Daten aktualisieren"
+            "value" : "SAP-Daten synchronisieren"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Refresh SAP data"
+            "value" : "Synchronize SAP data"
           }
         }
       }
@@ -10646,7 +10638,6 @@
       }
     },
     "sidebar.localWork.pending" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10743,6 +10734,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Simulation complete"
+          }
+        }
+      }
+    },
+    "sidebar.sync.completed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Daten synchronisiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP data synchronized"
           }
         }
       }

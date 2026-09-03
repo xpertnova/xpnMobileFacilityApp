@@ -5,6 +5,7 @@ struct FacilityShellView: View {
     let onSignOut: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var sapPassword = ""
+    @State private var isSAPRefreshConfirmed = false
     @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
 
     private let expandedSidebarWidth: CGFloat = 340
@@ -210,23 +211,26 @@ struct FacilityShellView: View {
     }
 
     private var localWorkStatusCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("sidebar.localWork.lastSaved")
                     .foregroundStyle(.secondary)
+                    .lineLimit(2)
                 Spacer()
                 if let latest = demo.offlineWorkStore.items.first?.updatedAt {
                     Text(latest, format: .dateTime.day().month().hour().minute())
                         .fontWeight(.bold)
+                        .multilineTextAlignment(.trailing)
                 } else {
                     Text("offline.localWork.none")
                         .fontWeight(.bold)
+                        .multilineTextAlignment(.trailing)
                 }
             }
             .font(.subheadline)
 
-            HStack {
-                Text("offline.localWork.drafts")
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("sidebar.localWork.pending")
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(demo.offlineWorkStore.localWorkCount)")
@@ -234,45 +238,42 @@ struct FacilityShellView: View {
             }
 
             if !demo.isDemoMode {
-                Divider()
-                Text("sap.data.title")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                HStack(alignment: .top) {
-                    Text("sap.data.lastRefresh")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if let lastRefresh = demo.sapDataStore.lastSuccessfulRefreshAt {
-                        Text(lastRefresh, format: .dateTime.day().month().hour().minute())
-                            .fontWeight(.bold)
+                Button {
+                    isSAPRefreshConfirmed = false
+                    demo.requestSAPRefresh()
+                } label: {
+                    if isSAPRefreshConfirmed {
+                        Label("sidebar.sync.completed", systemImage: "checkmark.circle.fill")
                     } else {
-                        Text("sap.data.notRefreshed")
-                            .fontWeight(.bold)
+                        Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
                     }
                 }
-                .font(.subheadline)
-                Label("sap.data.refreshHint", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button(action: demo.requestSAPRefresh) {
-                    Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.navy)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .opacity(demo.sapDataStore.isRefreshAvailable && !demo.sapDataStore.isRefreshing ? 1 : 0.45)
                 .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
             }
         }
-        .facilityCard(padding: 14)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.black.opacity(0.12), lineWidth: 1)
+        }
     }
 
     private func refreshSAPData() {
         let password = sapPassword
+        let previousRefreshAt = demo.sapDataStore.lastSuccessfulRefreshAt
         Task {
             await demo.sapDataStore.refresh(sapPassword: password)
             sapPassword = ""
             if demo.sapDataStore.refreshError == nil {
+                isSAPRefreshConfirmed = demo.sapDataStore.lastSuccessfulRefreshAt != previousRefreshAt
                 demo.shouldPresentSAPRefresh = false
             }
         }
