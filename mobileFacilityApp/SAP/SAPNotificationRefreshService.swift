@@ -233,6 +233,9 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         var notificationsByID: [String: SAPNotificationSummary] = [:]
         var briefingPartnersByID: [String: SAPBriefingPartner] = [:]
         var briefingTemplatesByID: [String: SAPBriefingTemplate] = [:]
+        var technicalObjectsByID: [TechnicalObjectReference: TechnicalObjectNode] = [:]
+        var functionalLocationAliases: [String: String] = [:]
+        var cityNames: [TechnicalLocationKey: String] = [:]
         var workerProfile: SAPWorkerProfile?
         var openInspectionRowCount = 0
         var isLastPack = false
@@ -256,6 +259,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             for template in pack.briefingTemplates {
                 briefingTemplatesByID[template.id] = template
             }
+            for object in pack.technicalObjects {
+                technicalObjectsByID[object.reference] = object
+            }
+            functionalLocationAliases.merge(pack.functionalLocationAliases) { _, latest in latest }
+            cityNames.merge(pack.cityNames) { current, _ in current }
             openInspectionRowCount += pack.openInspectionRowCount
             if let profile = pack.workerProfile {
                 workerProfile = profile
@@ -275,7 +283,14 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             briefingPartners: briefingPartnersByID.values.sorted {
                 $0.name.localizedStandardCompare($1.name) == .orderedAscending
             },
-            briefingTemplates: briefingTemplatesByID.values.sorted { $0.id < $1.id }
+            briefingTemplates: briefingTemplatesByID.values.sorted { $0.id < $1.id },
+            technicalObjects: TechnicalObjectHierarchyNormalizer.normalize(
+                SAPTechnicalObjectMapper.resolveRelationships(
+                    in: Array(technicalObjectsByID.values),
+                    functionalLocationAliases: functionalLocationAliases,
+                    cityNames: cityNames
+                )
+            )
         )
         SAPSynchronizationDiagnostics.logSynchronizationCompleted(notificationCount: snapshot.notifications.count, businessEntityCount: 0)
         return snapshot
@@ -539,8 +554,6 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         } else {
             payload = nil
         }
-        let evData = payload?["EvData"] as? String ?? ""
-        let hasEvData = !evData.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         guard (200...299).contains(httpResponse.statusCode) else {
             throw SAPReadError.httpStatus(httpResponse.statusCode)
         }
@@ -670,6 +683,9 @@ fileprivate struct SAPInboundPack {
     let workerProfile: SAPWorkerProfile?
     let briefingPartners: [SAPBriefingPartner]
     let briefingTemplates: [SAPBriefingTemplate]
+    let technicalObjects: [TechnicalObjectNode]
+    let functionalLocationAliases: [String: String]
+    let cityNames: [TechnicalLocationKey: String]
     let openInspectionRowCount: Int
     let isLastPack: Bool
 }
@@ -833,25 +849,37 @@ private enum SAPLegacyDataExchangeCodec {
         let briefingTemplateRows = structures.flatMap {
             value(named: "T_0267", in: $0) as? [[String: Any]] ?? []
         }
-        let openInspectionRowCount = notificationRows.filter {
+        let functionalLocationRows = structures.flatMap {
+            value(named: "T_0261", in: $0) as? [[String: Any]] ?? []
+        }
+        let equipmentRows = structures.flatMap {
+            value(named: "T_0262", in: $0) as? [[String: Any]] ?? []
+        }
+        let mergedNotificationRows = notificationRows.map(mergedNotificationRow(from:))
+        let openInspectionRowCount = mergedNotificationRows.filter {
             stringValue(value(named: "QMART", in: $0)).uppercased() == "I1" &&
                 stringValue(value(named: "STTXT", in: $0)).uppercased() != "MMAB"
         }.count
         return SAPInboundPack(
-            notifications: notificationRows.compactMap(notification(from:)),
+            notifications: mergedNotificationRows.compactMap(notification(from:)),
             workerProfile: profileRows.compactMap(workerProfile(from:)).first,
             briefingPartners: briefingPartnerRows.compactMap(briefingPartner(from:)),
             briefingTemplates: briefingTemplateRows.compactMap(briefingTemplate(from:)),
+            technicalObjects: functionalLocationRows.compactMap(SAPTechnicalObjectMapper.functionalLocation(from:))
+                + equipmentRows.compactMap(SAPTechnicalObjectMapper.equipment(from:)),
+            functionalLocationAliases: SAPTechnicalObjectMapper.functionalLocationAliases(
+                from: functionalLocationRows
+            ),
+            cityNames: SAPTechnicalObjectMapper.cityNames(
+                from: mergedNotificationRows + functionalLocationRows + equipmentRows
+            ),
             openInspectionRowCount: openInspectionRowCount,
             isLastPack: isLastPack
         )
     }
 
     private static func notification(from row: [String: Any]) -> SAPNotificationSummary? {
-        var mergedNotificationData = row
-        if let planData = notificationData(fromFeldwert: stringValue(value(named: "FELDWERT", in: row))) {
-            mergedNotificationData.merge(planData) { _, planValue in planValue }
-        }
+        let mergedNotificationData = mergedNotificationRow(from: row)
 
         let type = stringValue(value(named: "QMART", in: mergedNotificationData)).uppercased()
         let systemStatus = stringValue(value(named: "STTXT", in: mergedNotificationData)).uppercased()
@@ -865,12 +893,22 @@ private enum SAPLegacyDataExchangeCodec {
             title: stringValue(value(named: "QMTXT", in: mergedNotificationData)),
             functionalLocationID: stringValue(value(named: "STRNO", in: mergedNotificationData)),
             functionalLocationName: stringValue(value(named: "PLTXT", in: mergedNotificationData)),
+            equipmentID: stringValue(value(named: "EQUNR", in: mergedNotificationData)),
             startDate: stringValue(value(named: "STRMN", in: mergedNotificationData)),
             endDate: stringValue(value(named: "LTRMN", in: mergedNotificationData)),
             systemStatus: systemStatus,
             userStatus: stringValue(value(named: "USTXT", in: mergedNotificationData)),
             rawPayloadJSON: rawPayloadJSON
         )
+    }
+
+    private static func mergedNotificationRow(from row: [String: Any]) -> [String: Any] {
+        guard let planData = notificationData(
+            fromFeldwert: stringValue(value(named: "FELDWERT", in: row))
+        ) else {
+            return row
+        }
+        return row.merging(planData) { _, planValue in planValue }
     }
 
     private static func workerProfile(from row: [String: Any]) -> SAPWorkerProfile? {

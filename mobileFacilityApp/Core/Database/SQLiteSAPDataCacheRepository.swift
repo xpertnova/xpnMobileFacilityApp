@@ -1,7 +1,7 @@
 import Foundation
 
 actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
-    private static let currentSchemaVersion: Int32 = 4
+    private static let currentSchemaVersion: Int32 = 6
     private var database: OpaquePointer?
 
     init(databaseURL: URL? = nil) throws {
@@ -154,7 +154,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
             on: database,
             """
             SELECT notification_id, client, title, functional_location_id, functional_location_name,
-                   start_date, end_date, system_status, user_status, raw_payload_json
+                   equipment_id, start_date, end_date, system_status, user_status, raw_payload_json
             FROM sap_notifications
             WHERE \(filter.clause)
             ORDER BY start_date, notification_id
@@ -168,11 +168,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                 title: Self.string(at: 2, from: statement),
                 functionalLocationID: Self.string(at: 3, from: statement),
                 functionalLocationName: Self.string(at: 4, from: statement),
-                startDate: Self.string(at: 5, from: statement),
-                endDate: Self.string(at: 6, from: statement),
-                systemStatus: Self.string(at: 7, from: statement),
-                userStatus: Self.string(at: 8, from: statement),
-                rawPayloadJSON: Self.string(at: 9, from: statement)
+                equipmentID: Self.string(at: 5, from: statement),
+                startDate: Self.string(at: 6, from: statement),
+                endDate: Self.string(at: 7, from: statement),
+                systemStatus: Self.string(at: 8, from: statement),
+                userStatus: Self.string(at: 9, from: statement),
+                rawPayloadJSON: Self.string(at: 10, from: statement)
             )
         }
         let nextOffset = boundedOffset + notifications.count
@@ -211,6 +212,162 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         }
     }
 
+    func loadTechnicalObjectRoots(
+        for localWorkerID: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> TechnicalObjectPage {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        var roots = try Self.loadTechnicalObjects(
+            on: database,
+            whereClause: "local_worker_id = ? AND parent_id = '' AND is_unassigned = 0",
+            bindings: [localWorkerID]
+        )
+        let unassignedCount = Int(try Self.query(
+            on: database,
+            "SELECT COUNT(*) FROM sap_technical_objects WHERE local_worker_id = ? AND is_unassigned = 1",
+            bindings: [localWorkerID],
+            map: { SQLiteC.columnInt($0, 0) }
+        ).first ?? 0)
+        if unassignedCount > 0 {
+            var unassigned = TechnicalObjectNode.unassignedRoot
+            unassigned.directChildCount = unassignedCount
+            roots.append(unassigned)
+        }
+        return Self.technicalObjectPage(roots, limit: limit, offset: offset)
+    }
+
+    func loadTechnicalObjectChildren(
+        for localWorkerID: String,
+        parent: TechnicalObjectReference,
+        limit: Int,
+        offset: Int
+    ) async throws -> TechnicalObjectPage {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let children: [TechnicalObjectNode]
+        if parent == .unassigned {
+            children = try Self.loadTechnicalObjects(
+                on: database,
+                whereClause: "local_worker_id = ? AND is_unassigned = 1",
+                bindings: [localWorkerID]
+            )
+        } else {
+            children = try Self.loadTechnicalObjects(
+                on: database,
+                whereClause: "local_worker_id = ? AND parent_kind = ? AND parent_id = ? AND is_unassigned = 0",
+                bindings: [localWorkerID, parent.kind.rawValue, parent.objectID]
+            )
+        }
+        return Self.technicalObjectPage(children, limit: limit, offset: offset)
+    }
+
+    func searchTechnicalObjects(
+        for localWorkerID: String,
+        query: String,
+        dinGroup: String?
+    ) async throws -> [TechnicalObjectNode] {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let all = try Self.loadTechnicalObjects(
+            on: database,
+            whereClause: "local_worker_id = ?",
+            bindings: [localWorkerID]
+        )
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = all.filter { object in
+            let dinMatches = dinGroup == nil || object.dinGroup == dinGroup
+            let searchText = [
+                object.reference.objectID, object.name, object.cityName,
+                object.countryCode, object.locationCode, object.manufacturer,
+                object.modelType, object.serialNumber, object.dinGroup ?? ""
+            ].joined(separator: " ")
+            return dinMatches && (normalizedQuery.isEmpty || searchText.localizedCaseInsensitiveContains(normalizedQuery))
+        }
+        let byReference = Dictionary(uniqueKeysWithValues: all.map { ($0.reference, $0) })
+        var included = Set(matches.map(\.reference))
+        for match in matches {
+            var parent = match.parent
+            while let reference = parent, let object = byReference[reference] {
+                guard included.insert(reference).inserted else { break }
+                parent = object.parent
+            }
+        }
+        return all.filter { included.contains($0.reference) }
+    }
+
+    func loadTechnicalObjectDINCounts(
+        for localWorkerID: String
+    ) async throws -> [TechnicalObjectDINCount] {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return try Self.query(
+            on: database,
+            """
+            SELECT din_group, COUNT(*) FROM sap_technical_objects
+            WHERE local_worker_id = ? AND din_group != ''
+            GROUP BY din_group ORDER BY din_group
+            """,
+            bindings: [localWorkerID]
+        ) { statement in
+            TechnicalObjectDINCount(
+                code: Self.string(at: 0, from: statement),
+                count: Int(SQLiteC.columnInt(statement, 1))
+            )
+        }
+    }
+
+    func loadTechnicalObjectDetail(
+        for localWorkerID: String,
+        reference: TechnicalObjectReference
+    ) async throws -> TechnicalObjectDetail? {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let all = try Self.loadTechnicalObjects(
+            on: database,
+            whereClause: "local_worker_id = ?",
+            bindings: [localWorkerID]
+        )
+        guard let object = all.first(where: { $0.reference == reference }) else { return nil }
+        let byReference = Dictionary(uniqueKeysWithValues: all.map { ($0.reference, $0) })
+        var breadcrumbs: [TechnicalObjectNode] = []
+        var parent = object.parent
+        var visited = Set<TechnicalObjectReference>()
+        while let parentReference = parent,
+              visited.insert(parentReference).inserted,
+              let parentObject = byReference[parentReference] {
+            breadcrumbs.insert(parentObject, at: 0)
+            parent = parentObject.parent
+        }
+        let linkedNotifications = try Self.loadLinkedNotifications(
+            on: database,
+            for: localWorkerID,
+            reference: reference
+        )
+        if reference.kind == .functionalLocation {
+            return .functionalLocation(FunctionalLocationDetail(
+                object: object,
+                breadcrumbs: breadcrumbs,
+                children: all.filter { $0.parent == reference },
+                linkedNotifications: linkedNotifications
+            ))
+        }
+        return .equipment(EquipmentDetail(
+            object: object,
+            breadcrumbs: breadcrumbs,
+            linkedNotifications: linkedNotifications
+        ))
+    }
+
+    func technicalObjectCount(
+        for localWorkerID: String,
+        kind: TechnicalObjectKind
+    ) async throws -> Int {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return Int(try Self.query(
+            on: database,
+            "SELECT COUNT(*) FROM sap_technical_objects WHERE local_worker_id = ? AND object_kind = ?",
+            bindings: [localWorkerID, kind.rawValue],
+            map: { SQLiteC.columnInt($0, 0) }
+        ).first ?? 0)
+    }
+
     func replace(
         with snapshot: SAPReadSnapshot,
         for localWorkerID: String,
@@ -225,14 +382,14 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                 try Self.execute(on: database, """
                     INSERT INTO sap_notifications (
                         local_worker_id, notification_id, client, title, functional_location_id,
-                        functional_location_name, start_date, end_date, system_status, user_status,
+                        functional_location_name, equipment_id, start_date, end_date, system_status, user_status,
                         raw_payload_json, country_code, location_code, business_entity_code,
                         business_entity_id, building_code, trade_code, form_code
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, bindings: [
                         localWorkerID, notification.id, notification.client, notification.title,
                         notification.functionalLocationID, notification.functionalLocationName,
-                        notification.startDate, notification.endDate, notification.systemStatus,
+                        notification.equipmentID, notification.startDate, notification.endDate, notification.systemStatus,
                         notification.userStatus, notification.rawPayloadJSON,
                         structuralMetadata?.countryCode ?? "",
                         structuralMetadata?.locationCode ?? "",
@@ -242,6 +399,14 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                         structuralMetadata?.tradeCode ?? "",
                         structuralMetadata?.formCode ?? ""
                     ])
+            }
+            try Self.execute(
+                on: database,
+                "DELETE FROM sap_technical_objects WHERE local_worker_id = ?",
+                bindings: [localWorkerID]
+            )
+            for object in TechnicalObjectHierarchyNormalizer.normalize(snapshot.technicalObjects) {
+                try Self.insertTechnicalObject(object, for: localWorkerID, on: database)
             }
             try Self.execute(on: database, "DELETE FROM sap_worker_profiles WHERE local_worker_id = ?", bindings: [localWorkerID])
             if let profile = snapshot.workerProfile {
@@ -406,6 +571,68 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
                     """)
                 try backfillStructuralFilterColumns(on: database)
             }
+            if version < 5 {
+                try execute(on: database, """
+                    ALTER TABLE sap_notifications ADD COLUMN equipment_id TEXT NOT NULL DEFAULT ''
+                    """)
+                try backfillNotificationEquipmentIDs(on: database)
+                try execute(on: database, """
+                    CREATE TABLE IF NOT EXISTS sap_technical_objects (
+                        local_worker_id TEXT NOT NULL,
+                        object_kind TEXT NOT NULL,
+                        object_id TEXT NOT NULL,
+                        parent_kind TEXT NOT NULL,
+                        parent_id TEXT NOT NULL,
+                        client TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        functional_location_id TEXT NOT NULL,
+                        hierarchy_level TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        structure_indicator TEXT NOT NULL,
+                        equipment_category TEXT NOT NULL,
+                        equipment_type TEXT NOT NULL,
+                        manufacturer TEXT NOT NULL,
+                        model_type TEXT NOT NULL,
+                        serial_number TEXT NOT NULL,
+                        system_status TEXT NOT NULL,
+                        user_status TEXT NOT NULL,
+                        din_group TEXT NOT NULL,
+                        search_text TEXT NOT NULL,
+                        source_fingerprint TEXT NOT NULL,
+                        direct_child_count INTEGER NOT NULL,
+                        direct_equipment_count INTEGER NOT NULL,
+                        is_unassigned INTEGER NOT NULL,
+                        PRIMARY KEY (local_worker_id, object_kind, object_id)
+                    )
+                    """)
+                try execute(on: database, """
+                    CREATE INDEX IF NOT EXISTS sap_technical_objects_parent_index
+                    ON sap_technical_objects (local_worker_id, parent_kind, parent_id, object_kind, name)
+                    """)
+                try execute(on: database, """
+                    CREATE INDEX IF NOT EXISTS sap_technical_objects_din_index
+                    ON sap_technical_objects (local_worker_id, din_group, object_kind, name)
+                    """)
+                try execute(on: database, """
+                    CREATE INDEX IF NOT EXISTS sap_notifications_worker_object_index
+                    ON sap_notifications (local_worker_id, functional_location_id, equipment_id)
+                    """)
+            }
+            if version < 6 {
+                try execute(on: database, """
+                    ALTER TABLE sap_technical_objects ADD COLUMN country_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_technical_objects ADD COLUMN location_code TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    ALTER TABLE sap_technical_objects ADD COLUMN city_name TEXT NOT NULL DEFAULT ''
+                    """)
+                try execute(on: database, """
+                    CREATE INDEX IF NOT EXISTS sap_technical_objects_location_index
+                    ON sap_technical_objects (local_worker_id, country_code, location_code, object_kind, name)
+                    """)
+            }
             try execute(on: database, """
                 CREATE INDEX IF NOT EXISTS sap_notifications_worker_hierarchy_date_index
                 ON sap_notifications (
@@ -418,6 +645,168 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         } catch {
             try? execute(on: database, "ROLLBACK")
             throw error
+        }
+    }
+
+    private static func insertTechnicalObject(
+        _ object: TechnicalObjectNode,
+        for localWorkerID: String,
+        on database: OpaquePointer
+    ) throws {
+        let searchText = [
+            object.reference.objectID, object.name, object.functionalLocationID,
+            object.countryCode, object.locationCode, object.cityName,
+            object.manufacturer, object.modelType, object.serialNumber,
+            object.dinGroup ?? ""
+        ]
+        .joined(separator: " ")
+        .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        try execute(on: database, """
+            INSERT INTO sap_technical_objects (
+                local_worker_id, object_kind, object_id, parent_kind, parent_id,
+                client, name, functional_location_id, hierarchy_level, category,
+                structure_indicator, equipment_category, equipment_type, manufacturer,
+                model_type, serial_number, system_status, user_status, din_group,
+                search_text, source_fingerprint, direct_child_count, direct_equipment_count,
+                is_unassigned, country_code, location_code, city_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, bindings: [
+                localWorkerID,
+                object.reference.kind.rawValue,
+                object.reference.objectID,
+                object.parent?.kind.rawValue ?? "",
+                object.parent?.objectID ?? "",
+                object.client,
+                object.name,
+                object.functionalLocationID,
+                object.hierarchyLevel,
+                object.category,
+                object.structureIndicator,
+                object.equipmentCategory,
+                object.equipmentType,
+                object.manufacturer,
+                object.modelType,
+                object.serialNumber,
+                object.systemStatus,
+                object.userStatus,
+                object.dinGroup ?? "",
+                searchText,
+                object.sourceFingerprint,
+                String(object.directChildCount),
+                String(object.directEquipmentCount),
+                object.isUnassigned ? "1" : "0",
+                object.countryCode,
+                object.locationCode,
+                object.cityName
+            ])
+    }
+
+    private static func loadTechnicalObjects(
+        on database: OpaquePointer,
+        whereClause clause: String,
+        bindings: [String]
+    ) throws -> [TechnicalObjectNode] {
+        try query(on: database, """
+            SELECT object_kind, object_id, parent_kind, parent_id, client, name,
+                   functional_location_id, hierarchy_level, category, structure_indicator,
+                   equipment_category, equipment_type, manufacturer, model_type, serial_number,
+                   system_status, user_status, din_group, source_fingerprint,
+                   direct_child_count, direct_equipment_count, is_unassigned,
+                   country_code, location_code, city_name
+            FROM sap_technical_objects
+            WHERE \(clause)
+            ORDER BY CASE object_kind WHEN 'functionalLocation' THEN 0 ELSE 1 END,
+                     name COLLATE NOCASE, object_id
+            """, bindings: bindings) { statement in
+            let kind = TechnicalObjectKind(rawValue: string(at: 0, from: statement)) ?? .functionalLocation
+            let parentKindValue = string(at: 2, from: statement)
+            let parentID = string(at: 3, from: statement)
+            let parentKind = TechnicalObjectKind(rawValue: parentKindValue)
+            return TechnicalObjectNode(
+                reference: TechnicalObjectReference(
+                    kind: kind,
+                    objectID: string(at: 1, from: statement)
+                ),
+                parent: parentID.isEmpty || parentKind == nil
+                    ? nil
+                    : TechnicalObjectReference(kind: parentKind!, objectID: parentID),
+                client: string(at: 4, from: statement),
+                name: string(at: 5, from: statement),
+                functionalLocationID: string(at: 6, from: statement),
+                countryCode: string(at: 22, from: statement),
+                locationCode: string(at: 23, from: statement),
+                cityName: string(at: 24, from: statement),
+                hierarchyLevel: string(at: 7, from: statement),
+                category: string(at: 8, from: statement),
+                structureIndicator: string(at: 9, from: statement),
+                equipmentCategory: string(at: 10, from: statement),
+                equipmentType: string(at: 11, from: statement),
+                manufacturer: string(at: 12, from: statement),
+                modelType: string(at: 13, from: statement),
+                serialNumber: string(at: 14, from: statement),
+                systemStatus: string(at: 15, from: statement),
+                userStatus: string(at: 16, from: statement),
+                dinGroup: optionalString(at: 17, from: statement),
+                sourceFingerprint: string(at: 18, from: statement),
+                directChildCount: Int(SQLiteC.columnInt(statement, 19)),
+                directEquipmentCount: Int(SQLiteC.columnInt(statement, 20)),
+                isUnassigned: SQLiteC.columnInt(statement, 21) != 0,
+                isSynthetic: false
+            )
+        }
+    }
+
+    private static func technicalObjectPage(
+        _ source: [TechnicalObjectNode],
+        limit: Int,
+        offset: Int
+    ) -> TechnicalObjectPage {
+        let sorted = source.sorted {
+            if $0.isSynthetic != $1.isSynthetic { return !$0.isSynthetic }
+            if $0.reference.kind != $1.reference.kind {
+                return $0.reference.kind == .functionalLocation
+            }
+            let order = $0.displayName.localizedStandardCompare($1.displayName)
+            return order == .orderedSame
+                ? $0.reference.objectID < $1.reference.objectID
+                : order == .orderedAscending
+        }
+        let boundedOffset = min(max(offset, 0), sorted.count)
+        let end = min(boundedOffset + max(limit, 1), sorted.count)
+        return TechnicalObjectPage(
+            objects: Array(sorted[boundedOffset..<end]),
+            nextOffset: end < sorted.count ? end : nil,
+            totalCount: sorted.count
+        )
+    }
+
+    private static func loadLinkedNotifications(
+        on database: OpaquePointer,
+        for localWorkerID: String,
+        reference: TechnicalObjectReference
+    ) throws -> [SAPNotificationSummary] {
+        let field = reference.kind == .equipment ? "equipment_id" : "functional_location_id"
+        return try query(on: database, """
+            SELECT notification_id, client, title, functional_location_id,
+                   functional_location_name, equipment_id, start_date, end_date,
+                   system_status, user_status, raw_payload_json
+            FROM sap_notifications
+            WHERE local_worker_id = ? AND \(field) = ?
+            ORDER BY start_date, notification_id
+            """, bindings: [localWorkerID, reference.objectID]) { statement in
+            SAPNotificationSummary(
+                id: string(at: 0, from: statement),
+                client: string(at: 1, from: statement),
+                title: string(at: 2, from: statement),
+                functionalLocationID: string(at: 3, from: statement),
+                functionalLocationName: string(at: 4, from: statement),
+                equipmentID: string(at: 5, from: statement),
+                startDate: string(at: 6, from: statement),
+                endDate: string(at: 7, from: statement),
+                systemStatus: string(at: 8, from: statement),
+                userStatus: string(at: 9, from: statement),
+                rawPayloadJSON: string(at: 10, from: statement)
+            )
         }
     }
 
@@ -499,6 +888,39 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
         }
     }
 
+    private static func backfillNotificationEquipmentIDs(on database: OpaquePointer) throws {
+        let notifications = try query(
+            on: database,
+            "SELECT local_worker_id, notification_id, raw_payload_json FROM sap_notifications"
+        ) { statement in
+            (
+                workerID: string(at: 0, from: statement),
+                notificationID: string(at: 1, from: statement),
+                rawPayloadJSON: string(at: 2, from: statement)
+            )
+        }
+        for notification in notifications {
+            let summary = SAPNotificationSummary(
+                id: notification.notificationID,
+                client: "",
+                title: "",
+                functionalLocationID: "",
+                functionalLocationName: "",
+                startDate: "",
+                endDate: "",
+                systemStatus: "",
+                userStatus: "",
+                rawPayloadJSON: notification.rawPayloadJSON
+            )
+            let equipmentID = SAPNotificationDetail(summary: summary).equipmentID
+            guard !equipmentID.isEmpty else { continue }
+            try execute(on: database, """
+                UPDATE sap_notifications SET equipment_id = ?
+                WHERE local_worker_id = ? AND notification_id = ?
+                """, bindings: [equipmentID, notification.workerID, notification.notificationID])
+        }
+    }
+
     private static func notificationFilter(
         for localWorkerID: String,
         matching searchText: String,
@@ -548,5 +970,11 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository {
     private static func string(at index: Int32, from statement: OpaquePointer) -> String {
         guard let text = SQLiteC.columnText(statement, index) else { return "" }
         return String(cString: text)
+    }
+
+    private static func optionalString(at index: Int32, from statement: OpaquePointer) -> String? {
+        guard SQLiteC.columnType(statement, index) != SQLiteC.null else { return nil }
+        let value = string(at: index, from: statement)
+        return value.isEmpty ? nil : value
     }
 }

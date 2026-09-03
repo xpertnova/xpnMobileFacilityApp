@@ -64,6 +64,32 @@ final class SAPDataStore {
         }
     }
 
+    func technicalObjectRoots(limit: Int, offset: Int) async throws -> TechnicalObjectPage {
+        try await repository.loadTechnicalObjectRoots(for: localWorkerID, limit: limit, offset: offset)
+    }
+
+    func technicalObjectChildren(of parent: TechnicalObjectReference, limit: Int, offset: Int) async throws -> TechnicalObjectPage {
+        try await repository.loadTechnicalObjectChildren(for: localWorkerID, parent: parent, limit: limit, offset: offset)
+    }
+
+    func searchTechnicalObjects(_ query: String, dinGroup: String?, limit: Int) async throws -> [TechnicalObjectNode] {
+        Array(try await repository.searchTechnicalObjects(for: localWorkerID, query: query, dinGroup: dinGroup).prefix(limit))
+    }
+
+    func technicalObjectDINCounts() async throws -> [TechnicalObjectDINCount] {
+        try await repository.loadTechnicalObjectDINCounts(for: localWorkerID)
+    }
+
+    func technicalObjectDetail(_ reference: TechnicalObjectReference) async throws -> TechnicalObjectDetail? {
+        try await repository.loadTechnicalObjectDetail(for: localWorkerID, reference: reference)
+    }
+
+    func technicalObjectCount() async throws -> Int {
+        let locations = try await repository.technicalObjectCount(for: localWorkerID, kind: .functionalLocation)
+        let equipment = try await repository.technicalObjectCount(for: localWorkerID, kind: .equipment)
+        return locations + equipment
+    }
+
     func loadCachedData() async {
         state = .loadingCache
         do {
