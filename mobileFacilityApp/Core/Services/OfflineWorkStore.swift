@@ -49,7 +49,7 @@ final class OfflineWorkStore {
     }
 
     var localWorkCount: Int {
-        localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
+        localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count + technicalObjectEditItems.count
     }
 
     var briefingItems: [OfflineWorkItem] {
@@ -58,6 +58,10 @@ final class OfflineWorkStore {
 
     var electricalSafetyItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .electricalSafety }
+    }
+
+    var technicalObjectEditItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .technicalObjectEdit }
     }
 
     /// A defect is a failed checklist result from a notification that was
@@ -174,6 +178,35 @@ final class OfflineWorkStore {
         try await repository.save(item)
         await load()
         return item
+    }
+
+    func technicalObjectEdit(equipmentID: String) -> OfflineWorkItem? {
+        technicalObjectEditItems.first { $0.payload.technicalObjectEdit?.equipmentID == equipmentID }
+    }
+
+    func saveTechnicalObjectEdit(
+        _ payload: TechnicalObjectEditPayload,
+        status: OfflineWorkStatus = .pendingSynchronization
+    ) async throws -> OfflineWorkItem {
+        let existing = technicalObjectEdit(equipmentID: payload.equipmentID)
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(), workerID: workerID, type: .technicalObjectEdit,
+            status: status, payload: .technicalObjectEdit(payload),
+            createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func reset() async {
+        do {
+            try await repository.resetWork(for: workerID)
+            await load()
+        } catch {
+            state = .failed
+        }
     }
 
     func item(id: UUID?) -> OfflineWorkItem? {

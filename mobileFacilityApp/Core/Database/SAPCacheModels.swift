@@ -50,11 +50,38 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
     let title: String
     let functionalLocationID: String
     let functionalLocationName: String
+    let equipmentID: String
     let startDate: String
     let endDate: String
     let systemStatus: String
     let userStatus: String
     let rawPayloadJSON: String
+
+    init(
+        id: String,
+        client: String,
+        title: String,
+        functionalLocationID: String,
+        functionalLocationName: String,
+        equipmentID: String = "",
+        startDate: String,
+        endDate: String,
+        systemStatus: String,
+        userStatus: String,
+        rawPayloadJSON: String
+    ) {
+        self.id = id
+        self.client = client
+        self.title = title
+        self.functionalLocationID = functionalLocationID
+        self.functionalLocationName = functionalLocationName
+        self.equipmentID = equipmentID
+        self.startDate = startDate
+        self.endDate = endDate
+        self.systemStatus = systemStatus
+        self.userStatus = userStatus
+        self.rawPayloadJSON = rawPayloadJSON
+    }
 
     var displayLocation: String {
         functionalLocationName.isEmpty ? functionalLocationID : functionalLocationName
@@ -247,19 +274,22 @@ struct SAPReadSnapshot: Equatable, Sendable {
     let workerProfile: SAPWorkerProfile?
     let briefingPartners: [SAPBriefingPartner]
     let briefingTemplates: [SAPBriefingTemplate]
+    let technicalObjects: [TechnicalObjectNode]
 
     init(
         sapWorkerID: String,
         notifications: [SAPNotificationSummary],
         workerProfile: SAPWorkerProfile?,
         briefingPartners: [SAPBriefingPartner] = [],
-        briefingTemplates: [SAPBriefingTemplate] = []
+        briefingTemplates: [SAPBriefingTemplate] = [],
+        technicalObjects: [TechnicalObjectNode] = []
     ) {
         self.sapWorkerID = sapWorkerID
         self.notifications = notifications
         self.workerProfile = workerProfile
         self.briefingPartners = briefingPartners
         self.briefingTemplates = briefingTemplates
+        self.technicalObjects = technicalObjects
     }
 }
 
@@ -268,6 +298,7 @@ struct SAPCachedData: Equatable, Sendable {
     let workerProfile: SAPWorkerProfile?
     let briefingPartners: [SAPBriefingPartner]
     let briefingTemplates: [SAPBriefingTemplate]
+    let technicalObjects: [TechnicalObjectNode]
     let metadata: SAPCacheMetadata?
 
     static let empty = SAPCachedData(
@@ -275,6 +306,7 @@ struct SAPCachedData: Equatable, Sendable {
         workerProfile: nil,
         briefingPartners: [],
         briefingTemplates: [],
+        technicalObjects: [],
         metadata: nil
     )
 
@@ -283,12 +315,14 @@ struct SAPCachedData: Equatable, Sendable {
         workerProfile: SAPWorkerProfile?,
         briefingPartners: [SAPBriefingPartner] = [],
         briefingTemplates: [SAPBriefingTemplate] = [],
+        technicalObjects: [TechnicalObjectNode] = [],
         metadata: SAPCacheMetadata?
     ) {
         self.notifications = notifications
         self.workerProfile = workerProfile
         self.briefingPartners = briefingPartners
         self.briefingTemplates = briefingTemplates
+        self.technicalObjects = technicalObjects
         self.metadata = metadata
     }
 }
@@ -408,7 +442,7 @@ extension OfflineNotificationSnapshot {
     }
 }
 
-protocol SAPDataCacheRepository: Sendable {
+protocol SAPDataCacheRepository: TechnicalObjectRepository {
     func load(for localWorkerID: String) async throws -> SAPCachedData
     func loadNotifications(
         for localWorkerID: String,
@@ -496,6 +530,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             workerProfile: data.workerProfile,
             briefingPartners: data.briefingPartners,
             briefingTemplates: data.briefingTemplates,
+            technicalObjects: data.technicalObjects,
             metadata: data.metadata
         )
     }
@@ -533,6 +568,115 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
         dataByWorkerID[localWorkerID]?.notifications.compactMap(\.structuralFilterMetadata) ?? []
     }
 
+    func loadTechnicalObjectRoots(
+        for localWorkerID: String,
+        limit: Int,
+        offset: Int
+    ) async throws -> TechnicalObjectPage {
+        let all = dataByWorkerID[localWorkerID]?.technicalObjects ?? []
+        var roots = all.filter { $0.parent == nil && !$0.isUnassigned }
+        let unassignedCount = all.filter(\.isUnassigned).count
+        if unassignedCount > 0 {
+            var root = TechnicalObjectNode.unassignedRoot
+            root.directChildCount = unassignedCount
+            roots.append(root)
+        }
+        return Self.page(roots, limit: limit, offset: offset)
+    }
+
+    func loadTechnicalObjectChildren(
+        for localWorkerID: String,
+        parent: TechnicalObjectReference,
+        limit: Int,
+        offset: Int
+    ) async throws -> TechnicalObjectPage {
+        let all = dataByWorkerID[localWorkerID]?.technicalObjects ?? []
+        let children = parent == .unassigned
+            ? all.filter(\.isUnassigned)
+            : all.filter { $0.parent == parent }
+        return Self.page(children, limit: limit, offset: offset)
+    }
+
+    func searchTechnicalObjects(
+        for localWorkerID: String,
+        query: String,
+        dinGroup: String?
+    ) async throws -> [TechnicalObjectNode] {
+        let all = dataByWorkerID[localWorkerID]?.technicalObjects ?? []
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matches = all.filter { object in
+            let matchesDIN = dinGroup == nil || object.dinGroup == dinGroup
+            let searchable = [
+                object.reference.objectID, object.name, object.cityName,
+                object.countryCode, object.locationCode, object.manufacturer,
+                object.modelType, object.serialNumber, object.dinGroup ?? ""
+            ].joined(separator: " ")
+            return matchesDIN && (normalizedQuery.isEmpty || searchable.localizedCaseInsensitiveContains(normalizedQuery))
+        }
+        var included = Set(matches.map(\.reference))
+        let byReference = Dictionary(uniqueKeysWithValues: all.map { ($0.reference, $0) })
+        for match in matches {
+            var parent = match.parent
+            while let reference = parent, let object = byReference[reference] {
+                guard included.insert(reference).inserted else { break }
+                parent = object.parent
+            }
+        }
+        return all.filter { included.contains($0.reference) }
+    }
+
+    func loadTechnicalObjectDINCounts(
+        for localWorkerID: String
+    ) async throws -> [TechnicalObjectDINCount] {
+        let all = dataByWorkerID[localWorkerID]?.technicalObjects ?? []
+        let counts = Dictionary(grouping: all.compactMap(\.dinGroup), by: { $0 })
+        return TechnicalDIN276.supportedCodes.compactMap { code in
+            guard let values = counts[code] else { return nil }
+            return TechnicalObjectDINCount(code: code, count: values.count)
+        }
+    }
+
+    func loadTechnicalObjectDetail(
+        for localWorkerID: String,
+        reference: TechnicalObjectReference
+    ) async throws -> TechnicalObjectDetail? {
+        let data = dataByWorkerID[localWorkerID] ?? .empty
+        guard let object = data.technicalObjects.first(where: { $0.reference == reference }) else { return nil }
+        let byReference = Dictionary(uniqueKeysWithValues: data.technicalObjects.map { ($0.reference, $0) })
+        var breadcrumbs: [TechnicalObjectNode] = []
+        var parent = object.parent
+        var visited = Set<TechnicalObjectReference>()
+        while let reference = parent, visited.insert(reference).inserted, let value = byReference[reference] {
+            breadcrumbs.insert(value, at: 0)
+            parent = value.parent
+        }
+        let notifications = data.notifications.filter {
+            reference.kind == .equipment
+                ? $0.equipmentID == reference.objectID
+                : $0.functionalLocationID == reference.objectID
+        }
+        if reference.kind == .functionalLocation {
+            return .functionalLocation(FunctionalLocationDetail(
+                object: object,
+                breadcrumbs: breadcrumbs,
+                children: data.technicalObjects.filter { $0.parent == reference },
+                linkedNotifications: notifications
+            ))
+        }
+        return .equipment(EquipmentDetail(
+            object: object,
+            breadcrumbs: breadcrumbs,
+            linkedNotifications: notifications
+        ))
+    }
+
+    func technicalObjectCount(
+        for localWorkerID: String,
+        kind: TechnicalObjectKind
+    ) async throws -> Int {
+        dataByWorkerID[localWorkerID]?.technicalObjects.filter { $0.reference.kind == kind }.count ?? 0
+    }
+
     func replace(
         with snapshot: SAPReadSnapshot,
         for localWorkerID: String,
@@ -543,6 +687,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             workerProfile: snapshot.workerProfile,
             briefingPartners: snapshot.briefingPartners,
             briefingTemplates: snapshot.briefingTemplates,
+            technicalObjects: TechnicalObjectHierarchyNormalizer.normalize(snapshot.technicalObjects),
             metadata: SAPCacheMetadata(
                 sapWorkerID: snapshot.sapWorkerID,
                 lastSuccessfulRefreshAt: refreshedAt
@@ -554,7 +699,28 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             workerProfile: data.workerProfile,
             briefingPartners: data.briefingPartners,
             briefingTemplates: data.briefingTemplates,
+            technicalObjects: data.technicalObjects,
             metadata: data.metadata
+        )
+    }
+
+    private static func page(
+        _ source: [TechnicalObjectNode],
+        limit: Int,
+        offset: Int
+    ) -> TechnicalObjectPage {
+        let sorted = source.sorted {
+            if $0.reference.kind != $1.reference.kind {
+                return $0.reference.kind == .functionalLocation
+            }
+            return $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        }
+        let boundedOffset = min(max(offset, 0), sorted.count)
+        let end = min(boundedOffset + max(limit, 1), sorted.count)
+        return TechnicalObjectPage(
+            objects: Array(sorted[boundedOffset..<end]),
+            nextOffset: end < sorted.count ? end : nil,
+            totalCount: sorted.count
         )
     }
 }
@@ -577,6 +743,30 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadTechnicalObjectRoots(for localWorkerID: String, limit: Int, offset: Int) async throws -> TechnicalObjectPage {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadTechnicalObjectChildren(for localWorkerID: String, parent: TechnicalObjectReference, limit: Int, offset: Int) async throws -> TechnicalObjectPage {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func searchTechnicalObjects(for localWorkerID: String, query: String, dinGroup: String?) async throws -> [TechnicalObjectNode] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadTechnicalObjectDINCounts(for localWorkerID: String) async throws -> [TechnicalObjectDINCount] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadTechnicalObjectDetail(for localWorkerID: String, reference: TechnicalObjectReference) async throws -> TechnicalObjectDetail? {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func technicalObjectCount(for localWorkerID: String, kind: TechnicalObjectKind) async throws -> Int {
         throw SAPReadError.serviceUnavailable
     }
 

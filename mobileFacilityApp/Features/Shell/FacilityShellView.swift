@@ -105,6 +105,7 @@ struct FacilityShellView: View {
             if !demo.isDemoMode {
                 await demo.sapDataStore.loadCachedData()
             }
+            await demo.technicalPlacesStore.load()
         }
         .simultaneousGesture(
             DragGesture(minimumDistance: 28)

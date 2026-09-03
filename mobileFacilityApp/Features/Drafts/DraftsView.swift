@@ -34,12 +34,14 @@ struct DraftsView: View {
                 case .loaded:
                     if demo.offlineWorkStore.localWorkNotificationItems.isEmpty
                         && demo.offlineWorkStore.briefingItems.isEmpty
-                        && demo.offlineWorkStore.electricalSafetyItems.isEmpty {
+                        && demo.offlineWorkStore.electricalSafetyItems.isEmpty
+                        && demo.offlineWorkStore.technicalObjectEditItems.isEmpty {
                         emptyState
                     } else {
                         savedNotificationList
                         savedBriefingList
                         savedElectricalSafetyList
+                        savedTechnicalObjectEditList
                     }
                 }
 
@@ -176,6 +178,36 @@ struct DraftsView: View {
                 }
                 .buttonStyle(.plain)
                 .facilityCard(padding: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedTechnicalObjectEditList: some View {
+        ForEach(demo.offlineWorkStore.technicalObjectEditItems) { item in
+            if let edit = item.payload.technicalObjectEdit {
+                Button {
+                    demo.open(.technicalPlaces)
+                    Task {
+                        await demo.technicalPlacesStore.open(
+                            .init(kind: .equipment, objectID: edit.equipmentID)
+                        )
+                    }
+                } label: {
+                    HStack(spacing: 15) {
+                        Image(systemName: "gearshape.2.fill")
+                            .foregroundStyle(FacilityTheme.orange)
+                            .frame(width: 44, height: 44)
+                            .background(FacilityTheme.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("drafts.technicalEdit.title").font(.headline).foregroundStyle(FacilityTheme.ink)
+                            Text(edit.designation.isEmpty ? edit.equipmentID : edit.designation).font(.subheadline).foregroundStyle(.secondary)
+                            Text("\(edit.equipmentID) · \(edit.functionalLocationID)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        OfflineStatusPill(status: item.status)
+                    }.padding(17).contentShape(Rectangle())
+                }.buttonStyle(.plain).facilityCard(padding: 0)
             }
         }
     }

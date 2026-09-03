@@ -88,7 +88,7 @@ struct AppRootView: View {
                         workerID: "demo"
                     ),
                     sapDataStore: SAPDataStore(
-                        repository: InMemorySAPDataCacheRepository(),
+                        repository: InMemorySAPDataCacheRepository(seed: TechnicalObjectDemoData.cachedData),
                         refreshService: nil,
                         localWorkerID: "demo"
                     ),

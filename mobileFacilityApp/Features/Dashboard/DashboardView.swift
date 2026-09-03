@@ -75,7 +75,7 @@ struct DashboardView: View {
     }
 
     private var visibleTechnicalPlaceCount: Int {
-        demo.isDemoMode ? demo.technicalPlaces.count : 0
+        demo.technicalPlacesStore.totalCount
     }
 
     private var quickAccess: some View {

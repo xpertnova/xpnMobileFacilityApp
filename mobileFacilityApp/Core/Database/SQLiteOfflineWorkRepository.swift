@@ -98,6 +98,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 payload = .briefing(try decoder.decode(BriefingDraftPayload.self, from: data))
             case .electricalSafety:
                 payload = .electricalSafety(try decoder.decode(ElectricalSafetyDraftPayload.self, from: data))
+            case .technicalObjectEdit:
+                payload = .technicalObjectEdit(try decoder.decode(TechnicalObjectEditPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -116,6 +118,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             payloadData = try? JSONEncoder().encode(payload)
         case let (.electricalSafety, .electricalSafety(payload)):
             payloadData = try? JSONEncoder().encode(payload)
+        case let (.technicalObjectEdit, .technicalObjectEdit(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil
         }
@@ -131,6 +135,12 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             sync_error = excluded.sync_error
             """, bindings: [item.id.uuidString, item.workerID, item.type.rawValue, item.status.rawValue,
                                payloadJSON, formatter.string(from: item.createdAt), formatter.string(from: item.updatedAt), item.syncError ?? ""])
+    }
+
+
+    func resetWork(for workerID: String) async throws {
+        guard let database else { throw OfflineWorkRepositoryError.unavailable }
+        try Self.execute(on: database, "DELETE FROM offline_work_items WHERE worker_id = ?", bindings: [workerID])
     }
 
     private static func migrate(on database: OpaquePointer) throws {

@@ -5,6 +5,21 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case notificationReview
     case briefing
     case electricalSafety
+    case technicalObjectEdit
+}
+
+/// A local proposal for editable equipment master data. SAP identifiers are
+/// captured once and never exposed as mutable draft fields.
+struct TechnicalObjectEditPayload: Codable, Equatable, Sendable {
+    let equipmentID: String
+    let functionalLocationID: String
+    var designation: String
+    var manufacturer: String
+    var modelType: String
+    var serialNumber: String
+    var dinGroup: String?
+    var nextInspectionDate: Date?
+    let sourceFingerprint: String
 }
 
 enum OfflineWorkStatus: String, Codable, CaseIterable, Sendable {
@@ -135,6 +150,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case notificationReview(NotificationReviewDraftPayload)
     case briefing(BriefingDraftPayload)
     case electricalSafety(ElectricalSafetyDraftPayload)
+    case technicalObjectEdit(TechnicalObjectEditPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -153,6 +169,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var electricalSafety: ElectricalSafetyDraftPayload? {
         guard case let .electricalSafety(payload) = self else { return nil }
+        return payload
+    }
+
+    var technicalObjectEdit: TechnicalObjectEditPayload? {
+        guard case let .technicalObjectEdit(payload) = self else { return nil }
         return payload
     }
 }

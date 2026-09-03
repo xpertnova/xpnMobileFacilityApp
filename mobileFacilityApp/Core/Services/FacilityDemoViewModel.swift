@@ -7,6 +7,7 @@ final class FacilityDemoViewModel {
     let isDemoMode: Bool
     let offlineWorkStore: OfflineWorkStore
     let sapDataStore: SAPDataStore
+    let technicalPlacesStore: TechnicalPlacesViewModel
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     var selection: AppDestination = .overview
@@ -17,11 +18,9 @@ final class FacilityDemoViewModel {
     var selectedNotificationID: String?
     var selectedOfflineNotificationDetail: SAPNotificationDetail?
     private var offlineNotificationReturnDestination: AppDestination?
-    var selectedTechnicalPlaceID: String?
     var shouldPresentSAPRefresh = false
     var notifications = MockFacilityData.notifications
     var defects = MockFacilityData.defects
-    let technicalPlaces = MockFacilityData.technicalPlaces
     let forms = MockFacilityData.forms
 
     var offlineNotificationDetailReturnDestination: AppDestination {
@@ -38,6 +37,10 @@ final class FacilityDemoViewModel {
         self.isDemoMode = isDemoMode
         self.offlineWorkStore = offlineWorkStore
         self.sapDataStore = sapDataStore
+        self.technicalPlacesStore = TechnicalPlacesViewModel(
+            sapDataStore: sapDataStore,
+            offlineWorkStore: offlineWorkStore
+        )
         self.workerDisplayName = workerDisplayName
         self.workerRole = workerRole
     }
@@ -49,10 +52,6 @@ final class FacilityDemoViewModel {
     var selectedSAPNotification: SAPNotificationSummary? {
         guard !isDemoMode, let selectedNotificationID else { return nil }
         return sapDataStore.notifications.first { $0.id == selectedNotificationID }
-    }
-
-    var selectedTechnicalPlace: TechnicalPlace? {
-        technicalPlaces.first { $0.id == selectedTechnicalPlaceID }
     }
 
     var openNotifications: Int {
@@ -202,7 +201,8 @@ final class FacilityDemoViewModel {
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = nil
         offlineNotificationReturnDestination = nil
-        selectedTechnicalPlaceID = nil
+        technicalPlacesStore.reset()
+        Task { await offlineWorkStore.reset() }
         selection = .overview
     }
 }
@@ -219,13 +219,6 @@ private enum MockFacilityData {
         .init(id: "D-0284", title: "Emergency exit sign dim", location: "Building C · Corridor 1.04", reportedAt: "Today, 08:45", severity: .attention, description: "Illumination is below the visual inspection threshold."),
         .init(id: "D-0279", title: "Door closer requires adjustment", location: "Building A · Door A2-16", reportedAt: "Yesterday", severity: .pending, description: "Door does not close fully without manual support."),
         .init(id: "D-0274", title: "Filter replacement due", location: "Building B · AHU-03", reportedAt: "27 Aug", severity: .draft, description: "Filter service record prepared for the next maintenance window.")
-    ]
-
-    static let technicalPlaces: [TechnicalPlace] = [
-        .init(id: "TP-100", code: "EON-01-A-330-10", title: "Building A · Electrical distribution", detail: "DIN 276 · KG 440", equipmentCount: 8),
-        .init(id: "TP-101", code: "EON-01-B-430-03", title: "Building B · Air handling", detail: "DIN 276 · KG 430", equipmentCount: 4),
-        .init(id: "TP-102", code: "EON-01-C-470-01", title: "Building C · Safety systems", detail: "DIN 276 · KG 470", equipmentCount: 11),
-        .init(id: "TP-103", code: "EON-01-U-410-02", title: "Utility room · Water", detail: "DIN 276 · KG 410", equipmentCount: 6)
     ]
 
     static let forms: [FacilityForm] = [
