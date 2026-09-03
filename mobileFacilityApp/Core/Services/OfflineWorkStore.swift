@@ -49,7 +49,9 @@ final class OfflineWorkStore {
     }
 
     var localWorkCount: Int {
-        localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count + technicalObjectEditItems.count
+        localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
+            + technicalObjectEditItems.count
+            + proofOfQualificationItems.count
     }
 
     var briefingItems: [OfflineWorkItem] {
@@ -62,6 +64,10 @@ final class OfflineWorkStore {
 
     var technicalObjectEditItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .technicalObjectEdit }
+    }
+
+    var proofOfQualificationItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .proofOfQualification }
     }
 
     /// A defect is a failed checklist result from a notification that was
@@ -200,6 +206,28 @@ final class OfflineWorkStore {
         return item
     }
 
+    func saveProofOfQualification(
+        id: UUID? = nil,
+        payload: ProofOfQualificationDraftPayload,
+        status: OfflineWorkStatus = .draft
+    ) async throws -> OfflineWorkItem {
+        let existing = id.flatMap { requestedID in items.first { $0.id == requestedID } }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .proofOfQualification,
+            status: status,
+            payload: .proofOfQualification(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
     func reset() async {
         do {
             try await repository.resetWork(for: workerID)
@@ -208,7 +236,6 @@ final class OfflineWorkStore {
             state = .failed
         }
     }
-
     func item(id: UUID?) -> OfflineWorkItem? {
         guard let id else { return nil }
         return items.first { $0.id == id }

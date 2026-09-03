@@ -6,6 +6,7 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case briefing
     case electricalSafety
     case technicalObjectEdit
+    case proofOfQualification
 }
 
 /// A local proposal for editable equipment master data. SAP identifiers are
@@ -151,6 +152,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case briefing(BriefingDraftPayload)
     case electricalSafety(ElectricalSafetyDraftPayload)
     case technicalObjectEdit(TechnicalObjectEditPayload)
+    case proofOfQualification(ProofOfQualificationDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -174,6 +176,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var technicalObjectEdit: TechnicalObjectEditPayload? {
         guard case let .technicalObjectEdit(payload) = self else { return nil }
+        return payload
+    }
+
+    var proofOfQualification: ProofOfQualificationDraftPayload? {
+        guard case let .proofOfQualification(payload) = self else { return nil }
         return payload
     }
 }
