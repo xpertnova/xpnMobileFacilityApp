@@ -2,16 +2,20 @@ import SwiftUI
 
 struct TechnicalPlacesView: View {
     let demo: FacilityDemoViewModel
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
         Group {
             if let detail = model.selectedDetail {
                 TechnicalObjectDetailView(model: model, detail: detail)
+                    .transition(.opacity)
             } else {
                 hierarchy(model)
+                    .transition(.opacity)
             }
         }
+        .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.selectedDetail != nil)
         .task { if model.state == .idle { await model.load() } }
         .task(id: model.query) {
             do { try await Task.sleep(for: .milliseconds(350)); await model.updateSearch() } catch { }
@@ -39,12 +43,20 @@ struct TechnicalPlacesView: View {
                     TextField("places.search", text: Binding(get: { model.query }, set: { model.query = $0 }))
                         .textInputAutocapitalization(.never).submitLabel(.search)
                     if !model.query.isEmpty {
-                        Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.plain).accessibilityLabel("places.search.clear")
+                        Button {
+                            withAnimation(accessibilityReduceMotion ? nil : .smooth(duration: 0.18)) {
+                                model.query = ""
+                            }
+                        } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("places.search.clear")
+                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
                     }
                 }
                 .padding(.horizontal, 14).frame(minHeight: 44)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.18), value: model.query.isEmpty)
+
                 ScrollView(.horizontal) {
                     HStack(spacing: 8) {
                         DINChip(title: String(localized: "places.filter.all"), count: model.totalCount, selected: model.selectedDINGroup == nil) {
@@ -56,6 +68,7 @@ struct TechnicalPlacesView: View {
                             }
                         }
                     }
+                    .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: model.selectedDINGroup)
                 }.scrollIndicators(.hidden)
                 if let refreshedAt = demo.sapDataStore.lastSuccessfulRefreshAt,
                    Date().timeIntervalSince(refreshedAt) > 86_400 {
@@ -63,8 +76,10 @@ struct TechnicalPlacesView: View {
                         .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
                         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+                        .transition(.opacity)
                 }
                 hierarchyContent(model)
+                    .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.state)
             }.padding(28).frame(maxWidth: 1280, alignment: .leading)
         }.scrollDismissesKeyboard(.interactively)
     }
@@ -73,16 +88,20 @@ struct TechnicalPlacesView: View {
         switch model.state {
         case .idle, .loading:
             ProgressView("places.loading").frame(maxWidth: .infinity, minHeight: 260)
+                .transition(.opacity)
         case .empty:
             unavailable("places.empty.title", "places.empty.subtitle", "building.2")
+                .transition(.opacity)
         case .noResults:
             unavailable("places.noResults.title", "places.noResults.subtitle", "magnifyingglass")
+                .transition(.opacity)
         case .failed:
             ContentUnavailableView {
                 Label("places.failure.title", systemImage: "exclamationmark.triangle")
             } description: { Text("places.failure.message") } actions: {
                 Button("common.retry") { Task { await model.load() } }
             }.frame(maxWidth: .infinity, minHeight: 260)
+            .transition(.opacity)
         case .loaded:
             LazyVStack(spacing: 0) {
                 ForEach(model.visibleRows) { row in
@@ -94,17 +113,23 @@ struct TechnicalPlacesView: View {
                     ) {
                         Task { await model.toggle(row.node) }
                     } open: { Task { await model.open(row.node.reference) } }
+                    .transition(.opacity)
+
                     if model.expanded.contains(row.node.reference), model.hasMoreChildren(of: row.node.reference) {
                         Button("places.loadMore") { Task { await model.loadMoreChildren(of: row.node.reference) } }
                             .font(.caption.weight(.semibold)).padding(.leading, CGFloat(row.depth + 1) * 22 + 54).frame(minHeight: 44)
+                            .transition(.opacity)
                     }
                     Divider().padding(.leading, CGFloat(row.depth) * 22 + 54)
                 }
                 if model.hasMoreRoots {
                     Button("places.loadMore") { Task { await model.loadMoreRoots() } }
                         .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48)
+                        .transition(.opacity)
                 }
-            }.background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .transition(.opacity)
         }
     }
 
@@ -122,20 +147,33 @@ private struct DINChip: View {
                 .foregroundStyle(selected ? .white : .secondary).padding(.horizontal, 13).frame(minHeight: 36)
                 .background(selected ? FacilityTheme.accent : Color.white, in: Capsule())
                 .overlay(Capsule().stroke(selected ? .clear : Color.secondary.opacity(0.22)))
-        }.buttonStyle(.plain)
+        }
+        .buttonStyle(.plain)
+        .animation(.smooth(duration: 0.2), value: selected)
     }
 }
 
 private struct TechnicalObjectRow: View {
     let row: TechnicalObjectVisibleRow; let displayName: String; let pendingStatus: OfflineWorkStatus?; let isExpanded: Bool; let toggle: () -> Void; let open: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
     var body: some View {
         HStack(spacing: 8) {
             Color.clear.frame(width: CGFloat(row.depth) * 22)
             if row.node.hasChildren {
                 Button(action: toggle) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right").font(.caption.bold()).frame(width: 30, height: 44)
-                }.buttonStyle(.plain).accessibilityLabel(isExpanded ? "places.collapse" : "places.expand")
-            } else { Color.clear.frame(width: 30, height: 44) }
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(FacilityTheme.ink)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .animation(accessibilityReduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: isExpanded)
+                        .frame(width: 30, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isExpanded ? "places.collapse" : "places.expand")
+            } else {
+                Color.clear.frame(width: 30, height: 44)
+            }
             Button(action: open) {
                 HStack(spacing: 10) {
                     Image(systemName: rowIcon)
@@ -168,9 +206,16 @@ private struct TechnicalObjectRow: View {
                     if !row.node.isSynthetic {
                         Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
                     }
-                }.contentShape(Rectangle())
-            }.buttonStyle(.plain)
-        }.padding(.horizontal, 14).frame(minHeight: 46).accessibilityElement(children: .combine)
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(TechnicalObjectRowButtonStyle())
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 46)
+        .accessibilityElement(children: .combine)
     }
 
     private var rowIcon: String {
@@ -180,6 +225,14 @@ private struct TechnicalObjectRow: View {
         if row.node.dinGroup != nil && row.node.hasChildren { return "folder.fill" }
         if row.node.dinGroup != nil { return "gearshape.fill" }
         return row.depth < 2 ? "building.2.fill" : "building.fill"
+    }
+}
+
+private struct TechnicalObjectRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? Color.black.opacity(0.04) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
@@ -195,12 +248,17 @@ private struct ObjectBadge: View {
 private struct TechnicalObjectDetailView: View {
     @Bindable var model: TechnicalPlacesViewModel
     let detail: TechnicalObjectDetail
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Button { model.closeDetail() } label: { Label("places.detail.back", systemImage: "chevron.left") }
+                    Button {
+                        withAnimation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24)) {
+                            model.closeDetail()
+                        }
+                    } label: { Label("places.detail.back", systemImage: "chevron.left") }
                         .buttonStyle(.plain).foregroundStyle(.blue).frame(minHeight: 44)
                     Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
                     Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
@@ -288,6 +346,8 @@ private struct FunctionalLocationCard: View {
 
 private struct EquipmentEditCard: View {
     @Bindable var model: TechnicalPlacesViewModel
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("places.detail.masterData").font(.headline)
@@ -307,17 +367,22 @@ private struct EquipmentEditCard: View {
             Toggle("places.detail.nextInspection.enabled", isOn: hasDateBinding)
             if model.equipmentDraft?.hasNextInspectionDate == true {
                 DatePicker("places.detail.nextInspection", selection: dateBinding, displayedComponents: .date)
+                    .transition(.opacity)
             }
             Divider()
             HStack {
-                if model.saveState == .saving { ProgressView() }
-                if model.saveState == .savedPending { Label("places.save.pending", systemImage: "clock.fill").foregroundStyle(.orange) }
-                if model.saveState == .conflict { Label("places.save.conflict", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
-                if model.saveState == .failed { Text("places.save.failed").foregroundStyle(.red) }
+                if model.saveState == .saving { ProgressView().transition(.opacity) }
+                if model.saveState == .savedPending { Label("places.save.pending", systemImage: "clock.fill").foregroundStyle(.orange).transition(.opacity) }
+                if model.saveState == .conflict { Label("places.save.conflict", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).transition(.opacity) }
+                if model.saveState == .failed { Text("places.save.failed").foregroundStyle(.red).transition(.opacity) }
                 Spacer()
                 Button("places.save") { Task { await model.saveEquipment() } }.buttonStyle(.borderedProminent).disabled(model.saveState == .saving)
             }
-        }.frame(maxWidth: .infinity, alignment: .leading).facilityCard()
+            .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: model.saveState)
+        }
+        .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.22), value: model.equipmentDraft?.hasNextInspectionDate)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .facilityCard()
     }
 
     private func immutable(_ key: LocalizedStringKey, _ value: String) -> some View {

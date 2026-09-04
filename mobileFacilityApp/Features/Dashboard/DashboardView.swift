@@ -43,18 +43,20 @@ struct DashboardView: View {
     }
 
     private var dashboardHeader: some View {
-        HStack(alignment: .bottom, spacing: 20) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(String(format: String(localized: "dashboard.greeting"), demo.effectiveWorkerDisplayName))
-                    .font(.system(size: 29, weight: .bold, design: .rounded))
-                    .foregroundStyle(FacilityTheme.ink)
-                Text(dashboardContext)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
-            if !demo.isDemoMode, demo.sapDataStore.isRefreshAvailable {
-                SAPConnectionBadge()
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            HStack(alignment: .bottom, spacing: 20) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(DashboardGreeting.greeting(for: context.date).formatted(workerName: demo.effectiveWorkerDisplayName))
+                        .font(.system(size: 29, weight: .bold, design: .rounded))
+                        .foregroundStyle(FacilityTheme.ink)
+                    Text(dashboardContext(for: context.date))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                if !demo.isDemoMode, demo.sapDataStore.isRefreshAvailable {
+                    SAPConnectionBadge()
+                }
             }
         }
     }
@@ -63,8 +65,8 @@ struct DashboardView: View {
         demo.offlineWorkStore.defectCount
     }
 
-    private var dashboardContext: String {
-        let currentDate = Date.now.formatted(
+    private func dashboardContext(for date: Date = .now) -> String {
+        let currentDate = date.formatted(
             .dateTime.weekday(.wide).day().month(.wide).year()
         )
         let organizationUnit = demo.sapDataStore.workerProfile?.organizationUnit

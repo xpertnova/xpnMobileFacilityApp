@@ -1596,6 +1596,57 @@
         }
       }
     },
+    "dashboard.greeting.afternoon" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Tag, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good afternoon, %@"
+          }
+        }
+      }
+    },
+    "dashboard.greeting.evening" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Abend, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good evening, %@"
+          }
+        }
+      }
+    },
+    "dashboard.greeting.morning" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Morgen, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good morning, %@"
+          }
+        }
+      }
+    },
     "dashboard.latestActivity" : {
       "localizations" : {
         "de" : {
@@ -11031,30 +11082,30 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronisierung wird an SAP übergeben …"
+            "value" : "Daten werden im System verarbeitet …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Submitting synchronization to SAP …"
+            "value" : "Data are processed in the system …"
           }
         }
       }
     },
     "sap.refresh.stage.preparing" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Datenpaket wird vorbereitet …"
+            "value" : "Daten werden im System für den Empfang aufbereitet …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preparing SAP data package …"
+            "value" : "Data are prepared in the system for reception …"
           }
         }
       }
@@ -11065,30 +11116,47 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Datenpakete werden empfangen …"
+            "value" : "Datenempfang …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Receiving SAP data packages …"
+            "value" : "Receiving data …"
           }
         }
       }
     },
-    "sap.refresh.stage.saving" : {
+    "sap.refresh.stage.receivingPackage" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Daten werden auf diesem iPad gespeichert …"
+            "value" : "Datenempfang – Paket %d"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saving SAP data on this iPad …"
+            "value" : "Receiving package %d"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.saving" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daten werden gespeichert …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving data …"
           }
         }
       }
@@ -11099,13 +11167,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronisierungsanfrage wird vorbereitet …"
+            "value" : "Datenübertragung …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preparing synchronization request …"
+            "value" : "Data transfer …"
           }
         }
       }
@@ -11128,18 +11196,18 @@
       }
     },
     "sap.refresh.stage.waiting" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP bereitet die Daten vor …"
+            "value" : "Datenverarbeitung läuft. Vorgang nicht abbrechen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Waiting for SAP to prepare the data …"
+            "value" : "Data processing is running. Do not cancel the process."
           }
         }
       }
@@ -11150,13 +11218,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auf Bestätigung von SAP wird gewartet …"
+            "value" : "Datenverarbeitung läuft. Vorgang nicht abbrechen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Waiting for SAP confirmation …"
+            "value" : "Data processing is running. Do not cancel the process."
           }
         }
       }
