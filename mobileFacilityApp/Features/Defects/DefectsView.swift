@@ -41,6 +41,7 @@ struct DefectsView: View {
             .frame(maxWidth: 1280, alignment: .leading)
             .animation(defectContentAnimation, value: demo.offlineWorkStore.state)
             .animation(defectContentAnimation, value: demo.offlineWorkStore.closedDefectNotificationItems)
+            .animation(defectContentAnimation, value: demo.offlineWorkStore.defectItems)
         }
         .task {
             guard demo.offlineWorkStore.state == .loading else { return }
@@ -55,18 +56,18 @@ struct DefectsView: View {
 
     private var recordDefectButton: some View {
         Button {
-            // Defect capture is intentionally deferred until its workflow is verified.
+            demo.openManualDefect()
         } label: {
             Label("defects.capture", systemImage: "plus")
         }
         .buttonStyle(.borderedProminent)
         .tint(FacilityTheme.accent)
-        .disabled(true)
     }
 
     @ViewBuilder
     private var defectContent: some View {
-        if demo.offlineWorkStore.closedDefectNotificationItems.isEmpty {
+        if demo.offlineWorkStore.closedDefectNotificationItems.isEmpty
+            && demo.offlineWorkStore.defectItems.isEmpty {
             EmptyDemoState(
                 symbol: "checkmark.circle",
                 titleKey: "defects.empty.title",
@@ -74,6 +75,13 @@ struct DefectsView: View {
             )
         } else {
             LazyVStack(spacing: 12) {
+                ForEach(demo.offlineWorkStore.defectItems) { item in
+                    if let defect = item.payload.defect {
+                        ManualDefectCard(item: item, defect: defect) {
+                            demo.openManualDefect(item.id)
+                        }
+                    }
+                }
                 ForEach(demo.offlineWorkStore.closedDefectNotificationItems) { item in
                     if let review = item.payload.notificationReview {
                         ClosedDefectNotificationCard(item: item, review: review) {
@@ -98,6 +106,50 @@ struct DefectsView: View {
 
     private var defectContentAnimation: Animation? {
         accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0.04)
+    }
+}
+
+private struct ManualDefectCard: View {
+    let item: OfflineWorkItem
+    let defect: DefectDraftPayload
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 16) {
+                DefectPhotoTile(photoCount: defect.attachmentIDs.count)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(defect.shortText)
+                        .font(.headline)
+                        .foregroundStyle(FacilityTheme.ink)
+                    Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                    Text(item.updatedAt, format: .dateTime.day().month(.twoDigits).year())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                HStack(spacing: 8) {
+                    if let din = defect.dinGroup {
+                        FacilityTemplateBadge(text: "KG \(din)", style: .open)
+                    }
+                    FacilityTemplateBadge(
+                        localized: .init(defect.priority.titleKey),
+                        style: defect.priority == .high ? .attention : .temporarilySaved
+                    )
+                    FacilityTemplateBadge(
+                        localized: .init(item.status.titleKey),
+                        style: item.status == .draft ? .temporarilySaved : .open
+                    )
+                }
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .facilityCard()
     }
 }
 

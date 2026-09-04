@@ -481,7 +481,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
         case "P002": assetName = "BriefingSafety_P002"
         case "W001": assetName = "BriefingSafety_W001"
         case "W002": assetName = "BriefingSafety_W002"
-        case "W003": assetName = "BriefingSafety_W003"
+        case "ig": assetName = "BriefingSafety_W003"
         case "X001": assetName = "BriefingSafety_X001"
         default: assetName = nil
         }
