@@ -39,22 +39,22 @@
         }
       }
     },
+    "%@ · Meldung %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ · Meldung %2$@"
+          }
+        }
+      }
+    },
     "%@ (%@)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ (%2$@)"
-          }
-        }
-      }
-    },
-    "%@ %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ · Meldung %2$@"
           }
         }
       }
@@ -929,6 +929,22 @@
         }
       }
     },
+    "briefing.optionalSections.remove" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusätzlichen Abschnitt entfernen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove additional section"
+          }
+        }
+      }
+    },
     "briefing.optionalSections.title" : {
       "localizations" : {
         "de" : {
@@ -979,6 +995,7 @@
       }
     },
     "briefing.partnerPicker.available" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -995,6 +1012,7 @@
       }
     },
     "briefing.partnerPicker.empty.message" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1028,6 +1046,7 @@
       }
     },
     "briefing.partnerPicker.results" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1294,6 +1313,7 @@
       }
     },
     "briefing.signature.placeholder" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4703,6 +4723,40 @@
         }
       }
     },
+    "flEQ.briefing.partner.sort.ascending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufsteigend sortieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sort ascending"
+          }
+        }
+      }
+    },
+    "flEQ.briefing.partner.sort.descending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absteigend sortieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sort descending"
+          }
+        }
+      }
+    },
     "flEQ.briefing.partner.validation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -5418,9 +5472,6 @@
       }
     },
     "KG %@" : {
-
-    },
-    "KG 300" : {
 
     },
     "manual.category" : {
@@ -8286,23 +8337,6 @@
         }
       }
     },
-    "qualification.checklist.answer" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Durchgeführt"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Completed"
-          }
-        }
-      }
-    },
     "places.unavailable.message" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8320,23 +8354,6 @@
         }
       }
     },
-    "qualification.checklist.subtitle" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die aus SAP geladenen Prüfpunkte, Antworten und Bemerkungen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Checklist items, answers, and comments loaded from SAP."
-          }
-        }
-      }
-    },
     "places.unavailable.title" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8350,6 +8367,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not available yet"
+          }
+        }
+      }
+    },
+    "qualification.checklist.answer" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durchgeführt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completed"
+          }
+        }
+      }
+    },
+    "qualification.checklist.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aus SAP geladenen Prüfpunkte, Antworten und Bemerkungen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checklist items, answers, and comments loaded from SAP."
           }
         }
       }
@@ -8678,6 +8729,7 @@
       }
     },
     "RFID" : {
+
     },
     "role.centralControl.subtitle" : {
       "extractionState" : "stale",
@@ -9505,7 +9557,25 @@
         }
       }
     },
+    "sap.connection.checking" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Netzwerk wird geprüft …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking network …"
+          }
+        }
+      }
+    },
     "sap.connection.connected" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9517,6 +9587,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SAP S/4HANA connected"
+          }
+        }
+      }
+    },
+    "sap.connection.disconnected" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP S/4HANA getrennt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP S/4HANA disconnected"
           }
         }
       }
@@ -10768,6 +10855,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Synchronizing…"
+          }
+        }
+      }
+    },
+    "signature.prerequisite.prompt" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte geben Sie „%@“ ein"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please enter the “%@”"
           }
         }
       }

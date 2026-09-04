@@ -12,20 +12,27 @@ struct LegacyElectricalSafetyPDFRenderer: Sendable {
         let page = CGRect(x: 0, y: 0, width: 595, height: 842)
         let renderer = UIGraphicsPDFRenderer(bounds: page)
         let data = renderer.pdfData { pdf in
-            var y: CGFloat = 30
             pdf.beginPage()
-
-            draw("Einweisungsformular nur für Dienstleistungen", at: &y, font: .boldSystemFont(ofSize: 18), page: page, centered: true)
-            draw("Arbeiten an, in oder in der Nähe von elektrischen Anlagen", at: &y, font: .systemFont(ofSize: 11), page: page, centered: true)
-            draw("\n\(record.instructorName)  •  \(record.organizationUnit)", at: &y, font: .systemFont(ofSize: 10), page: page)
-            draw("Einzuweisende Person: \(record.instructedPerson)", at: &y, font: .systemFont(ofSize: 10), page: page)
-            if let partner = record.partner {
-                draw("Partnerfirma: \(partner.name)\n\(partner.address)", at: &y, font: .systemFont(ofSize: 10), page: page)
-            }
-            draw("Koordinator: \(record.coordinator)", at: &y, font: .systemFont(ofSize: 10), page: page)
-            draw("Arbeitsort: \(context.functionalLocationTitle)\nArbeitsauftrag: \(record.workDescription)", at: &y, font: .systemFont(ofSize: 10), page: page)
-            draw("Ausführung: \(dateTime(record.executionStart)) – \(dateTime(record.executionEnd))\n", at: &y, font: .systemFont(ofSize: 10), page: page)
-            draw("Geschäftseinheit: \(context.businessEntityTitle)\nGebäude: \(context.buildingTitle)", at: &y, font: .systemFont(ofSize: 10), page: page)
+            var y = StandardFormPDFHeaderRenderer.draw(
+                StandardFormPDFHeaderData(
+                    documentTitle: "Einweisungsformular nur für Dienstleistungen\nArbeiten an, in oder in der Nähe von elektrischen Anlagen",
+                    instructorName: record.instructorName,
+                    coordinator: record.coordinator,
+                    partnerName: record.partner?.name ?? "",
+                    partnerAddress: record.partner?.address ?? "",
+                    instructedPerson: record.instructedPerson,
+                    workLocation: [context.businessEntityTitle, context.buildingTitle, context.functionalLocationTitle]
+                        .filter { !$0.isEmpty }
+                        .joined(separator: "\n"),
+                    workDescription: record.workDescription,
+                    dateFrom: record.executionStart,
+                    dateTo: record.executionEnd
+                ),
+                in: pdf.cgContext,
+                pageWidth: page.width,
+                margin: 30,
+                startY: 30
+            ) + 10
             draw("Arbeitsplatz: \(record.workplace)", at: &y, font: .systemFont(ofSize: 10), page: page)
             draw("Elektrotechnische Arbeiten: \(record.electricalWork)", at: &y, font: .systemFont(ofSize: 10), page: page)
             draw("Anlagenverantwortlicher: \(record.systemResponsible.name) (\(record.systemResponsible.company))", at: &y, font: .systemFont(ofSize: 10), page: page)
@@ -210,10 +217,33 @@ struct LegacyFirePermitPDFRenderer: Sendable {
             var y: CGFloat = 28
             var pageNumber = 1
 
-            func startPage() {
+            func startPage(includeStandardHeader: Bool = false) {
                 pdf.beginPage()
-                draw("Erlaubnisschein für feuergefährliche Arbeiten", in: CGRect(x: 30, y: 28, width: page.width - 60, height: 28), font: .boldSystemFont(ofSize: 18), color: .systemRed, alignment: .center)
-                y = 70
+                if includeStandardHeader {
+                    y = StandardFormPDFHeaderRenderer.draw(
+                        StandardFormPDFHeaderData(
+                            documentTitle: "Erlaubnisschein für feuergefährliche Arbeiten",
+                            instructorName: record.instructorName,
+                            coordinator: record.coordinator,
+                            partnerName: record.partner?.name ?? "",
+                            partnerAddress: record.partner?.address ?? "",
+                            instructedPerson: record.instructedPerson,
+                            workLocation: [context.businessEntityTitle, context.buildingTitle, context.functionalLocationTitle]
+                                .filter { !$0.isEmpty }
+                                .joined(separator: "\n"),
+                            workDescription: record.workDescription,
+                            dateFrom: record.executionStart,
+                            dateTo: record.executionEnd
+                        ),
+                        in: pdf.cgContext,
+                        pageWidth: page.width,
+                        margin: 30,
+                        startY: 28
+                    ) + 10
+                } else {
+                    draw("Erlaubnisschein für feuergefährliche Arbeiten", in: CGRect(x: 30, y: 28, width: page.width - 60, height: 28), font: .boldSystemFont(ofSize: 18), color: .systemRed, alignment: .center)
+                    y = 70
+                }
             }
             func footer() {
                 draw("Seite \(pageNumber)", in: CGRect(x: 30, y: page.height - 30, width: page.width - 60, height: 14), font: .italicSystemFont(ofSize: 8), color: .secondaryLabel, alignment: .right)
@@ -250,16 +280,7 @@ struct LegacyFirePermitPDFRenderer: Sendable {
                 y += 130
             }
 
-            startPage()
-            [
-                Row(label: "Unterweisender", value: dash(record.instructorName)),
-                Row(label: "Organisationseinheit", value: dash(record.organizationUnit)),
-                Row(label: "Einzuweisende Person", value: dash(record.instructedPerson)),
-                Row(label: "Partnerfirma", value: record.partner.map { "\($0.name)\n\($0.address)" } ?? "-"),
-                Row(label: "Koordinator", value: dash(record.coordinator)),
-                Row(label: "Arbeitsort", value: context.functionalLocationTitle),
-                Row(label: "Ausführungszeitraum", value: "\(dateTime(record.executionStart)) – \(dateTime(record.executionEnd))")
-            ].forEach(row)
+            startPage(includeStandardHeader: true)
             sections.forEach(section)
             section(Section(title: "Unterschriften", rows: []))
             for slot in FirePermitSignatureSlot.allCases {

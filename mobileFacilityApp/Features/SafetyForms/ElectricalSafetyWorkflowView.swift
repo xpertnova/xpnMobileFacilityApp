@@ -75,6 +75,7 @@ struct ElectricalSafetyWorkflowView: View {
         .safeAreaInset(edge: .bottom) {
             SafetyFormActionBar(
                 canSaveDraft: true,
+                canComplete: viewModel.draft.context != nil,
                 isBusy: viewModel.isSaving,
                 saveDraft: {
                     Task {
@@ -151,24 +152,24 @@ struct ElectricalSafetyWorkflowView: View {
 
     private var commonHeader: some View {
         @Bindable var viewModel = viewModel
-        return SafetyFormCard {
-            SafetyFormFieldPair {
-                SafetyFormField("externalCompany.name", required: true) {
-                    SafetyFormPartnerField(
-                        partner: viewModel.draft.partner,
-                        isInvalid: viewModel.isInvalid(.partner),
-                        action: { isShowingPartnerPicker = true }
-                    )
-                    .id(ElectricalSafetyValidationIssue.partner)
-                }
-            } trailing: {
-                SafetyFormField("safetyInstrucForm.instructor") {
-                    Text(viewModel.draft.instructorName)
-                        .lineLimit(2)
-                        .briefingReadOnlyValue()
-                }
-            }
-
+        return StandardFormHeader(
+            partner: viewModel.draft.partner,
+            partnerInvalid: viewModel.isInvalid(.partner),
+            partnerID: ElectricalSafetyValidationIssue.partner,
+            selectPartner: { isShowingPartnerPicker = true },
+            instructorFirstName: viewModel.source.instructorFirstName,
+            instructorLastName: viewModel.source.instructorLastName,
+            dateFrom: Binding(get: { viewModel.draft.executionStart }, set: viewModel.setExecutionStart),
+            dateTo: $viewModel.draft.executionEnd,
+            dateRangeInvalid: viewModel.isInvalid(.executionRange),
+            dateRangeID: ElectricalSafetyValidationIssue.executionRange,
+            workDescription: Binding(get: { viewModel.draft.workDescription }, set: viewModel.setWorkDescription),
+            workDescriptionInvalid: viewModel.isInvalid(.workDescription),
+            workDescriptionID: ElectricalSafetyValidationIssue.workDescription,
+            instructedPerson: Binding(get: { viewModel.draft.instructedPerson }, set: viewModel.setInstructedPerson),
+            instructedPersonInvalid: viewModel.isInvalid(.instructedPerson),
+            instructedPersonID: ElectricalSafetyValidationIssue.instructedPerson
+        ) {
             SafetyFormContextCard(
                 businessEntities: viewModel.businessEntities,
                 buildings: viewModel.buildings,
@@ -182,77 +183,6 @@ struct ElectricalSafetyWorkflowView: View {
                 selectContext: viewModel.selectContext
             )
             .id(ElectricalSafetyValidationIssue.context)
-
-            SafetyFormFieldPair {
-                SafetyFormField("safetyInstrucForm.workOrder.timeSpan1", required: true) {
-                    DatePicker(
-                        "safetyInstrucForm.workOrder.timeSpan1",
-                        selection: $viewModel.draft.executionStart,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .briefingFieldChrome(invalid: viewModel.isInvalid(.executionRange))
-                    .id(ElectricalSafetyValidationIssue.executionRange)
-                }
-            } trailing: {
-                SafetyFormField("safetyInstrucForm.workOrder.timeSpan2", required: true) {
-                    DatePicker(
-                        "safetyInstrucForm.workOrder.timeSpan2",
-                        selection: $viewModel.draft.executionEnd,
-                        in: viewModel.draft.executionStart...,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .briefingFieldChrome(invalid: viewModel.isInvalid(.executionRange))
-                }
-            }
-
-            SafetyFormField("safetyInstrucForm.workOrder", required: true) {
-                TextField(
-                    "safetyInstrucForm.workOrder",
-                    text: Binding(get: { viewModel.draft.workDescription }, set: viewModel.setWorkDescription)
-                )
-                .briefingFieldChrome(invalid: viewModel.isInvalid(.workDescription))
-                .id(ElectricalSafetyValidationIssue.workDescription)
-            }
-
-            SafetyFormFieldPair {
-                SafetyFormField("safetyInstrucForm.instructedEmployee", required: true) {
-                    TextField(
-                        "safetyInstrucForm.instructedEmployee",
-                        text: Binding(get: { viewModel.draft.instructedPerson }, set: viewModel.setInstructedPerson)
-                    )
-                    .briefingFieldChrome(invalid: viewModel.isInvalid(.instructedPerson))
-                    .id(ElectricalSafetyValidationIssue.instructedPerson)
-                }
-            } trailing: {
-                SafetyFormField("externalCompany.eMail") {
-                    TextField("externalCompany.eMail", text: $viewModel.draft.partnerEmail)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .briefingFieldChrome(invalid: false)
-                }
-            }
-
-            SafetyFormField("externalCompany.address") {
-                Text(viewModel.draft.partner?.address ?? "")
-                    .lineLimit(3)
-                    .briefingReadOnlyValue()
-            }
-
-            SafetyFormFieldPair {
-                SafetyFormField("safetyInstrucForm.orgUnit") {
-                    Text(viewModel.draft.organizationUnit).briefingReadOnlyValue()
-                }
-            } trailing: {
-                SafetyFormField("safetyInstrucForm.coordinator", required: true) {
-                    TextField("safetyInstrucForm.coordinator", text: $viewModel.draft.coordinator)
-                        .briefingFieldChrome(invalid: viewModel.isInvalid(.coordinator))
-                        .id(ElectricalSafetyValidationIssue.coordinator)
-                }
-            }
         }
     }
 
@@ -365,9 +295,8 @@ struct ElectricalSafetyWorkflowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .briefingFieldChrome(invalid: false)
             }
-            SafetyFormFieldPair {
+            VStack(spacing: 16) {
                 signature(first)
-            } trailing: {
                 signature(second)
             }
         }
@@ -381,10 +310,13 @@ struct ElectricalSafetyWorkflowView: View {
                 get: { viewModel.draft.signatures[slot]?.pngData },
                 set: { viewModel.setSignature($0, for: slot) }
             ),
-            isInvalid: viewModel.isInvalid(.signature(slot))
+            isInvalid: viewModel.isInvalid(.signature(slot)),
+            inputRequirement: SignatureInputRequirement(
+                signerName: signerName,
+                requiredNameField: String(localized: String.LocalizationValue(slot.signerNameFieldKey))
+            )
         )
-        .allowsHitTesting(!signerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .opacity(signerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.62 : 1)
+        .frame(maxWidth: .infinity)
         .id(ElectricalSafetyValidationIssue.signature(slot))
     }
 }

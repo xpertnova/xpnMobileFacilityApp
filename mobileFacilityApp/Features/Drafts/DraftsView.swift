@@ -39,11 +39,7 @@ struct DraftsView: View {
                         && demo.offlineWorkStore.proofOfQualificationItems.isEmpty {
                         emptyState
                     } else {
-                        savedNotificationList
-                        savedBriefingList
-                        savedElectricalSafetyList
-                        savedTechnicalObjectEditList
-                        savedProofOfQualificationList
+                        savedWorkList
                     }
                 }
 
@@ -91,7 +87,8 @@ struct DraftsView: View {
             savedNotificationRows
             savedBriefingRows
             savedElectricalSafetyRows
-            savedProofOfQualificationRows
+            savedTechnicalObjectEditList
+            savedProofOfQualificationList
         }
         .frame(maxWidth: .infinity)
     }

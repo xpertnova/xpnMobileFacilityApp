@@ -47,8 +47,8 @@ final class ProofOfQualificationViewModel {
     instructorFirstName = source.instructorFirstName
     instructorLastName = source.instructorLastName
     organizationUnit = source.organizationUnit
-    executionStart = Calendar.current.startOfDay(for: now)
-    executionEnd = Calendar.current.startOfDay(for: now)
+    executionStart = now
+    executionEnd = now
 
     guard let existingDraft, let draft = existingDraft.payload.proofOfQualification else { return }
     savedWorkID = existingDraft.id
@@ -187,6 +187,11 @@ final class ProofOfQualificationViewModel {
     taskDescription = String(value.prefix(300))
   }
 
+  func setExecutionStart(_ value: Date) {
+    executionStart = value
+    if executionEnd < value { executionEnd = value }
+  }
+
   func setAnswer(_ key: String, itemID: String) {
     answerKeysByItemID[itemID] = key
   }
@@ -307,12 +312,14 @@ final class ProofOfQualificationViewModel {
       planNumber: template.planNumber,
       legacyDocumentID: ProofOfQualificationDraftPayload.legacyDocumentID,
       instructorName: instructorName,
-      organizationUnit: organizationUnit,
       contactPerson: contactPerson,
       coordinator: coordinator,
       partner: partner,
-      partnerEmail: partnerEmail,
-      workLocation: selectedContext.functionalLocationTitle,
+      workLocation: [
+        selectedContext.businessEntityTitle,
+        selectedContext.buildingTitle,
+        selectedContext.functionalLocationTitle,
+      ].filter { !$0.isEmpty }.joined(separator: "\n"),
       taskDescription: taskDescription,
       executionStart: executionStart,
       executionEnd: executionEnd,

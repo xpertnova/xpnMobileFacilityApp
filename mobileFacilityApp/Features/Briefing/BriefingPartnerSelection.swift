@@ -109,7 +109,7 @@ struct LegacyBriefingPartnerEditorOverlay<Content: View>: View {
                     content
                         .frame(
                             width: min(max(geometry.size.width - 92, 0), 1_180),
-                            height: min(max(geometry.size.height - 76, 0), 760)
+                            height: min(max(geometry.size.height - 32, 0), 840)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .shadow(color: .black.opacity(0.20), radius: 28, y: 12)
@@ -215,8 +215,7 @@ struct LegacyBriefingSignatureDialog: View {
     }
 
     private var signatureData: Data? {
-        guard !drawing.bounds.isEmpty else { return nil }
-        return drawing.image(from: drawing.bounds.insetBy(dx: -12, dy: -12), scale: 2).pngData()
+        BriefingSignatureRasterizer.pngData(from: drawing)
     }
 }
 
@@ -235,177 +234,90 @@ struct BriefingPartnerSelection: Identifiable, Equatable, Sendable {
 struct BriefingPartnerSelectionTable: View {
     let partners: [BriefingPartnerSelection]
     @Binding var selectedPartnerID: String?
-    var emptyRowCount = 0
 
     @State private var sort = Sort.nameAscending
     @State private var activeColumnMenu: Column?
     @State private var columnFilters: [Column: String] = [:]
-    @State private var searchText = ""
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 12) {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("briefing.partnerPicker.search", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .autocorrectionDisabled()
-                }
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.black.opacity(0.09))
-                }
+        GeometryReader { geometry in
+            let widths = ColumnWidths(totalWidth: geometry.size.width)
 
-                Menu {
-                    Button("notifications.sort.ascending") { sort = .nameAscending }
-                    Button("notifications.sort.descending") { sort = .nameDescending }
-                    Divider()
-                    Button("briefing.partnerPicker.sort.client") { sort = .clientAscending }
-                    Button("briefing.partnerPicker.sort.function") { sort = .functionAscending }
-                } label: {
-                    Label("briefing.partnerPicker.sort", systemImage: "arrow.up.arrow.down")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.ink)
-                        .frame(minWidth: 126, minHeight: 48)
-                        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(Color.black.opacity(0.09))
-                        }
+            VStack(spacing: 0) {
+                HStack(spacing: 0) {
+                    columnHeader(Text(verbatim: "MANDT"), width: widths.client, column: .client)
+                    columnHeader(Text("externalCompany.parvw"), width: widths.function, column: .function)
+                    columnHeader(Text("externalCompany.name"), width: widths.name, column: .name)
+                    columnHeader(Text("externalCompany.SORT1"), width: widths.searchTerm1, column: .searchTerm1)
+                    columnHeader(Text("externalCompany.SORT2"), width: widths.searchTerm2, column: .searchTerm2)
                 }
-            }
+                .background(FacilityTheme.canvas)
 
-            HStack {
-                Text("briefing.partnerPicker.available")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FacilityTheme.ink)
-                Spacer()
-                Text("\(displayedPartners.count)")
-                    .font(.subheadline.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(FacilityTheme.accent)
-                Text("briefing.partnerPicker.results")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 4)
-
-            if displayedPartners.isEmpty {
-                ContentUnavailableView(
-                    "briefing.partnerPicker.empty.title",
-                    systemImage: "building.2",
-                    description: Text("briefing.partnerPicker.empty.message")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 10) {
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
                         ForEach(displayedPartners) { partner in
-                            partnerCard(partner)
+                            Button {
+                                selectedPartnerID = partner.id
+                            } label: {
+                                partnerRow(partner, widths: widths)
+                                    .background(
+                                        selectedPartnerID == partner.id
+                                            ? FacilityTheme.accentSoft
+                                            : FacilityTheme.surface
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Text(partner.name))
+                            .accessibilityValue(
+                                selectedPartnerID == partner.id
+                                    ? Text("briefing.partnerPicker.selected")
+                                    : Text("")
+                            )
+                        }
+
+                        ForEach(0..<max(0, 9 - displayedPartners.count), id: \.self) { _ in
+                            emptyRow(widths: widths)
                         }
                     }
-                    .padding(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                .scrollIndicators(.visible)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(FacilityTheme.surface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.black.opacity(0.10))
             }
         }
     }
 
     private var displayedPartners: [BriefingPartnerSelection] {
-        let searchQuery = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        Self.filteredPartners(partners: partners, filters: columnFilters, sort: sort)
+    }
+
+    static func filteredPartners(
+        partners: [BriefingPartnerSelection],
+        filters: [Column: String],
+        sort: Sort
+    ) -> [BriefingPartnerSelection] {
         return partners
             .filter { partner in
                 Column.allCases.allSatisfy { column in
-                    let query = columnFilters[column, default: ""]
+                    let query = filters[column, default: ""]
                         .trimmingCharacters(in: .whitespacesAndNewlines)
-                    return (query.isEmpty || column.value(from: partner).localizedCaseInsensitiveContains(query))
-                        && (searchQuery.isEmpty || column.value(from: partner).localizedCaseInsensitiveContains(searchQuery))
+                    return query.isEmpty || column.value(from: partner).localizedCaseInsensitiveContains(query)
                 }
             }
             .sorted(by: sort.areInIncreasingOrder)
     }
 
-    private func partnerCard(_ partner: BriefingPartnerSelection) -> some View {
-        let isSelected = selectedPartnerID == partner.id
-
-        return Button {
-            selectedPartnerID = partner.id
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "building.2.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(isSelected ? FacilityTheme.accent : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(
-                        (isSelected ? FacilityTheme.accent : FacilityTheme.blue).opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    )
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(partner.name.isEmpty ? partner.searchTerm1 : partner.name)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.ink)
-                        .lineLimit(1)
-
-                    HStack(spacing: 10) {
-                        if !partner.function.isEmpty {
-                            Text(partner.function)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(FacilityTheme.blue)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(FacilityTheme.blue.opacity(0.10), in: Capsule())
-                        }
-                        if !partner.searchTerm1.isEmpty {
-                            Text(partner.searchTerm1)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        if !partner.searchTerm2.isEmpty {
-                            Text(partner.searchTerm2)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                if !partner.client.isEmpty {
-                    Text(partner.client)
-                        .font(.caption.monospaced().weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
-                        .background(FacilityTheme.canvas, in: Capsule())
-                }
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? FacilityTheme.accent : Color.secondary.opacity(0.65))
-                    .frame(width: 28)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-            .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
-            .background(isSelected ? FacilityTheme.accentSoft : FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(isSelected ? FacilityTheme.accent.opacity(0.45) : Color.black.opacity(0.08), lineWidth: isSelected ? 1.5 : 1)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(partner.name))
-        .accessibilityValue(isSelected ? Text("briefing.partnerPicker.selected") : Text(""))
-    }
-
     private func columnHeader(_ title: Text, width: CGFloat, column: Column) -> some View {
         HStack(spacing: 6) {
-            title.lineLimit(1)
+            title
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
             Spacer(minLength: 4)
             Button {
                 activeColumnMenu = activeColumnMenu == column ? nil : column
@@ -415,8 +327,8 @@ struct BriefingPartnerSelectionTable: View {
                     .frame(width: 28, height: 44)
             }
             .buttonStyle(.plain)
-            .popover(isPresented: columnMenuBinding(for: column), attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
-                columnMenu(column).presentationCompactAdaptation(.popover)
+            .facilityPopover(isPresented: columnMenuBinding(for: column), arrowEdge: .top) {
+                columnMenu(column)
             }
         }
         .padding(.leading, 12)
@@ -432,12 +344,12 @@ struct BriefingPartnerSelectionTable: View {
 
     private func columnMenu(_ column: Column) -> some View {
         VStack(spacing: 0) {
-            menuButton("notifications.sort.ascending") {
+            menuButton("flEQ.briefing.partner.sort.ascending") {
                 sort = column.ascendingSort
                 activeColumnMenu = nil
             }
             Divider()
-            menuButton("notifications.sort.descending") {
+            menuButton("flEQ.briefing.partner.sort.descending") {
                 sort = column.ascendingSort.descending
                 activeColumnMenu = nil
             }
@@ -458,6 +370,7 @@ struct BriefingPartnerSelectionTable: View {
         .font(.body)
         .frame(width: 350)
         .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func menuButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
@@ -528,13 +441,13 @@ struct BriefingPartnerSelectionTable: View {
         let client: CGFloat; let function: CGFloat; let name: CGFloat
         let searchTerm1: CGFloat; let searchTerm2: CGFloat
         init(totalWidth: CGFloat) {
-            client = totalWidth * 0.13; function = totalWidth * 0.085; name = totalWidth * 0.26
-            searchTerm1 = totalWidth * 0.2625
+            client = totalWidth * 0.14; function = totalWidth * 0.14; name = totalWidth * 0.24
+            searchTerm1 = totalWidth * 0.24
             searchTerm2 = totalWidth - client - function - name - searchTerm1
         }
     }
 
-    private enum Column: CaseIterable, Hashable {
+    enum Column: CaseIterable, Hashable {
         case client, function, name, searchTerm1, searchTerm2
         var ascendingSort: Sort {
             switch self {
@@ -551,7 +464,7 @@ struct BriefingPartnerSelectionTable: View {
         }
     }
 
-    private enum Sort: Equatable {
+    enum Sort: Equatable {
         case clientAscending, clientDescending, functionAscending, functionDescending
         case nameAscending, nameDescending, searchTerm1Ascending, searchTerm1Descending
         case searchTerm2Ascending, searchTerm2Descending
@@ -581,8 +494,11 @@ struct BriefingPartnerSelectionTable: View {
 struct BriefingSignatureCanvas: UIViewRepresentable {
     @Binding var drawing: PKDrawing
     var backgroundColor: UIColor = .white
+    var onDrawingChanged: ((PKDrawing) -> Void)?
 
-    func makeCoordinator() -> Coordinator { Coordinator(drawing: $drawing) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(drawing: $drawing, onDrawingChanged: onDrawingChanged)
+    }
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = PKCanvasView()
@@ -594,25 +510,77 @@ struct BriefingSignatureCanvas: UIViewRepresentable {
     }
 
     func updateUIView(_ canvas: PKCanvasView, context: Context) {
+        context.coordinator.onDrawingChanged = onDrawingChanged
         guard canvas.drawing != drawing else { return }
         canvas.drawing = drawing
     }
 
     final class Coordinator: NSObject, PKCanvasViewDelegate {
         private var drawing: Binding<PKDrawing>
+        var onDrawingChanged: ((PKDrawing) -> Void)?
 
-        init(drawing: Binding<PKDrawing>) { self.drawing = drawing }
+        init(
+            drawing: Binding<PKDrawing>,
+            onDrawingChanged: ((PKDrawing) -> Void)?
+        ) {
+            self.drawing = drawing
+            self.onDrawingChanged = onDrawingChanged
+        }
 
         func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-            drawing.wrappedValue = canvasView.drawing
+            let completedDrawing = canvasView.drawing
+            drawing.wrappedValue = completedDrawing
+            // Apple can deliver the final drawing change after the interaction
+            // ends (for example, when final Pencil pressure data arrives). This
+            // is the first point at which the signature must be persisted.
+            onDrawingChanged?(completedDrawing)
         }
 
         func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
-            // PencilKit can batch the last drawing-change callback. Updating the
-            // local binding here guarantees that SwiftUI persists the completed
-            // stroke before a worker can close the form.
+            // Keep SwiftUI's local drawing current. Do not serialize here:
+            // PencilKit may not yet have committed the final stroke.
             drawing.wrappedValue = canvasView.drawing
         }
+    }
+}
+
+/// Converts a tightly cropped PencilKit drawing into a fixed canvas. Every
+/// signature then has identical source dimensions when the PDF renderer scales
+/// it into a signature cell, preserving one visible pen thickness.
+enum BriefingSignatureRasterizer {
+    static let canvasSize = CGSize(width: 1_400, height: 300)
+
+    static func pngData(from drawing: PKDrawing) -> Data? {
+        let inkBounds = drawing.bounds.insetBy(dx: -12, dy: -12)
+        guard !inkBounds.isEmpty else { return nil }
+
+        let croppedSignature = drawing.image(from: inkBounds, scale: 2)
+        return standardizedPNGData(from: croppedSignature)
+    }
+
+    static func standardizedPNGData(from croppedSignature: UIImage) -> Data? {
+        guard croppedSignature.size.width > 0,
+              croppedSignature.size.height > 0,
+              croppedSignature.size.width <= canvasSize.width,
+              croppedSignature.size.height <= canvasSize.height
+        else {
+            return nil
+        }
+
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = 2
+        let image = UIGraphicsImageRenderer(size: canvasSize, format: format).image { _ in
+            croppedSignature.draw(
+                in: CGRect(
+                    x: (canvasSize.width - croppedSignature.size.width) / 2,
+                    y: (canvasSize.height - croppedSignature.size.height) / 2,
+                    width: croppedSignature.size.width,
+                    height: croppedSignature.size.height
+                )
+            )
+        }
+        return image.pngData()
     }
 }
 

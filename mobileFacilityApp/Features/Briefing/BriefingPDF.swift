@@ -31,7 +31,6 @@ struct BriefingPDFPayload: Sendable, Equatable {
 
     let planNumber: String
     let instructorName: String
-    let organizationUnit: String
     let coordinator: String
     let partnerName: String
     let partnerAddress: String
@@ -42,7 +41,6 @@ struct BriefingPDFPayload: Sendable, Equatable {
     let startDate: Date
     let endDate: Date
     let completedAt: Date
-    let localeIdentifier: String
     let instructorSignature: Data
     let instructedPersonSignature: Data
     let sections: [Section]
@@ -97,7 +95,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
     }
 
     func render(_ payload: BriefingPDFPayload) throws -> BriefingPDFArtifact {
-        let copy = BriefingPDFCopy(localeIdentifier: payload.localeIdentifier)
+        let copy = BriefingPDFCopy()
         let totalPageCount = 1 + checklistPageCount(for: payload)
         let renderer = UIGraphicsPDFRenderer(
             bounds: CGRect(origin: .zero, size: Layout.pageSize)
@@ -135,48 +133,26 @@ struct LegacyBriefingPDFRenderer: Sendable {
         pageNumber: Int,
         pageCount: Int
     ) {
-        var y = Layout.topMargin
-        let titleHeight = max(
-            55,
-            textHeight(copy.title, width: contentWidth, font: Layout.headerFont) + 8
-        )
-        let titleRect = CGRect(
-            x: Layout.leftMargin,
-            y: y,
-            width: contentWidth,
-            height: titleHeight
-        )
-        drawText(copy.title, in: titleRect, font: Layout.headerFont, alignment: .center)
-        y = titleRect.maxY + 5
-
-        let headerRows = [
-            BriefingPDFHeaderRow(
-                label: "\(copy.instructor)\n\(copy.employeeHint)",
-                value: payload.instructorName,
-                secondaryLabel: copy.organizationHint,
-                secondaryValue: payload.organizationUnit
-            ),
-            BriefingPDFHeaderRow(label: copy.coordinator, value: payload.coordinator),
-            BriefingPDFHeaderRow(
-                label: "\(copy.partnerCompany)\n\(copy.nameAndAddressHint)",
-                value: [payload.partnerName, payload.partnerAddress]
+        var y = StandardFormPDFHeaderRenderer.draw(
+            StandardFormPDFHeaderData(
+                documentTitle: copy.title,
+                instructorName: payload.instructorName,
+                coordinator: payload.coordinator,
+                partnerName: payload.partnerName,
+                partnerAddress: payload.partnerAddress,
+                instructedPerson: payload.instructedPerson,
+                workLocation: [payload.businessEntity, payload.workLocation]
                     .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                    .joined(separator: "\n")
+                    .joined(separator: "\n"),
+                workDescription: payload.taskDescription,
+                dateFrom: payload.startDate,
+                dateTo: payload.endDate
             ),
-            BriefingPDFHeaderRow(label: copy.instructedPerson, value: payload.instructedPerson),
-            BriefingPDFHeaderRow(
-                label: copy.workLocation,
-                value: [payload.businessEntity, payload.workLocation]
-                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                    .joined(separator: "\n")
-            ),
-            BriefingPDFHeaderRow(label: copy.task, value: payload.taskDescription),
-            BriefingPDFHeaderRow(
-                label: "\(copy.executionPeriod)\n\(copy.dateHint)",
-                value: "\(formattedDate(payload.startDate, localeIdentifier: payload.localeIdentifier)) - \(formattedDate(payload.endDate, localeIdentifier: payload.localeIdentifier))"
-            )
-        ]
-        y = drawHeaderTable(headerRows, at: y, context: context) + 9
+            in: context,
+            pageWidth: Layout.pageSize.width,
+            margin: Layout.leftMargin,
+            startY: Layout.topMargin
+        ) + 9
 
         for declaration in copy.declarations {
             let height = max(
@@ -200,57 +176,6 @@ struct LegacyBriefingPDFRenderer: Sendable {
         drawFooter(context: context, pageNumber: pageNumber, pageCount: pageCount, copy: copy)
     }
 
-    private func drawHeaderTable(
-        _ rows: [BriefingPDFHeaderRow],
-        at originY: CGFloat,
-        context: CGContext
-    ) -> CGFloat {
-        var y = originY
-        let labelWidth = contentWidth * 0.48
-        let valueWidth = contentWidth - labelWidth
-
-        for row in rows {
-            let primaryHeight = max(
-                textHeight(row.label, width: labelWidth - 10, font: Layout.bodyFont),
-                textHeight(row.value, width: valueWidth - 10, font: Layout.bodyFont)
-            ) + 12
-            let secondaryHeight: CGFloat = row.secondaryLabel == nil ? 0 : 30
-            let height = max(CGFloat(31), primaryHeight + secondaryHeight)
-            let labelRect = CGRect(x: Layout.leftMargin, y: y, width: labelWidth, height: height)
-            let valueRect = CGRect(x: labelRect.maxX, y: y, width: valueWidth, height: height)
-            drawCell(labelRect, context: context)
-            drawCell(valueRect, context: context)
-            drawText(row.label, in: labelRect.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
-            drawText(row.value, in: valueRect.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
-
-            if let secondaryLabel = row.secondaryLabel,
-               let secondaryValue = row.secondaryValue {
-                drawText(
-                    secondaryLabel,
-                    in: CGRect(
-                        x: labelRect.minX + 5,
-                        y: labelRect.maxY - 16,
-                        width: labelRect.width - 10,
-                        height: 12
-                    ),
-                    font: Layout.subInfoFont
-                )
-                drawText(
-                    secondaryValue,
-                    in: CGRect(
-                        x: valueRect.minX + 5,
-                        y: valueRect.maxY - 16,
-                        width: valueRect.width - 10,
-                        height: 12
-                    ),
-                    font: Layout.subInfoFont
-                )
-            }
-            y += height
-        }
-        return y
-    }
-
     private func drawSignatureTable(
         at originY: CGFloat,
         context: CGContext,
@@ -258,10 +183,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
         copy: BriefingPDFCopy
     ) {
         let columnWidth = contentWidth / 2
-        let timestamp = formattedDateTime(
-            payload.completedAt,
-            localeIdentifier: payload.localeIdentifier
-        )
+        let timestamp = fixedDateTime(payload.completedAt)
         let leftDate = CGRect(x: Layout.leftMargin, y: originY, width: columnWidth, height: 30)
         let rightDate = CGRect(x: leftDate.maxX, y: originY, width: columnWidth, height: 30)
         drawCell(leftDate, context: context)
@@ -587,7 +509,6 @@ struct LegacyBriefingPDFRenderer: Sendable {
     ) {
         let text = String(
             format: copy.pageNumberFormat,
-            locale: copy.locale,
             Int64(pageNumber),
             Int64(pageCount)
         )
@@ -637,19 +558,11 @@ struct LegacyBriefingPDFRenderer: Sendable {
         ).height)
     }
 
-    private func formattedDate(_ date: Date, localeIdentifier: String) -> String {
+    private func fixedDateTime(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: localeIdentifier)
-        formatter.dateStyle = .short
-        formatter.timeStyle = .none
-        return formatter.string(from: date)
-    }
-
-    private func formattedDateTime(_ date: Date, localeIdentifier: String) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: localeIdentifier)
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
+        formatter.locale = Locale(identifier: "de_DE")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "dd.MM.yyyy HH:mm"
         return formatter.string(from: date)
     }
 
@@ -669,84 +582,25 @@ struct LegacyBriefingPDFRenderer: Sendable {
     }
 }
 
-private struct BriefingPDFHeaderRow {
-    let label: String
-    let value: String
-    var secondaryLabel: String?
-    var secondaryValue: String?
-}
-
 private struct BriefingPDFCopy {
-    let locale: Locale
-    let title: String
-    let instructor: String
-    let employeeHint: String
-    let organizationHint: String
-    let coordinator: String
-    let partnerCompany: String
-    let nameAndAddressHint: String
-    let instructedPerson: String
-    let workLocation: String
-    let task: String
-    let executionPeriod: String
-    let dateHint: String
-    let declarations: [String]
-    let dateTime: String
-    let signatureInstructor: String
-    let signatureInstructedPerson: String
-    let signature: String
-    let copyDelivered: String
-    let number: String
-    let tasks: String
-    let completed: String
-    let comment: String
-    let yes: String
-    let no: String
-    let pageNumberFormat: String
-
-    init(localeIdentifier: String) {
-        locale = Locale(identifier: localeIdentifier)
-        title = Self.localized("title", locale: locale)
-        instructor = Self.localized("instructor", locale: locale)
-        employeeHint = Self.localized("employeeHint", locale: locale)
-        organizationHint = Self.localized("organizationHint", locale: locale)
-        coordinator = Self.localized("coordinator", locale: locale)
-        partnerCompany = Self.localized("partnerCompany", locale: locale)
-        nameAndAddressHint = Self.localized("nameAndAddressHint", locale: locale)
-        instructedPerson = Self.localized("instructedPerson", locale: locale)
-        workLocation = Self.localized("workLocation", locale: locale)
-        task = Self.localized("task", locale: locale)
-        executionPeriod = Self.localized("executionPeriod", locale: locale)
-        dateHint = Self.localized("dateHint", locale: locale)
-        declarations = [
-            Self.localized("declaration.one", locale: locale),
-            Self.localized("declaration.two", locale: locale),
-            Self.localized("declaration.three", locale: locale)
-        ]
-        dateTime = Self.localized("dateTime", locale: locale)
-        signatureInstructor = Self.localized("signature.instructor", locale: locale)
-        signatureInstructedPerson = Self.localized("signature.instructedPerson", locale: locale)
-        signature = Self.localized("signature.caption", locale: locale)
-        copyDelivered = Self.localized("copyDelivered", locale: locale)
-        number = Self.localized("number", locale: locale)
-        tasks = Self.localized("tasks", locale: locale)
-        completed = Self.localized("completed", locale: locale)
-        comment = Self.localized("comment", locale: locale)
-        yes = Self.localized("yes", locale: locale)
-        no = Self.localized("no", locale: locale)
-        pageNumberFormat = Self.localized("pageNumber", locale: locale)
-    }
-
-    private static func localized(_ key: String, locale: Locale) -> String {
-        let languageCode = locale.language.languageCode?.identifier ?? "en"
-        let languageBundle = Bundle.main.path(forResource: languageCode, ofType: "lproj")
-            .flatMap(Bundle.init(path:))
-        return (languageBundle ?? .main).localizedString(
-            forKey: key,
-            value: key,
-            table: "BriefingPDF"
-        )
-    }
+    let title = "Einweisung von Partnerfirmen\n(Standort- und Projektmanagement: CHG, ESE, Westnetz)"
+    let declarations = [
+        "Mit dieser Einweisung werden standort- und betriebsspezifische Gegebenheiten, Regelungen und Hinweise zu konkreten Arbeitsbedingungen vermittelt.",
+        "Der Eingewiesene unterweist die eingesetzten Mitarbeitenden und gegebenenfalls Subunternehmer vor Beginn der Arbeiten über die Inhalte dieser Einweisung.",
+        "Die Partnerfirma hält während der Arbeiten die maßgeblichen Vorschriften und Regeln zum Arbeits- und Gesundheitsschutz ein."
+    ]
+    let dateTime = "Datum, Uhrzeit"
+    let signatureInstructor = "Koordinator*in"
+    let signatureInstructedPerson = "Eingewiesener"
+    let signature = "Unterschrift"
+    let copyDelivered = "Kopie an Eingewiesenen übergeben."
+    let number = "Nr."
+    let tasks = "Aufgaben"
+    let completed = "Durchgeführt"
+    let comment = "Bemerkung"
+    let yes = "Ja"
+    let no = "Nein"
+    let pageNumberFormat = "Seite %lld von %lld"
 }
 
 struct BriefingPDFRenderingOverlay: View {

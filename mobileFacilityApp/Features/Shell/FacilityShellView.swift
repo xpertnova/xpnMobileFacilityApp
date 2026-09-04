@@ -7,6 +7,7 @@ struct FacilityShellView: View {
     @State private var sapPassword = ""
     @State private var isSAPRefreshConfirmed = false
     @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
+    @State private var networkReachability = NetworkReachabilityMonitor()
 
     private let expandedSidebarWidth: CGFloat = 340
     private let sidebarAnimation = Animation.easeInOut(duration: 0.42)
@@ -310,7 +311,7 @@ struct FacilityShellView: View {
     @ViewBuilder
     private var mainContent: some View {
         switch demo.selection {
-        case .overview: DashboardView(demo: demo)
+        case .overview: DashboardView(demo: demo, networkReachability: networkReachability)
         case .scan: ScanView()
         case .notifications:
             NotificationsView(
