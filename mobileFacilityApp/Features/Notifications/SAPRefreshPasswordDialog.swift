@@ -81,7 +81,7 @@ private struct SAPRefreshProgressDialog: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Text(stage.messageKey)
+            Text(stage.messageText)
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -105,17 +105,26 @@ private struct SAPRefreshProgressDialog: View {
 }
 
 private extension SAPReadRefreshStage {
-    var messageKey: LocalizedStringKey {
+    var messageText: String {
         switch self {
-        case .authenticating: "sap.refresh.stage.authenticating"
-        case .uploadingOutgoingMetadata: "sap.refresh.stage.uploading"
-        case .postingOutgoingData: "sap.refresh.stage.posting"
-        case .waitingForOutgoingAcknowledgement: "sap.refresh.stage.waitingForPost"
-        case .checkingAppVersion: "sap.refresh.stage.version"
-        case .preparingIncomingData: "sap.refresh.stage.preparing"
-        case .waitingForIncomingData: "sap.refresh.stage.waiting"
-        case .receivingIncomingPackages: "sap.refresh.stage.receiving"
-        case .savingSnapshot: "sap.refresh.stage.saving"
+        case .authenticating:
+            String(localized: "sap.refresh.stage.authenticating")
+        case .uploadingOutgoingMetadata:
+            String(localized: "sap.refresh.stage.uploading")
+        case .postingOutgoingData:
+            String(localized: "sap.refresh.stage.posting")
+        case .waitingForOutgoingAcknowledgement:
+            String(localized: "sap.refresh.stage.waitingForPost")
+        case .checkingAppVersion:
+            String(localized: "sap.refresh.stage.version")
+        case .preparingIncomingData:
+            String(localized: "sap.refresh.stage.preparing")
+        case .waitingForIncomingData:
+            String(localized: "sap.refresh.stage.waiting")
+        case .receivingIncomingPackages(let packageNumber):
+            String(format: String(localized: "sap.refresh.stage.receivingPackage"), packageNumber)
+        case .savingSnapshot:
+            String(localized: "sap.refresh.stage.saving")
         }
     }
 }

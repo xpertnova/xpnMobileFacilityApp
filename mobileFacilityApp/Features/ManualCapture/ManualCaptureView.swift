@@ -131,20 +131,10 @@ struct ManualCaptureView: View {
                     .frame(height: 0)
             case .defect:
                 defectForm
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.985)),
-                            removal: .opacity
-                        )
-                    )
+                    .transition(.opacity)
             case .meterReading:
                 meterForm
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.985)),
-                            removal: .opacity
-                        )
-                    )
+                    .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

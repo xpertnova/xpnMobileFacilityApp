@@ -46,7 +46,7 @@ struct FormsView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.28), value: selectedActiveForm?.id)
+        .animation(.snappy(duration: 0.3, extraBounce: 0), value: selectedActiveForm?.id)
         .sheet(item: $selectedPreviewForm) { form in
             FormWorkflowPreview(form: form)
                 .presentationDetents([.medium, .large])

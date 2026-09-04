@@ -773,13 +773,17 @@ private struct NotificationRow: View {
                         .foregroundStyle(FacilityTheme.ink)
                     
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(notification.equipment)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        if !notification.equipment.isEmpty {
+                            Text(notification.equipment)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                         
-                        Text(notification.location)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                        if !notification.location.isEmpty, notification.location != notification.equipment {
+                            Text(notification.location)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     
                     HStack(alignment: .bottom) {

@@ -469,7 +469,7 @@ enum SAPReadRefreshStage: Equatable, Sendable {
     case checkingAppVersion
     case preparingIncomingData
     case waitingForIncomingData
-    case receivingIncomingPackages
+    case receivingIncomingPackages(packageNumber: Int = 1)
     case savingSnapshot
 }
 
