@@ -35,15 +35,13 @@ struct DraftsView: View {
                     if demo.offlineWorkStore.localWorkNotificationItems.isEmpty
                         && demo.offlineWorkStore.briefingItems.isEmpty
                         && demo.offlineWorkStore.electricalSafetyItems.isEmpty
+                        && demo.offlineWorkStore.defectItems.isEmpty
+                        && demo.offlineWorkStore.meterReadingItems.isEmpty
                         && demo.offlineWorkStore.technicalObjectEditItems.isEmpty
                         && demo.offlineWorkStore.proofOfQualificationItems.isEmpty {
                         emptyState
                     } else {
-                        savedNotificationList
-                        savedBriefingList
-                        savedElectricalSafetyList
-                        savedTechnicalObjectEditList
-                        savedProofOfQualificationList
+                        savedWorkList
                     }
                 }
 
@@ -89,11 +87,46 @@ struct DraftsView: View {
     private var savedWorkList: some View {
         LazyVStack(spacing: 12) {
             savedNotificationRows
+            savedDefectRows
+            savedMeterReadingRows
             savedBriefingRows
             savedElectricalSafetyRows
-            savedProofOfQualificationRows
+            savedTechnicalObjectEditList
+            savedProofOfQualificationList
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var savedDefectRows: some View {
+        ForEach(demo.offlineWorkStore.defectItems) { item in
+            if let defect = item.payload.defect {
+                LocalWorkTemplateRow(
+                    icon: "⚠️",
+                    title: Text(defect.shortText),
+                    subtitle: Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)"),
+                    status: .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openManualDefect(item.id) }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedMeterReadingRows: some View {
+        ForEach(demo.offlineWorkStore.meterReadingItems) { item in
+            if let reading = item.payload.meterReading {
+                LocalWorkTemplateRow(
+                    icon: reading.meter.kind == .electricity ? "⚡" : (reading.meter.kind == .gas ? "🔥" : "💧"),
+                    title: Text("manual.localWork.meter.title"),
+                    subtitle: Text("\(reading.meter.id) · \(MeterReadingViewModel.displayString(reading.value)) \(reading.meter.unit)"),
+                    status: demo.isDemoMode ? .demoLocal : .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openMeterReading(item.id) }
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -221,20 +254,23 @@ private struct SavedNotificationRow: View {
 private enum LocalWorkTemplateStatus {
     case offline(OfflineWorkStatus)
     case closedLocally
+    case demoLocal
 
     var titleKey: String {
         switch self {
         case let .offline(status): status.titleKey
         case .closedLocally: WorkStatus.closedLocally.titleKey
+        case .demoLocal: "offline.status.demoLocal"
         }
     }
 
     var badgeStyle: FacilityTemplateBadgeStyle {
         switch self {
         case .closedLocally, .offline(.synchronized): .complete
+        case .demoLocal: .open
         case .offline(.failed), .offline(.conflict): .attention
-        case .offline(.draft), .offline(.pendingSynchronization): .temporarilySaved
-        case .offline(.synchronizing): .open
+        case .offline(.draft): .temporarilySaved
+        case .offline(.pendingSynchronization), .offline(.synchronizing): .open
         }
     }
 }

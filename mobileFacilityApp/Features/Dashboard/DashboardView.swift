@@ -60,7 +60,7 @@ struct DashboardView: View {
     }
 
     private var visibleDefectCount: Int {
-        demo.offlineWorkStore.closedDefectNotificationCount
+        demo.offlineWorkStore.defectCount
     }
 
     private var dashboardContext: String {

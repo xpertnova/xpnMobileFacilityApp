@@ -92,6 +92,10 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             switch type {
             case .manualCapture:
                 payload = .manualCapture(try decoder.decode(ManualCaptureDraftPayload.self, from: data))
+            case .defect:
+                payload = .defect(try decoder.decode(DefectDraftPayload.self, from: data))
+            case .meterReading:
+                payload = .meterReading(try decoder.decode(MeterReadingDraftPayload.self, from: data))
             case .notificationReview:
                 payload = .notificationReview(try decoder.decode(NotificationReviewDraftPayload.self, from: data))
             case .briefing:
@@ -113,6 +117,10 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         let payloadData: Data?
         switch (item.type, item.payload) {
         case let (.manualCapture, .manualCapture(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.defect, .defect(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.meterReading, .meterReading(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         case let (.notificationReview, .notificationReview(payload)):
             payloadData = try? JSONEncoder().encode(payload)

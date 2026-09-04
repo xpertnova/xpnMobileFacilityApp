@@ -2,11 +2,71 @@ import Foundation
 
 enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case manualCapture
+    case defect
+    case meterReading
     case notificationReview
     case briefing
     case electricalSafety
     case technicalObjectEdit
     case proofOfQualification
+}
+
+enum DefectPriority: String, Codable, CaseIterable, Identifiable, Sendable {
+    case low
+    case medium
+    case high
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        "manual.defect.priority.\(rawValue)"
+    }
+}
+
+struct DefectDraftPayload: Codable, Equatable, Sendable {
+    var technicalObject: TechnicalObjectReference
+    var technicalObjectName: String
+    var dinGroup: String?
+    var priority: DefectPriority
+    var shortText: String
+    var longText: String
+    var attachmentIDs: [String]
+}
+
+enum MeterKind: String, Codable, CaseIterable, Identifiable, Sendable {
+    case electricity
+    case gas
+    case water
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        "manual.meter.kind.\(rawValue)"
+    }
+
+    var symbol: String {
+        switch self {
+        case .electricity: "bolt.fill"
+        case .gas: "flame.fill"
+        case .water: "drop.fill"
+        }
+    }
+}
+
+struct MeterReference: Codable, Equatable, Identifiable, Sendable {
+    let id: String
+    let kind: MeterKind
+    let technicalPlaceID: String
+    let technicalPlaceName: String
+    let unit: String
+    let previousValue: Decimal
+    let previousReadingAt: Date
+}
+
+struct MeterReadingDraftPayload: Codable, Equatable, Sendable {
+    var meter: MeterReference
+    var value: Decimal
+    var note: String
 }
 
 /// A local proposal for editable equipment master data. SAP identifiers are
@@ -148,6 +208,8 @@ struct BriefingTemporaryPartner: Codable, Equatable, Sendable {
 
 enum OfflineWorkPayload: Equatable, Sendable {
     case manualCapture(ManualCaptureDraftPayload)
+    case defect(DefectDraftPayload)
+    case meterReading(MeterReadingDraftPayload)
     case notificationReview(NotificationReviewDraftPayload)
     case briefing(BriefingDraftPayload)
     case electricalSafety(ElectricalSafetyDraftPayload)
@@ -156,6 +218,16 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
+        return payload
+    }
+
+    var defect: DefectDraftPayload? {
+        guard case let .defect(payload) = self else { return nil }
+        return payload
+    }
+
+    var meterReading: MeterReadingDraftPayload? {
+        guard case let .meterReading(payload) = self else { return nil }
         return payload
     }
 
