@@ -107,6 +107,183 @@ struct SafetyFormFieldPair<Leading: View, Trailing: View>: View {
     }
 }
 
+enum StandardFormHeaderField: CaseIterable, Equatable {
+    case instructorFirstName
+    case instructorLastName
+    case partnerCompany
+    case instructedPerson
+    case partnerAddress
+    case context
+    case workDescription
+    case executionStart
+    case executionEnd
+}
+
+/// Kept as a visible, testable contract because this header is shared by four
+/// independently evolving workflows.
+let standardFormHeaderFieldOrder: [StandardFormHeaderField] = [
+    .instructorFirstName,
+    .instructorLastName,
+    .partnerCompany,
+    .instructedPerson,
+    .partnerAddress,
+    .context,
+    .workDescription,
+    .executionStart,
+    .executionEnd
+]
+
+/// The common business header used by every briefing/safety workflow. Feature
+/// views provide their own bindings and context selector, while field order and
+/// presentation stay identical.
+struct StandardFormHeader<ContextFields: View>: View {
+    let partner: SAPBriefingPartner?
+    let partnerInvalid: Bool
+    let partnerID: AnyHashable
+    let selectPartner: () -> Void
+    let instructorFirstName: String
+    let instructorLastName: String
+    @ViewBuilder let contextFields: ContextFields
+    @Binding var dateFrom: Date
+    @Binding var dateTo: Date
+    let dateRangeInvalid: Bool
+    let dateRangeID: AnyHashable
+    @Binding var workDescription: String
+    let workDescriptionInvalid: Bool
+    let workDescriptionID: AnyHashable
+    @Binding var instructedPerson: String
+    let instructedPersonInvalid: Bool
+    let instructedPersonID: AnyHashable
+
+    private var singleLineAddress: String {
+        (partner?.address ?? "")
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    init(
+        partner: SAPBriefingPartner?,
+        partnerInvalid: Bool,
+        partnerID: AnyHashable,
+        selectPartner: @escaping () -> Void,
+        instructorFirstName: String,
+        instructorLastName: String,
+        dateFrom: Binding<Date>,
+        dateTo: Binding<Date>,
+        dateRangeInvalid: Bool,
+        dateRangeID: AnyHashable,
+        workDescription: Binding<String>,
+        workDescriptionInvalid: Bool,
+        workDescriptionID: AnyHashable,
+        instructedPerson: Binding<String>,
+        instructedPersonInvalid: Bool,
+        instructedPersonID: AnyHashable,
+        @ViewBuilder contextFields: () -> ContextFields
+    ) {
+        self.partner = partner
+        self.partnerInvalid = partnerInvalid
+        self.partnerID = partnerID
+        self.selectPartner = selectPartner
+        self.instructorFirstName = instructorFirstName
+        self.instructorLastName = instructorLastName
+        self._dateFrom = dateFrom
+        self._dateTo = dateTo
+        self.dateRangeInvalid = dateRangeInvalid
+        self.dateRangeID = dateRangeID
+        self._workDescription = workDescription
+        self.workDescriptionInvalid = workDescriptionInvalid
+        self.workDescriptionID = workDescriptionID
+        self._instructedPerson = instructedPerson
+        self.instructedPersonInvalid = instructedPersonInvalid
+        self.instructedPersonID = instructedPersonID
+        self.contextFields = contextFields()
+    }
+
+    var body: some View {
+        SafetyFormCard {
+            SafetyFormFieldPair {
+                SafetyFormField("safetyInstrucForm.firstName") {
+                    Text(instructorFirstName)
+                        .lineLimit(2)
+                        .briefingReadOnlyValue()
+                }
+            } trailing: {
+                SafetyFormField("safetyInstrucForm.lastName") {
+                    Text(instructorLastName)
+                        .lineLimit(2)
+                        .briefingReadOnlyValue()
+                }
+            }
+
+            SafetyFormFieldPair {
+                SafetyFormField("externalCompany.name", required: true) {
+                    SafetyFormPartnerField(
+                        partner: partner,
+                        isInvalid: partnerInvalid,
+                        action: selectPartner
+                    )
+                    .id(partnerID)
+                }
+            } trailing: {
+                SafetyFormField("safetyInstrucForm.instructedEmployee", required: true) {
+                    TextField("safetyInstrucForm.instructedEmployee", text: $instructedPerson)
+                        .briefingFieldChrome(invalid: instructedPersonInvalid)
+                        .id(instructedPersonID)
+                }
+            }
+
+            SafetyFormField("externalCompany.address") {
+                Text(singleLineAddress)
+                    .font(.footnote)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.01)
+                    .allowsTightening(true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .briefingReadOnlyValue()
+                    .accessibilityLabel("externalCompany.address")
+                    .accessibilityValue(partner?.address ?? "")
+            }
+
+            contextFields
+
+            SafetyFormField("safetyInstrucForm.workOrder", required: true) {
+                TextField("safetyInstrucForm.workOrder", text: $workDescription)
+                    .briefingFieldChrome(invalid: workDescriptionInvalid)
+                    .id(workDescriptionID)
+            }
+
+            SafetyFormFieldPair {
+                SafetyFormField("safetyInstrucForm.workOrder.timeSpan1", required: true) {
+                    DatePicker(
+                        "safetyInstrucForm.workOrder.timeSpan1",
+                        selection: $dateFrom,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .briefingFieldChrome(invalid: dateRangeInvalid)
+                    .id(dateRangeID)
+                }
+            } trailing: {
+                SafetyFormField("safetyInstrucForm.workOrder.timeSpan2", required: true) {
+                    DatePicker(
+                        "safetyInstrucForm.workOrder.timeSpan2",
+                        selection: $dateTo,
+                        in: dateFrom...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .briefingFieldChrome(invalid: dateRangeInvalid)
+                }
+            }
+
+        }
+    }
+}
+
 struct SafetyFormContextCard: View {
     let businessEntities: [SafetyFormContext]
     let buildings: [SafetyFormContext]
@@ -152,13 +329,11 @@ struct SafetyFormContextCard: View {
                     .briefingFieldChrome(invalid: isInvalid)
                 }
                 .buttonStyle(.plain)
-                .popover(
+                .facilityPopover(
                     isPresented: $isBuildingPickerPresented,
-                    attachmentAnchor: .rect(.bounds),
                     arrowEdge: .top
                 ) {
                     buildingPicker
-                        .presentationCompactAdaptation(.popover)
                 }
                 .disabled(selectedBusinessEntityID == nil || buildings.isEmpty)
 
@@ -179,13 +354,11 @@ struct SafetyFormContextCard: View {
                     .briefingFieldChrome(invalid: isInvalid)
                 }
                 .buttonStyle(.plain)
-                .popover(
+                .facilityPopover(
                     isPresented: $isFunctionalLocationPickerPresented,
-                    attachmentAnchor: .rect(.bounds),
                     arrowEdge: .top
                 ) {
                     functionalLocationPicker
-                        .presentationCompactAdaptation(.popover)
                 }
                 .disabled(selectedBuildingCode == nil || functionalLocations.isEmpty)
             }
@@ -340,6 +513,7 @@ private struct SafetyFormContextOptionPicker: View {
         }
         .frame(width: 360)
         .background(FacilityTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func optionID(for context: SafetyFormContext) -> String {
@@ -558,8 +732,7 @@ struct SafetyFormPartnerPicker: View {
                         searchTerm2: $0.searchTerm2
                     )
                 },
-                selectedPartnerID: $selectedPartnerID,
-                emptyRowCount: max(0, 9 - partners.count)
+                selectedPartnerID: $selectedPartnerID
             )
             .padding(.horizontal, 40)
             .padding(.vertical, 22)
@@ -593,6 +766,7 @@ struct SafetyFormTextEditor: View {
 
 struct SafetyFormActionBar: View {
     let canSaveDraft: Bool
+    var canComplete = true
     let isBusy: Bool
     let saveDraft: (() -> Void)?
     let complete: () -> Void
@@ -608,7 +782,7 @@ struct SafetyFormActionBar: View {
             Button("app.btn.instrucClose", action: complete)
                 .buttonStyle(.borderedProminent)
                 .tint(FacilityTheme.accent)
-                .disabled(isBusy)
+                .disabled(!canComplete || isBusy)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)

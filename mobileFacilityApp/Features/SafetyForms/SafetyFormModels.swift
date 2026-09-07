@@ -16,13 +16,29 @@ struct SafetyFormContext: Codable, Equatable, Hashable, Identifiable, Sendable {
 struct SafetyFormSource: Sendable {
     let contexts: [SafetyFormContext]
     let partners: [SAPBriefingPartner]
-    let instructorName: String
+    let instructorFirstName: String
+    let instructorLastName: String
     let organizationUnit: String
+
+    /// The PDFs and persisted safety-form records retain the established
+    /// single-value representation. The form header presents these source
+    /// values separately without changing that document contract.
+    var instructorName: String {
+        [instructorFirstName, instructorLastName]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
 
     @MainActor
     static func make(for workspace: FacilityDemoViewModel) -> Self {
         guard !workspace.isDemoMode else {
-            return Self(contexts: [], partners: [], instructorName: "", organizationUnit: "")
+            return Self(
+                contexts: [],
+                partners: [],
+                instructorFirstName: "",
+                instructorLastName: "",
+                organizationUnit: ""
+            )
         }
 
         let notifications = workspace.sapDataStore.notifications
@@ -44,11 +60,24 @@ struct SafetyFormSource: Sendable {
             )
         }
 
+        let profile = workspace.sapDataStore.workerProfile
+        let fallbackName = workspace.effectiveWorkerDisplayName.nameParts
         return Self(
             contexts: Array(Set(contexts)).sorted { $0.id < $1.id },
             partners: workspace.sapDataStore.cachedData.briefingPartners,
-            instructorName: workspace.effectiveWorkerDisplayName,
-            organizationUnit: workspace.sapDataStore.workerProfile?.organizationUnit ?? ""
+            instructorFirstName: profile?.firstName.nonEmpty ?? fallbackName.first,
+            instructorLastName: profile?.lastName.nonEmpty ?? fallbackName.last,
+            organizationUnit: profile?.organizationUnit ?? ""
+        )
+    }
+}
+
+extension String {
+    var nameParts: (first: String, last: String) {
+        let parts = split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        return (
+            parts.first.map(String.init) ?? "",
+            parts.dropFirst().first.map(String.init) ?? ""
         )
     }
 }
@@ -109,6 +138,19 @@ enum FirePermitSignatureSlot: String, CaseIterable, Codable, Hashable, Identifia
         case .permitIssuer: "firePermit.permitIssuer"
         case .contractor: "firePermit.contractor"
         case .onSiteWorker: "firePermit.onSiteWorkerConfirmation"
+        }
+    }
+
+    var signerNameFieldKey: String {
+        switch self {
+        case .fireHazardMeasures, .extinguishingMedia, .fireAlarmSystem, .explosionHazardMeasures:
+            "firePermit.measurePerformedBy"
+        case .permitIssuer:
+            "firePermit.permitIssuer"
+        case .contractor:
+            "firePermit.contractor"
+        case .onSiteWorker:
+            "firePermit.onSiteWorkerConfirmation"
         }
     }
 }
@@ -186,8 +228,8 @@ enum FirePermitValidationIssue: Hashable, Sendable {
     case context
     case instructedPerson
     case partner
-    case coordinator
     case workDescription
+    case executionRange
     case signerName(FirePermitSignatureSlot)
     case signature(FirePermitSignatureSlot)
 }
@@ -204,6 +246,15 @@ enum ElectricalSafetySignatureSlot: String, CaseIterable, Codable, Hashable, Ide
         switch self {
         case .handoverSystemResponsible, .returnSystemResponsible: "electricalSafety.systemResponsible"
         case .handoverWorkResponsible, .returnWorkResponsible: "electricalSafety.workResponsible"
+        }
+    }
+
+    var signerNameFieldKey: String {
+        switch self {
+        case .handoverSystemResponsible, .returnSystemResponsible:
+            "electricalSafety.systemResponsible"
+        case .handoverWorkResponsible, .returnWorkResponsible:
+            "electricalSafety.workResponsible"
         }
     }
 }
@@ -254,7 +305,6 @@ enum ElectricalSafetyValidationIssue: Hashable, Sendable {
     case context
     case instructedPerson
     case partner
-    case coordinator
     case workDescription
     case executionRange
     case systemResponsibleName
@@ -263,7 +313,7 @@ enum ElectricalSafetyValidationIssue: Hashable, Sendable {
 }
 
 extension String {
-    fileprivate var nonEmpty: String? {
+    var nonEmpty: String? {
         let value = trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
     }

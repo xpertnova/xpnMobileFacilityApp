@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     let demo: FacilityDemoViewModel
+    let networkReachability: NetworkReachabilityMonitor
 
     private let metricColumns = Array(
         repeating: GridItem(.flexible(minimum: 0), spacing: 14),
@@ -55,7 +56,7 @@ struct DashboardView: View {
                 }
                 Spacer(minLength: 12)
                 if !demo.isDemoMode, demo.sapDataStore.isRefreshAvailable {
-                    SAPConnectionBadge()
+                    SAPConnectionBadge(status: networkReachability.status)
                 }
             }
         }
@@ -146,13 +147,32 @@ struct DashboardView: View {
 }
 
 private struct SAPConnectionBadge: View {
+    let status: NetworkReachabilityStatus
+
+    private var titleKey: LocalizedStringKey {
+        switch status {
+        case .checking: "sap.connection.checking"
+        case .connected: "sap.connection.connected"
+        case .disconnected: "sap.connection.disconnected"
+        }
+    }
+
+    private var tint: Color {
+        switch status {
+        case .checking: .secondary
+        case .connected: FacilityTheme.accent
+        case .disconnected: FacilityTheme.red
+        }
+    }
+
     var body: some View {
-        Text("sap.connection.connected")
+        Text(titleKey)
             .font(.subheadline.weight(.bold))
-            .foregroundStyle(FacilityTheme.accent)
+            .foregroundStyle(tint)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
-            .background(FacilityTheme.accentSoft, in: Capsule())
+            .background(tint.opacity(0.11), in: Capsule())
+            .animation(.easeInOut(duration: 0.2), value: status)
             .accessibilityAddTraits(.isStaticText)
     }
 }

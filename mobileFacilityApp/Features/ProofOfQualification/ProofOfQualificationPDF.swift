@@ -5,11 +5,9 @@ struct ProofOfQualificationPDFPayload: Sendable {
   let planNumber: String
   let legacyDocumentID: String
   let instructorName: String
-  let organizationUnit: String
   let contactPerson: String
   let coordinator: String
   let partner: SAPBriefingPartner
-  let partnerEmail: String
   let workLocation: String
   let taskDescription: String
   let executionStart: Date
@@ -117,75 +115,24 @@ struct ProofOfQualificationPDFRenderer: Sendable {
     context: CGContext,
     pageNumber: Int
   ) {
-    var y: CGFloat = Layout.margin
-    drawText(
-      "Kontrolle Qualifikationsnachweis Partnerfirma",
-      in: CGRect(x: Layout.margin, y: y, width: Layout.contentWidth, height: 42),
-      font: .boldSystemFont(ofSize: 17),
-      alignment: .center
-    )
-    y += 48
-
-    drawInfoRow(
-      label: "Einweiser/Abnehmer\n(E.ON Mitarbeiter)",
-      value: payload.instructorName,
-      secondaryLabel: "E.ON-Organisationseinheit",
-      secondaryValue: payload.organizationUnit,
-      y: y,
-      height: 58,
-      context: context
-    )
-    y += 58
-    drawWideRow(
-      label: "Benannter Koordinator ggf. SiGeKo gemäß BauStellV",
-      value: payload.coordinator,
-      y: y,
-      height: 48,
-      context: context
-    )
-    y += 48
-    drawWideRow(
-      label: "Partnerfirma/Auftragnehmer\n(Name und Anschrift)",
-      value: [payload.partner.name, payload.partner.address, payload.partnerEmail]
-        .filter { !$0.isEmpty }
-        .joined(separator: "\n"),
-      y: y,
-      height: 76,
-      context: context
-    )
-    y += 76
-    drawWideRow(
-      label: "Eingewiesener\n(Verantwortlicher der Partnerfirma)",
-      value: payload.contactPerson,
-      y: y,
-      height: 58,
-      context: context
-    )
-    y += 58
-    drawWideRow(
-      label: "Leistungs-/Arbeitsort",
-      value: payload.workLocation,
-      y: y,
-      height: 58,
-      context: context
-    )
-    y += 58
-    drawWideRow(
-      label: "Durchzuführende Arbeiten",
-      value: payload.taskDescription,
-      y: y,
-      height: 72,
-      context: context
-    )
-    y += 72
-    drawWideRow(
-      label: "Ausführung von ... bis ...\n(Datum)",
-      value: "\(fixedDate(payload.executionStart)) - \(fixedDate(payload.executionEnd))",
-      y: y,
-      height: 50,
-      context: context
-    )
-    y += 66
+    var y = StandardFormPDFHeaderRenderer.draw(
+      StandardFormPDFHeaderData(
+        documentTitle: "Kontrolle Qualifikationsnachweis Partnerfirma",
+        instructorName: payload.instructorName,
+        coordinator: payload.coordinator,
+        partnerName: payload.partner.name,
+        partnerAddress: payload.partner.address,
+        instructedPerson: payload.contactPerson,
+        workLocation: payload.workLocation,
+        workDescription: payload.taskDescription,
+        dateFrom: payload.executionStart,
+        dateTo: payload.executionEnd
+      ),
+      in: context,
+      pageWidth: Layout.page.width,
+      margin: Layout.margin,
+      startY: Layout.margin
+    ) + 16
 
     let signatureWidth = (Layout.contentWidth - 8) / 2
     drawSignatureBox(

@@ -38,7 +38,7 @@ final class FirePermitViewModel {
 
     var firstValidationIssue: FirePermitValidationIssue? {
         let ordered: [FirePermitValidationIssue] = [
-            .partner, .context, .workDescription, .instructedPerson, .coordinator
+            .partner, .context, .executionRange, .workDescription, .instructedPerson
         ] + FirePermitSignatureSlot.allCases.flatMap { [.signerName($0), .signature($0)] }
         return ordered.first { validationIssues.contains($0) }
     }
@@ -48,8 +48,8 @@ final class FirePermitViewModel {
         if record.context == nil { issues.insert(.context) }
         if record.instructedPerson.trimmed.isEmpty { issues.insert(.instructedPerson) }
         if record.partner == nil { issues.insert(.partner) }
-        if record.coordinator.trimmed.isEmpty { issues.insert(.coordinator) }
         if record.workDescription.trimmed.isEmpty { issues.insert(.workDescription) }
+        if record.executionEnd < record.executionStart { issues.insert(.executionRange) }
         for slot in FirePermitSignatureSlot.allCases {
             if signerName(for: slot).trimmed.isEmpty { issues.insert(.signerName(slot)) }
             if record.signatures[slot] == nil { issues.insert(.signature(slot)) }
@@ -87,6 +87,10 @@ final class FirePermitViewModel {
 
     func setInstructedPerson(_ value: String) { record.instructedPerson = String(value.prefix(29)) }
     func setWorkDescription(_ value: String) { record.workDescription = String(value.prefix(300)) }
+    func setExecutionStart(_ value: Date) {
+        record.executionStart = value
+        if record.executionEnd < value { record.executionEnd = value }
+    }
     func setDimension(_ value: String, keyPath: WritableKeyPath<FirePermitRecord, String>) {
         record[keyPath: keyPath] = String(value.filter(\.isNumber).prefix(3))
     }
@@ -221,7 +225,7 @@ final class ElectricalSafetyViewModel {
 
     var firstValidationIssue: ElectricalSafetyValidationIssue? {
         let ordered: [ElectricalSafetyValidationIssue] = [
-            .partner, .context, .executionRange, .workDescription, .instructedPerson, .coordinator,
+            .partner, .context, .executionRange, .workDescription, .instructedPerson,
             .systemResponsibleName, .workResponsibleName
         ] + ElectricalSafetySignatureSlot.allCases.map { .signature($0) }
         return ordered.first { validationIssues.contains($0) }
@@ -232,7 +236,6 @@ final class ElectricalSafetyViewModel {
         if draft.context == nil { issues.insert(.context) }
         if draft.instructedPerson.trimmed.isEmpty { issues.insert(.instructedPerson) }
         if draft.partner == nil { issues.insert(.partner) }
-        if draft.coordinator.trimmed.isEmpty { issues.insert(.coordinator) }
         if draft.workDescription.trimmed.isEmpty { issues.insert(.workDescription) }
         if draft.executionEnd < draft.executionStart { issues.insert(.executionRange) }
         if draft.systemResponsible.name.trimmed.isEmpty { issues.insert(.systemResponsibleName) }
@@ -273,6 +276,10 @@ final class ElectricalSafetyViewModel {
 
     func setInstructedPerson(_ value: String) { draft.instructedPerson = String(value.prefix(29)) }
     func setWorkDescription(_ value: String) { draft.workDescription = String(value.prefix(300)) }
+    func setExecutionStart(_ value: Date) {
+        draft.executionStart = value
+        if draft.executionEnd < value { draft.executionEnd = value }
+    }
 
     func updateSystemResponsibleName(_ value: String) {
         guard draft.systemResponsible.name != value else { return }

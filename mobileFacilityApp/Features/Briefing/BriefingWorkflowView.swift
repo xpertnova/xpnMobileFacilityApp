@@ -179,32 +179,27 @@ private struct BriefingFormScreen: View {
     }
 
     private var briefingDataForm: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            briefingFieldPair {
-                briefingGridField("externalCompany.name", isRequired: true) {
-                    Button {
-                        isShowingPartnerEditor = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text(viewModel.selectedPartner?.selectionLabel ?? String(localized: "briefing.partner.placeholder"))
-                                .foregroundStyle(viewModel.selectedPartner == nil ? .secondary : .primary)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "rectangle.on.rectangle")
-                                .foregroundStyle(FacilityTheme.blue)
-                        }
-                        .briefingFieldChrome(invalid: viewModel.isInvalid(.partner))
-                    }
-                    .buttonStyle(.plain)
-                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.partner)
-                }
-            } trailing: {
-                briefingGridField("safetyInstrucForm.instructor") {
-                    readOnlyFormValue(instructorDisplayValue)
-                }
-            }
-
-            briefingGridField("briefing.businessEntity", isRequired: true) {
+        @Bindable var viewModel = viewModel
+        return StandardFormHeader(
+            partner: viewModel.selectedPartner,
+            partnerInvalid: viewModel.isInvalid(.partner),
+            partnerID: BriefingWorkflowViewModel.BriefingValidationIssue.partner,
+            selectPartner: { isShowingPartnerEditor = true },
+            instructorFirstName: viewModel.instructorFirstName,
+            instructorLastName: viewModel.instructorLastName,
+            dateFrom: Binding(get: { viewModel.startDate }, set: viewModel.setStartDate),
+            dateTo: $viewModel.endDate,
+            dateRangeInvalid: viewModel.isInvalid(.executionRange),
+            dateRangeID: BriefingWorkflowViewModel.BriefingValidationIssue.executionRange,
+            workDescription: Binding(get: { viewModel.taskDescription }, set: viewModel.setTaskDescription),
+            workDescriptionInvalid: viewModel.isInvalid(.taskDescription),
+            workDescriptionID: BriefingWorkflowViewModel.BriefingValidationIssue.taskDescription,
+            instructedPerson: Binding(get: { viewModel.instructedPerson }, set: viewModel.setInstructedPerson),
+            instructedPersonInvalid: viewModel.isInvalid(.instructedPerson),
+            instructedPersonID: BriefingWorkflowViewModel.BriefingValidationIssue.instructedPerson
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+              SafetyFormField("briefing.businessEntity", required: true) {
                 Button {
                     isShowingBusinessEntityEditor = true
                 } label: {
@@ -218,21 +213,9 @@ private struct BriefingFormScreen: View {
                 .buttonStyle(.plain)
                 .disabled(viewModel.businessEntities.isEmpty)
                 .id(BriefingWorkflowViewModel.BriefingValidationIssue.businessEntity)
-            }
+              }
 
-            briefingFieldPair {
-                briefingGridField("briefing.dateTime", isRequired: true) {
-                    DatePicker(
-                        "briefing.dateTime",
-                        selection: Binding(get: { viewModel.startDate }, set: viewModel.setStartDate),
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .briefingFieldChrome(invalid: false)
-                }
-            } trailing: {
-                briefingGridField("safetyInstrucForm.opertaionArea", isRequired: true) {
+              SafetyFormField("safetyInstrucForm.opertaionArea", required: true) {
                     Button {
                         isBuildingPickerPresented = true
                     } label: {
@@ -248,62 +231,17 @@ private struct BriefingFormScreen: View {
                         .briefingFieldChrome(invalid: viewModel.isInvalid(.building))
                     }
                     .buttonStyle(.plain)
-                    .popover(
+                    .facilityPopover(
                         isPresented: $isBuildingPickerPresented,
-                        attachmentAnchor: .rect(.bounds),
                         arrowEdge: .top
                     ) {
                         buildingPicker
-                            .presentationCompactAdaptation(.popover)
                     }
                     .disabled(viewModel.selectedBusinessEntityID == nil || viewModel.availableBuildings.isEmpty)
                     .id(BriefingWorkflowViewModel.BriefingValidationIssue.building)
-                }
-            }
-
-            briefingGridField("safetyInstrucForm.workOrder", isRequired: true) {
-                TextField(
-                    "safetyInstrucForm.workOrder",
-                    text: Binding(get: { viewModel.taskDescription }, set: viewModel.setTaskDescription)
-                )
-                .briefingFieldChrome(invalid: viewModel.isInvalid(.taskDescription))
-                .id(BriefingWorkflowViewModel.BriefingValidationIssue.taskDescription)
-            }
-
-            briefingFieldPair {
-                briefingGridField("safetyInstrucForm.instructedEmployee", isRequired: true) {
-                    TextField(
-                        "safetyInstrucForm.instructedEmployee",
-                        text: Binding(get: { viewModel.instructedPerson }, set: viewModel.setInstructedPerson)
-                    )
-                    .briefingFieldChrome(invalid: viewModel.isInvalid(.instructedPerson))
-                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.instructedPerson)
-                }
-            } trailing: {
-                briefingGridField("externalCompany.eMail", isRequired: true) {
-                    TextField(
-                        "externalCompany.eMail",
-                        text: Binding(get: { viewModel.partnerEmail }, set: { viewModel.partnerEmail = $0 })
-                    )
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .briefingFieldChrome(invalid: viewModel.isInvalid(.partnerEmail))
-                    .id(BriefingWorkflowViewModel.BriefingValidationIssue.partnerEmail)
-                }
-            }
-
-            briefingGridField("externalCompany.address") {
-                readOnlyFormValue(viewModel.selectedPartner?.address ?? "")
+              }
             }
         }
-        .padding(20)
-        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.055), lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(0.045), radius: 12, y: 5)
     }
 
     private var optionalSectionsCard: some View {
@@ -315,47 +253,73 @@ private struct BriefingFormScreen: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            isOptionalSectionsExpanded.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            let selectedSections = sections.filter { viewModel.selectedOptionalSectionIDs.contains($0.id) }
-                            if selectedSections.isEmpty {
+                    HStack(spacing: 12) {
+                        let selectedSections = sections.filter { viewModel.selectedOptionalSectionIDs.contains($0.id) }
+                        if selectedSections.isEmpty {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    isOptionalSectionsExpanded.toggle()
+                                }
+                            } label: {
                                 Text("briefing.optionalSections.placeholder")
                                     .foregroundStyle(.secondary)
-                            } else {
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(selectedSections) { section in
-                                            Text(section.title)
-                                                .lineLimit(1)
-                                                .font(.subheadline)
-                                                .foregroundStyle(FacilityTheme.ink)
-                                                .padding(.horizontal, 10)
-                                                .padding(.vertical, 6)
-                                                .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .frame(minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(selectedSections) { section in
+                                        Button {
+                                            withAnimation(.easeInOut(duration: 0.18)) {
+                                                viewModel.setOptionalSection(section.id, selected: false)
+                                            }
+                                        } label: {
+                                            HStack(spacing: 5) {
+                                                Text(section.title)
+                                                    .lineLimit(1)
+                                                Image(systemName: "xmark")
+                                                    .font(.caption2.weight(.bold))
+                                                    .frame(width: 24, height: 24)
+                                            }
+                                            .font(.subheadline)
+                                            .foregroundStyle(FacilityTheme.ink)
+                                            .padding(.leading, 10)
+                                            .padding(.trailing, 4)
+                                            .padding(.vertical, 4)
+                                            .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                                         }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel(Text("briefing.optionalSections.remove"))
+                                        .accessibilityValue(section.title)
                                     }
                                 }
-                                .allowsHitTesting(false)
                             }
-                            Spacer(minLength: 0)
+                        }
+                        Spacer(minLength: 0)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                isOptionalSectionsExpanded.toggle()
+                            }
+                        } label: {
                             Image(systemName: "chevron.down")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(FacilityTheme.blue)
                                 .rotationEffect(.degrees(isOptionalSectionsExpanded ? 180 : 0))
+                                .frame(width: 72, height: 54)
+                                .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 16)
-                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-                        .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(isOptionalSectionsExpanded ? FacilityTheme.accent.opacity(0.55) : Color.black.opacity(0.06))
-                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("briefing.optionalSections.title"))
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                    .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(isOptionalSectionsExpanded ? FacilityTheme.accent.opacity(0.55) : Color.black.opacity(0.06))
+                    }
 
                     if isOptionalSectionsExpanded {
                         VStack(spacing: 0) {
@@ -455,6 +419,7 @@ private struct BriefingFormScreen: View {
         }
         .frame(width: 340)
         .background(FacilityTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var checklist: some View {
@@ -524,7 +489,7 @@ private struct BriefingFormScreen: View {
             Button("briefing.closeBriefing") { viewModel.requestCompletion() }
                 .buttonStyle(.borderedProminent)
                 .tint(FacilityTheme.accent)
-                .disabled(viewModel.template == nil || viewModel.isRenderingPDF)
+                .disabled(!viewModel.canComplete || viewModel.isRenderingPDF)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
@@ -548,60 +513,25 @@ private struct BriefingFormScreen: View {
         }
     }
 
-    private var instructorDisplayValue: String {
-        viewModel.instructorName
+}
+
+struct SignatureInputRequirement: Equatable {
+    let isSigningEnabled: Bool
+    let requiredNameField: String
+
+    init(signerName: String, requiredNameField: String) {
+        isSigningEnabled = !signerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        self.requiredNameField = requiredNameField
     }
 
-    private func briefingGridField<Content: View>(
-        _ title: LocalizedStringKey,
-        isRequired: Bool = false,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 0) {
-                Text(title)
-                if isRequired {
-                    Text(verbatim: " *")
-                        .foregroundStyle(.red)
-                }
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-
-            content()
-                .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    var lockedMessage: String? {
+        guard !isSigningEnabled else { return nil }
+        return String(
+            format: String(localized: "signature.prerequisite.prompt"),
+            locale: .current,
+            requiredNameField
+        )
     }
-
-    private func briefingFieldPair<Leading: View, Trailing: View>(
-        @ViewBuilder leading: () -> Leading,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) {
-                leading()
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                trailing()
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-
-            VStack(alignment: .leading, spacing: 14) {
-                leading()
-                trailing()
-            }
-        }
-    }
-
-
-
-    private func readOnlyFormValue(_ value: String) -> some View {
-        Text(value)
-            .lineLimit(2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .briefingReadOnlyValue()
-    }
-
 }
 
 /// The form keeps both signatures visible, while retaining the same
@@ -610,6 +540,7 @@ struct BriefingInlineSignatureField: View {
     let title: LocalizedStringKey
     @Binding private var signatureData: Data?
     let isInvalid: Bool
+    let inputRequirement: SignatureInputRequirement?
 
     @State private var drawing = PKDrawing()
     @State private var showsStoredSignature: Bool
@@ -617,12 +548,18 @@ struct BriefingInlineSignatureField: View {
     init(
         title: LocalizedStringKey,
         signatureData: Binding<Data?>,
-        isInvalid: Bool
+        isInvalid: Bool,
+        inputRequirement: SignatureInputRequirement? = nil
     ) {
         self.title = title
         _signatureData = signatureData
         self.isInvalid = isInvalid
+        self.inputRequirement = inputRequirement
         _showsStoredSignature = State(initialValue: signatureData.wrappedValue != nil)
+    }
+
+    private var isSigningEnabled: Bool {
+        inputRequirement?.isSigningEnabled ?? true
     }
 
     var body: some View {
@@ -658,18 +595,25 @@ struct BriefingInlineSignatureField: View {
                         .scaledToFit()
                         .padding(16)
                 } else {
-                    BriefingSignatureCanvas(drawing: $drawing)
+                    BriefingSignatureCanvas(
+                        drawing: $drawing,
+                        onDrawingChanged: persistSignature(from:)
+                    )
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .allowsHitTesting(isSigningEnabled)
 
                     if drawing.bounds.isEmpty {
-                        Text("briefing.signature.placeholder")
+                        Text(inputRequirement?.lockedMessage ?? String(localized: "briefing.signature.placeholder"))
                             .font(.subheadline)
                             .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
                             .allowsHitTesting(false)
                     }
                 }
             }
             .frame(minHeight: 160)
+            .opacity(isSigningEnabled ? 1 : 0.62)
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(
@@ -684,13 +628,8 @@ struct BriefingInlineSignatureField: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.black.opacity(0.055))
         }
-        // UIKit delegates only update local drawing state. Persist from SwiftUI's
-        // state-change transaction so validation observes the same signature the
-        // worker sees on screen.
-        .onChange(of: drawing) { _, newDrawing in
-            persistSignature(from: newDrawing)
-        }
         .accessibilityElement(children: .contain)
+        .accessibilityHint(inputRequirement?.lockedMessage ?? "")
     }
 
     private func persistSignature(from drawing: PKDrawing) {
@@ -702,11 +641,7 @@ struct BriefingInlineSignatureField: View {
         }
 
         showsStoredSignature = false
-        let image = drawing.image(
-            from: drawing.bounds.insetBy(dx: -12, dy: -12),
-            scale: 2
-        )
-        guard let data = image.pngData(), !data.isEmpty else { return }
+        guard let data = BriefingSignatureRasterizer.pngData(from: drawing) else { return }
         signatureData = data
     }
 }
@@ -735,52 +670,14 @@ private struct BriefingChecklistTableHeader: View {
 private struct BriefingChecklistSectionHeader: View {
     let number: Int
     let title: String
-    
-    @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            let parts = title.components(separatedBy: "\n")
-            let shortText = parts.first ?? title
-            let hasLongText = parts.count > 1
-            
-            if hasLongText {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    HStack(alignment: .top, spacing: 8) {
-                        Text("\(number). \(shortText)")
-                            .font(.headline)
-                            .foregroundStyle(FacilityTheme.ink)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .multilineTextAlignment(.leading)
-                        
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(FacilityTheme.blue)
-                            .padding(.top, 4)
-                    }
-                }
-                .buttonStyle(.plain)
-            } else {
-                Text("\(number). \(shortText)")
-                    .font(.headline)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .multilineTextAlignment(.leading)
-            }
-            
-            if isExpanded, hasLongText {
-                let longText = parts.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                Text(longText)
-                    .font(.subheadline)
-                    .lineSpacing(3)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        Text("\(number). \(title)")
+            .font(.subheadline.weight(.semibold))
+            .lineSpacing(2)
+            .foregroundStyle(FacilityTheme.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
@@ -799,7 +696,6 @@ private struct BriefingChecklistRow: View {
     let setComment: (String) -> Void
     @State private var referenceDocument: BriefingReferenceDocument?
     @State private var isEditingComment = false
-    @State private var isExpanded = false
 
     var body: some View {
         tableRow
@@ -819,49 +715,12 @@ private struct BriefingChecklistRow: View {
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(.secondary)
                 .frame(width: 70)
-            VStack(alignment: .leading, spacing: 6) {
-                let parts = item.title.components(separatedBy: "\n")
-                let shortText = parts.first ?? item.title
-                let hasLongText = parts.count > 1
-                
-                if hasLongText {
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isExpanded.toggle()
-                        }
-                    } label: {
-                        HStack(alignment: .top, spacing: 8) {
-                            Text(shortText)
-                                .font(.body)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .multilineTextAlignment(.leading)
-                                .foregroundStyle(FacilityTheme.ink)
-                            
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(FacilityTheme.blue)
-                                .padding(.top, 4)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Text(shortText)
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                        .foregroundStyle(FacilityTheme.ink)
-                }
-                
-                if isExpanded, hasLongText {
-                    // Combine the rest of the parts if there were multiple newlines
-                    let longText = parts.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                    Text(longText)
-                        .font(.body)
-                        .lineSpacing(3)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            Text(item.title)
+                .font(.subheadline)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+                .foregroundStyle(FacilityTheme.ink)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 20)
             answerControl
@@ -1134,8 +993,8 @@ final class BriefingWorkflowViewModel {
     var selectedPartnerID = ""
     var partnerEmail = ""
     var taskDescription = ""
-    var startDate = Calendar.current.startOfDay(for: .now)
-    var endDate = Calendar.current.startOfDay(for: .now)
+    var startDate = Date.now
+    var endDate = Date.now
     var selectedOptionalSectionIDs: Set<String> = []
     var answerKeysByItemID: [String: String] = [:]
     var commentsByItemID: [String: String] = [:]
@@ -1152,7 +1011,7 @@ final class BriefingWorkflowViewModel {
         case businessEntity
         case building
         case partner
-        case partnerEmail
+        case executionRange
         case taskDescription
         case instructorSignature
         case instructedPersonSignature
@@ -1165,7 +1024,7 @@ final class BriefingWorkflowViewModel {
         if selectedPartnerID.isEmpty { issues.insert(.partner) }
         if instructedPerson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.instructedPerson) }
         if taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.taskDescription) }
-        if !partnerEmail.contains("@") || !partnerEmail.contains(".") { issues.insert(.partnerEmail) }
+        if endDate < startDate { issues.insert(.executionRange) }
         if instructorSignature == nil { issues.insert(.instructorSignature) }
         if instructedPersonSignature == nil { issues.insert(.instructedPersonSignature) }
         return issues
@@ -1176,9 +1035,9 @@ final class BriefingWorkflowViewModel {
             .partner,
             .businessEntity,
             .building,
+            .executionRange,
             .taskDescription,
             .instructedPerson,
-            .partnerEmail,
             .instructorSignature,
             .instructedPersonSignature
         ]
@@ -1191,6 +1050,7 @@ final class BriefingWorkflowViewModel {
 
     var partners: [SAPBriefingPartner]
     var temporaryPartner: BriefingTemporaryPartner?
+    var partnerSearchTerm2 = ""
     private var savedWorkID: UUID?
 
     init(source: Source, existingDraft: OfflineWorkItem? = nil) {
@@ -1200,6 +1060,9 @@ final class BriefingWorkflowViewModel {
         guard let existingDraft, let draft = existingDraft.payload.briefing else { return }
         savedWorkID = existingDraft.id
         selectedBusinessEntityID = draft.businessEntityID
+        if !draft.businessEntityID.isEmpty {
+            partnerSearchTerm2 = Self.extractPropertyNumber(from: draft.businessEntityID)
+        }
         selectedBuildingCode = draft.buildingCode
         selectedTemplateID = draft.templateID
         coordinator = draft.coordinator
@@ -1221,19 +1084,47 @@ final class BriefingWorkflowViewModel {
     var availableBuildings: [Context] { source.contexts.filter { $0.businessEntityID == selectedBusinessEntityID }.sorted { $0.buildingTitle < $1.buildingTitle } }
     var selectedBusinessEntity: Context? { businessEntities.first { $0.businessEntityID == selectedBusinessEntityID } }
     var selectedContext: Context? { source.contexts.first { $0.businessEntityID == selectedBusinessEntityID && $0.buildingCode == selectedBuildingCode } }
+    var defaultWorkPropertyNumber: String { partnerSearchTerm2 }
+
+    nonisolated static func extractPropertyNumber(from businessEntityID: String) -> String {
+        let segments = businessEntityID.split(separator: "-")
+        for segment in segments.reversed() {
+            let digits = segment.filter(\.isNumber)
+            if !digits.isEmpty {
+                return String(digits)
+            }
+        }
+        return String(businessEntityID.filter(\.isNumber))
+    }
     var template: SAPBriefingTemplate? { source.templates.first { $0.id == selectedTemplateID } }
     var selectedPartner: SAPBriefingPartner? { partners.first { $0.id == selectedPartnerID } }
-    var instructorName: String { if let profile = source.workerProfile { return profile.displayName.isEmpty ? source.workerName : profile.displayName }; return source.workerName }
+    var instructorFirstName: String {
+        source.workerProfile?.firstName.nonEmpty ?? source.workerName.nameParts.first
+    }
+    var instructorLastName: String {
+        source.workerProfile?.lastName.nonEmpty ?? source.workerName.nameParts.last
+    }
+    var instructorName: String {
+        let name = [instructorFirstName, instructorLastName]
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return name.isEmpty ? source.workerName : name
+    }
     var organizationUnit: String { source.workerProfile?.organizationUnit ?? (source.isDemo ? "XPN Facility Management" : "") }
     var hasRequiredMasterData: Bool { !source.contexts.isEmpty && template != nil }
     var canSaveDraft: Bool { selectedContext != nil && template != nil }
+    var canComplete: Bool { selectedContext != nil && template != nil }
     var activeSections: [SAPBriefingTemplateSection] { (template?.sections ?? []).filter { !$0.isOptional || selectedOptionalSectionIDs.contains($0.id) } }
 
     func selectBusinessEntity(_ value: String) {
         let selection = value.isEmpty ? nil : value
-        guard selection != selectedBusinessEntityID else { return }
         selectedBusinessEntityID = selection
         selectedBuildingCode = nil
+        if let selection {
+            partnerSearchTerm2 = Self.extractPropertyNumber(from: selection)
+        } else {
+            partnerSearchTerm2 = ""
+        }
     }
     func selectBuilding(_ value: String) { selectedBuildingCode = value.isEmpty ? nil : value }
     func setStartDate(_ value: Date) {
@@ -1266,12 +1157,7 @@ final class BriefingWorkflowViewModel {
     }
     func requestCompletion() {
         guard !isRenderingPDF else { return }
-        Task { @MainActor [weak self] in
-            // Allow the final PencilKit stroke to flow through the signature
-            // field's SwiftUI `onChange` before validating this briefing.
-            await Task.yield()
-            self?.finishCompletionRequest()
-        }
+        finishCompletionRequest()
     }
 
     private func finishCompletionRequest() {
@@ -1375,7 +1261,6 @@ final class BriefingWorkflowViewModel {
         return BriefingPDFPayload(
             planNumber: template.planNumber,
             instructorName: instructorName,
-            organizationUnit: organizationUnit,
             coordinator: draft.coordinator,
             partnerName: partner.name,
             partnerAddress: partner.address,
@@ -1386,7 +1271,6 @@ final class BriefingWorkflowViewModel {
             startDate: draft.startDate,
             endDate: draft.endDate,
             completedAt: .now,
-            localeIdentifier: Locale.current.identifier,
             instructorSignature: instructorSignature,
             instructedPersonSignature: instructedPersonSignature,
             sections: renderedSections

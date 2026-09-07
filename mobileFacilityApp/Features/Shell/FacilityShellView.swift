@@ -6,6 +6,7 @@ struct FacilityShellView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var sapPassword = ""
     @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
+    @State private var networkReachability = NetworkReachabilityMonitor()
 
     private let expandedSidebarWidth: CGFloat = 340
     private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
@@ -302,7 +303,7 @@ struct FacilityShellView: View {
     @ViewBuilder
     private var mainContent: some View {
         switch demo.selection {
-        case .overview: DashboardView(demo: demo)
+        case .overview: DashboardView(demo: demo, networkReachability: networkReachability)
         case .scan: ScanView()
         case .notifications:
             NotificationsView(

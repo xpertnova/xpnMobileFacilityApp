@@ -57,6 +57,7 @@ struct FirePermitWorkflowView: View {
         .safeAreaInset(edge: .bottom) {
             SafetyFormActionBar(
                 canSaveDraft: false,
+                canComplete: viewModel.record.context != nil,
                 isBusy: viewModel.isRenderingPDF,
                 saveDraft: nil,
                 complete: viewModel.complete
@@ -122,25 +123,24 @@ struct FirePermitWorkflowView: View {
 
     private var commonHeader: some View {
         @Bindable var viewModel = viewModel
-        return VStack(spacing: 18) {
-            SafetyFormCard {
-                SafetyFormFieldPair {
-                    SafetyFormField("externalCompany.name", required: true) {
-                        SafetyFormPartnerField(
-                            partner: viewModel.record.partner,
-                            isInvalid: viewModel.isInvalid(.partner),
-                            action: { isShowingPartnerPicker = true }
-                        )
-                        .id(FirePermitValidationIssue.partner)
-                    }
-                } trailing: {
-                    SafetyFormField("safetyInstrucForm.instructor") {
-                        Text(viewModel.record.instructorName)
-                            .lineLimit(2)
-                            .briefingReadOnlyValue()
-                    }
-                }
-
+        return StandardFormHeader(
+            partner: viewModel.record.partner,
+            partnerInvalid: viewModel.isInvalid(.partner),
+            partnerID: FirePermitValidationIssue.partner,
+            selectPartner: { isShowingPartnerPicker = true },
+            instructorFirstName: viewModel.source.instructorFirstName,
+            instructorLastName: viewModel.source.instructorLastName,
+            dateFrom: Binding(get: { viewModel.record.executionStart }, set: viewModel.setExecutionStart),
+            dateTo: $viewModel.record.executionEnd,
+            dateRangeInvalid: viewModel.isInvalid(.executionRange),
+            dateRangeID: FirePermitValidationIssue.executionRange,
+            workDescription: Binding(get: { viewModel.record.workDescription }, set: viewModel.setWorkDescription),
+            workDescriptionInvalid: viewModel.isInvalid(.workDescription),
+            workDescriptionID: FirePermitValidationIssue.workDescription,
+            instructedPerson: Binding(get: { viewModel.record.instructedPerson }, set: viewModel.setInstructedPerson),
+            instructedPersonInvalid: viewModel.isInvalid(.instructedPerson),
+            instructedPersonID: FirePermitValidationIssue.instructedPerson
+        ) {
                 SafetyFormContextCard(
                     businessEntities: viewModel.businessEntities,
                     buildings: viewModel.buildings,
@@ -154,78 +154,6 @@ struct FirePermitWorkflowView: View {
                     selectContext: viewModel.selectContext
                 )
                 .id(FirePermitValidationIssue.context)
-
-                SafetyFormFieldPair {
-                    SafetyFormField("safetyInstrucForm.workOrder.timeSpan1", required: true) {
-                        DatePicker(
-                            "safetyInstrucForm.workOrder.timeSpan1",
-                            selection: $viewModel.record.executionStart,
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .briefingFieldChrome(invalid: false)
-                    }
-                } trailing: {
-                    SafetyFormField("safetyInstrucForm.workOrder.timeSpan2", required: true) {
-                        DatePicker(
-                            "safetyInstrucForm.workOrder.timeSpan2",
-                            selection: $viewModel.record.executionEnd,
-                            in: viewModel.record.executionStart...,
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .briefingFieldChrome(invalid: false)
-                    }
-                }
-
-                SafetyFormField("safetyInstrucForm.workOrder", required: true) {
-                    TextField(
-                        "safetyInstrucForm.workOrder",
-                        text: Binding(get: { viewModel.record.workDescription }, set: viewModel.setWorkDescription)
-                    )
-                    .briefingFieldChrome(invalid: viewModel.isInvalid(.workDescription))
-                    .id(FirePermitValidationIssue.workDescription)
-                }
-
-                SafetyFormFieldPair {
-                    SafetyFormField("safetyInstrucForm.instructedEmployee", required: true) {
-                        TextField(
-                            "safetyInstrucForm.instructedEmployee",
-                            text: Binding(get: { viewModel.record.instructedPerson }, set: viewModel.setInstructedPerson)
-                        )
-                        .briefingFieldChrome(invalid: viewModel.isInvalid(.instructedPerson))
-                        .id(FirePermitValidationIssue.instructedPerson)
-                    }
-                } trailing: {
-                    SafetyFormField("externalCompany.eMail") {
-                        TextField("externalCompany.eMail", text: $viewModel.record.partnerEmail)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .briefingFieldChrome(invalid: false)
-                    }
-                }
-
-                SafetyFormField("externalCompany.address") {
-                    Text(viewModel.record.partner?.address ?? "")
-                        .lineLimit(3)
-                        .briefingReadOnlyValue()
-                }
-
-                SafetyFormFieldPair {
-                    SafetyFormField("safetyInstrucForm.orgUnit") {
-                        Text(viewModel.record.organizationUnit)
-                            .briefingReadOnlyValue()
-                    }
-                } trailing: {
-                    SafetyFormField("safetyInstrucForm.coordinator", required: true) {
-                        TextField("safetyInstrucForm.coordinator", text: $viewModel.record.coordinator)
-                            .briefingFieldChrome(invalid: viewModel.isInvalid(.coordinator))
-                            .id(FirePermitValidationIssue.coordinator)
-                    }
-                }
-            }
         }
     }
 
@@ -493,16 +421,19 @@ struct FirePermitWorkflowView: View {
     }
 
     private func signature(_ slot: FirePermitSignatureSlot) -> some View {
-        BriefingInlineSignatureField(
+        let signerName = viewModel.signerName(for: slot)
+        return BriefingInlineSignatureField(
             title: LocalizedStringKey(slot.titleKey),
             signatureData: Binding(
                 get: { viewModel.record.signatures[slot]?.pngData },
                 set: { viewModel.setSignature($0, for: slot) }
             ),
-            isInvalid: viewModel.isInvalid(.signature(slot))
+            isInvalid: viewModel.isInvalid(.signature(slot)),
+            inputRequirement: SignatureInputRequirement(
+                signerName: signerName,
+                requiredNameField: String(localized: String.LocalizationValue(slot.signerNameFieldKey))
+            )
         )
-        .allowsHitTesting(!viewModel.signerName(for: slot).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        .opacity(viewModel.signerName(for: slot).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.62 : 1)
         .id(FirePermitValidationIssue.signature(slot))
     }
 

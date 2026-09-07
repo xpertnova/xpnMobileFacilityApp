@@ -92,6 +92,7 @@ private struct ProofOfQualificationFormScreen: View {
     .safeAreaInset(edge: .bottom) {
       SafetyFormActionBar(
         canSaveDraft: false,
+        canComplete: viewModel.selectedContext != nil,
         isBusy: viewModel.isRenderingPDF || viewModel.isSaving,
         saveDraft: nil,
         complete: viewModel.requestCompletion
@@ -169,24 +170,25 @@ private struct ProofOfQualificationFormScreen: View {
   }
 
   private var formCard: some View {
-    SafetyFormCard {
-      SafetyFormFieldPair {
-        SafetyFormField("externalCompany.name", required: true) {
-          SafetyFormPartnerField(
-            partner: viewModel.selectedPartner,
-            isInvalid: viewModel.isInvalid(.partner),
-            action: { isShowingPartnerPicker = true }
-          )
-          .id(ProofOfQualificationValidationIssue.partner)
-        }
-      } trailing: {
-        SafetyFormField("qualification.instructor") {
-          Text(viewModel.instructorName)
-            .lineLimit(2)
-            .briefingReadOnlyValue()
-        }
-      }
-
+    @Bindable var viewModel = viewModel
+    return StandardFormHeader(
+      partner: viewModel.selectedPartner,
+      partnerInvalid: viewModel.isInvalid(.partner),
+      partnerID: ProofOfQualificationValidationIssue.partner,
+      selectPartner: { isShowingPartnerPicker = true },
+      instructorFirstName: viewModel.instructorFirstName,
+      instructorLastName: viewModel.instructorLastName,
+      dateFrom: Binding(get: { viewModel.executionStart }, set: viewModel.setExecutionStart),
+      dateTo: $viewModel.executionEnd,
+      dateRangeInvalid: viewModel.isInvalid(.executionRange),
+      dateRangeID: ProofOfQualificationValidationIssue.executionRange,
+      workDescription: Binding(get: { viewModel.taskDescription }, set: viewModel.setTaskDescription),
+      workDescriptionInvalid: viewModel.isInvalid(.taskDescription),
+      workDescriptionID: ProofOfQualificationValidationIssue.taskDescription,
+      instructedPerson: Binding(get: { viewModel.contactPerson }, set: viewModel.setContactPerson),
+      instructedPersonInvalid: viewModel.isInvalid(.contactPerson),
+      instructedPersonID: ProofOfQualificationValidationIssue.contactPerson
+    ) {
       SafetyFormContextCard(
         businessEntities: viewModel.businessEntities,
         buildings: viewModel.buildings,
@@ -200,105 +202,6 @@ private struct ProofOfQualificationFormScreen: View {
         selectContext: viewModel.selectContext
       )
       .id(ProofOfQualificationValidationIssue.context)
-
-      SafetyFormFieldPair {
-        SafetyFormField("qualification.instructedEmployee", required: true) {
-          TextField(
-            "qualification.instructedEmployee",
-            text: Binding(
-              get: { viewModel.contactPerson },
-              set: viewModel.setContactPerson
-            )
-          )
-          .briefingFieldChrome(invalid: viewModel.isInvalid(.contactPerson))
-          .id(ProofOfQualificationValidationIssue.contactPerson)
-        }
-      } trailing: {
-        SafetyFormField("externalCompany.eMail") {
-          TextField(
-            "externalCompany.eMail",
-            text: Binding(
-              get: { viewModel.partnerEmail },
-              set: { viewModel.partnerEmail = $0 }
-            )
-          )
-          .keyboardType(.emailAddress)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-          .briefingFieldChrome(invalid: false)
-        }
-      }
-
-      SafetyFormField("externalCompany.address") {
-        Text(viewModel.selectedPartner?.address ?? "")
-          .lineLimit(3)
-          .briefingReadOnlyValue()
-      }
-
-      SafetyFormFieldPair {
-        SafetyFormField("qualification.organizationUnit") {
-          Text(viewModel.organizationUnit)
-            .lineLimit(2)
-            .briefingReadOnlyValue()
-        }
-      } trailing: {
-        SafetyFormField("qualification.coordinator") {
-          TextField(
-            "qualification.coordinator",
-            text: Binding(
-              get: { viewModel.coordinator },
-              set: { viewModel.coordinator = $0 }
-            )
-          )
-          .briefingFieldChrome(invalid: false)
-        }
-      }
-
-      SafetyFormField("safetyInstrucForm.workOrder", required: true) {
-        TextField(
-          "safetyInstrucForm.workOrder",
-          text: Binding(
-            get: { viewModel.taskDescription },
-            set: viewModel.setTaskDescription
-          )
-        )
-        .briefingFieldChrome(invalid: viewModel.isInvalid(.taskDescription))
-        .id(ProofOfQualificationValidationIssue.taskDescription)
-      }
-
-      SafetyFormFieldPair {
-        SafetyFormField("qualification.executionStart", required: true) {
-          DatePicker(
-            "qualification.executionStart",
-            selection: Binding(
-              get: { viewModel.executionStart },
-              set: {
-                viewModel.executionStart = $0
-                if viewModel.executionEnd < $0 { viewModel.executionEnd = $0 }
-              }
-            ),
-            displayedComponents: .date
-          )
-          .labelsHidden()
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .briefingFieldChrome(invalid: viewModel.isInvalid(.executionRange))
-        }
-      } trailing: {
-        SafetyFormField("qualification.executionEnd", required: true) {
-          DatePicker(
-            "qualification.executionEnd",
-            selection: Binding(
-              get: { viewModel.executionEnd },
-              set: { viewModel.executionEnd = $0 }
-            ),
-            displayedComponents: .date
-          )
-          .labelsHidden()
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .briefingFieldChrome(invalid: viewModel.isInvalid(.executionRange))
-          .id(ProofOfQualificationValidationIssue.executionRange)
-        }
-      }
     }
   }
 
@@ -385,49 +288,14 @@ private struct QualificationChecklistHeader: View {
 private struct QualificationChecklistSectionHeader: View {
   let number: Int
   let title: String
-  @State private var isExpanded = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      let parts = title.components(separatedBy: "\n")
-      let shortText = parts.first ?? title
-      let hasDetails = parts.count > 1
-
-      if hasDetails {
-        Button {
-          withAnimation(.easeInOut(duration: 0.2)) {
-            isExpanded.toggle()
-          }
-        } label: {
-          HStack(alignment: .top, spacing: 8) {
-            Text("\(number). \(shortText)")
-              .font(.headline)
-              .foregroundStyle(FacilityTheme.ink)
-              .fixedSize(horizontal: false, vertical: true)
-              .multilineTextAlignment(.leading)
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-              .font(.caption.weight(.bold))
-              .foregroundStyle(FacilityTheme.blue)
-              .padding(.top, 4)
-          }
-        }
-        .buttonStyle(.plain)
-      } else {
-        Text("\(number). \(shortText)")
-          .font(.headline)
-          .foregroundStyle(FacilityTheme.ink)
-          .fixedSize(horizontal: false, vertical: true)
-          .multilineTextAlignment(.leading)
-      }
-
-      if isExpanded, hasDetails {
-        Text(parts.dropFirst().joined(separator: "\n"))
-          .font(.subheadline)
-          .lineSpacing(3)
-          .foregroundStyle(FacilityTheme.ink)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
+    Text("\(number). \(title)")
+      .font(.subheadline.weight(.semibold))
+      .lineSpacing(2)
+      .foregroundStyle(FacilityTheme.ink)
+      .fixedSize(horizontal: false, vertical: true)
+      .multilineTextAlignment(.leading)
     .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
     .padding(.horizontal, 18)
     .padding(.vertical, 12)
@@ -446,7 +314,6 @@ private struct QualificationChecklistRow: View {
   let setComment: (String) -> Void
   @State private var referenceDocument: BriefingReferenceDocument?
   @State private var isEditingComment = false
-  @State private var isExpanded = false
 
   var body: some View {
     HStack(alignment: .center, spacing: 0) {
@@ -473,47 +340,13 @@ private struct QualificationChecklistRow: View {
   }
 
   private var itemText: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      let parts = item.title.components(separatedBy: "\n")
-      let shortText = parts.first ?? item.title
-      let hasDetails = parts.count > 1
-
-      if hasDetails {
-        Button {
-          withAnimation(.easeInOut(duration: 0.2)) {
-            isExpanded.toggle()
-          }
-        } label: {
-          HStack(alignment: .top, spacing: 8) {
-            Text(shortText)
-              .font(.body)
-              .foregroundStyle(FacilityTheme.ink)
-              .fixedSize(horizontal: false, vertical: true)
-              .multilineTextAlignment(.leading)
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-              .font(.caption.weight(.bold))
-              .foregroundStyle(FacilityTheme.blue)
-              .padding(.top, 4)
-          }
-        }
-        .buttonStyle(.plain)
-      } else {
-        Text(shortText)
-          .font(.body)
-          .foregroundStyle(FacilityTheme.ink)
-          .fixedSize(horizontal: false, vertical: true)
-          .multilineTextAlignment(.leading)
-      }
-
-      if isExpanded, hasDetails {
-        Text(parts.dropFirst().joined(separator: "\n"))
-          .font(.body)
-          .lineSpacing(3)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
-      }
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    Text(item.title)
+      .font(.subheadline)
+      .lineSpacing(2)
+      .foregroundStyle(FacilityTheme.ink)
+      .fixedSize(horizontal: false, vertical: true)
+      .multilineTextAlignment(.leading)
+      .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private var answerControl: some View {
