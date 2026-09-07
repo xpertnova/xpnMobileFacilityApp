@@ -4,6 +4,7 @@ import SwiftUI
 struct MobileFacilityApp: App {
     private let productionOfflineWorkRepository: any OfflineWorkRepository
     private let productionSAPDataCacheRepository: any SAPDataCacheRepository
+    private let productionPhotoAttachmentStore: any PhotoAttachmentStore
 
     init() {
         do {
@@ -16,13 +17,19 @@ struct MobileFacilityApp: App {
         } catch {
             productionSAPDataCacheRepository = UnavailableSAPDataCacheRepository()
         }
+        do {
+            productionPhotoAttachmentStore = try FilePhotoAttachmentStore()
+        } catch {
+            productionPhotoAttachmentStore = UnavailablePhotoAttachmentStore()
+        }
     }
 
     var body: some Scene {
         WindowGroup {
             AppRootView(
                 productionOfflineWorkRepository: productionOfflineWorkRepository,
-                productionSAPDataCacheRepository: productionSAPDataCacheRepository
+                productionSAPDataCacheRepository: productionSAPDataCacheRepository,
+                productionPhotoAttachmentStore: productionPhotoAttachmentStore
             )
         }
     }

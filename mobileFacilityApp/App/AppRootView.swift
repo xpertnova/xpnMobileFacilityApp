@@ -3,6 +3,7 @@ import SwiftUI
 struct AppRootView: View {
     let productionOfflineWorkRepository: any OfflineWorkRepository
     let productionSAPDataCacheRepository: any SAPDataCacheRepository
+    let productionPhotoAttachmentStore: any PhotoAttachmentStore
     @State private var phase: AppPhase = .launching
     @State private var onboarding = SAPOnboardingState()
     @State private var demo: FacilityDemoViewModel?
@@ -35,6 +36,8 @@ struct AppRootView: View {
                                     workerID: session.workerID
                                 ),
                                 sapDataStore: productionSAPDataStore(for: session),
+                                meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+                                photoAttachmentStore: productionPhotoAttachmentStore,
                                 workerDisplayName: session.displayName,
                                 workerRole: session.role
                             )
@@ -77,7 +80,9 @@ struct AppRootView: View {
                         repository: InMemorySAPDataCacheRepository(),
                         refreshService: nil,
                         localWorkerID: "unauthenticated"
-                    )
+                    ),
+                    meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+                    photoAttachmentStore: InMemoryPhotoAttachmentStore()
                 )
                 phase = .authentication
             case .demo:
@@ -92,6 +97,8 @@ struct AppRootView: View {
                         refreshService: nil,
                         localWorkerID: "demo"
                     ),
+                    meterReferenceProvider: DemoMeterReferenceProvider(),
+                    photoAttachmentStore: InMemoryPhotoAttachmentStore(),
                     workerDisplayName: "Alex Morgan",
                     workerRole: .technician
                 )

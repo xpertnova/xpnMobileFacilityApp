@@ -8,17 +8,20 @@ final class FacilityDemoViewModel {
     let offlineWorkStore: OfflineWorkStore
     let sapDataStore: SAPDataStore
     let technicalPlacesStore: TechnicalPlacesViewModel
+    let meterReferenceProvider: any MeterReferenceProviding
+    let photoAttachmentStore: any PhotoAttachmentStore
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     var selection: AppDestination = .overview
     var isSidebarVisible = true
-    var editingManualCaptureID: UUID?
+    var manualCaptureRoute: ManualCaptureRoute = .landing
     var selectedBriefingDraftID: UUID?
     var selectedElectricalSafetyDraftID: UUID?
     var selectedProofOfQualificationDraftID: UUID?
     var selectedNotificationID: String?
     var selectedOfflineNotificationDetail: SAPNotificationDetail?
     private var offlineNotificationReturnDestination: AppDestination?
+    private var manualDefectReturnDestination: AppDestination?
     var shouldPresentSAPRefresh = false
     var notifications = MockFacilityData.notifications
     var defects = MockFacilityData.defects
@@ -32,12 +35,16 @@ final class FacilityDemoViewModel {
         isDemoMode: Bool,
         offlineWorkStore: OfflineWorkStore,
         sapDataStore: SAPDataStore,
+        meterReferenceProvider: any MeterReferenceProviding,
+        photoAttachmentStore: any PhotoAttachmentStore,
         workerDisplayName: String = "Alex Morgan",
         workerRole: FacilityUserRole = .technician
     ) {
         self.isDemoMode = isDemoMode
         self.offlineWorkStore = offlineWorkStore
         self.sapDataStore = sapDataStore
+        self.meterReferenceProvider = meterReferenceProvider
+        self.photoAttachmentStore = photoAttachmentStore
         self.technicalPlacesStore = TechnicalPlacesViewModel(
             sapDataStore: sapDataStore,
             offlineWorkStore: offlineWorkStore
@@ -119,8 +126,30 @@ final class FacilityDemoViewModel {
         selection = destination
     }
 
-    func openManualCapture(_ itemID: UUID? = nil) {
-        editingManualCaptureID = itemID
+    func openManualDefect(_ itemID: UUID? = nil) {
+        if selection != .manualCapture {
+            manualDefectReturnDestination = selection
+        }
+        manualCaptureRoute = .defect(itemID)
+        selection = .manualCapture
+    }
+
+    func closeManualDefect() {
+        let returnDestination = manualDefectReturnDestination
+        manualDefectReturnDestination = nil
+        if let returnDestination {
+            selection = returnDestination
+        }
+        manualCaptureRoute = .landing
+    }
+
+    func openManualCapture() {
+        manualCaptureRoute = .landing
+        selection = .manualCapture
+    }
+
+    func openMeterReading(_ itemID: UUID? = nil) {
+        manualCaptureRoute = .meterReading(itemID)
         selection = .manualCapture
     }
 
@@ -200,7 +229,7 @@ final class FacilityDemoViewModel {
         )
         notifications = MockFacilityData.notifications
         defects = MockFacilityData.defects
-        editingManualCaptureID = nil
+        manualCaptureRoute = .landing
         selectedBriefingDraftID = nil
         selectedElectricalSafetyDraftID = nil
         selectedProofOfQualificationDraftID = nil
@@ -208,7 +237,10 @@ final class FacilityDemoViewModel {
         selectedOfflineNotificationDetail = nil
         offlineNotificationReturnDestination = nil
         technicalPlacesStore.reset()
-        Task { await offlineWorkStore.reset() }
+        Task {
+            await offlineWorkStore.reset()
+            try? await photoAttachmentStore.reset()
+        }
         selection = .overview
     }
 }

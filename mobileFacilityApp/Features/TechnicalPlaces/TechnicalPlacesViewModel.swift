@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 struct TechnicalObjectVisibleRow: Identifiable, Equatable {
     let node: TechnicalObjectNode
@@ -124,10 +125,12 @@ final class TechnicalPlacesViewModel {
         guard let offset = nextRootOffset else { return }
         do {
             let page = try await sapDataStore.technicalObjectRoots(limit: pageSize, offset: offset)
-            page.objects.forEach { nodesByID[$0.reference] = $0 }
-            sourceRootReferences.append(contentsOf: page.objects.map(\.reference))
-            applyCityGroups(expandGroups: true)
-            nextRootOffset = page.nextOffset
+            withAnimation(.smooth(duration: 0.24)) {
+                page.objects.forEach { nodesByID[$0.reference] = $0 }
+                sourceRootReferences.append(contentsOf: page.objects.map(\.reference))
+                applyCityGroups(expandGroups: true)
+                nextRootOffset = page.nextOffset
+            }
         } catch {
             state = .failed
         }
@@ -142,8 +145,11 @@ final class TechnicalPlacesViewModel {
             async let roots = sapDataStore.technicalObjectRoots(limit: pageSize, offset: 0)
             totalCount = try await count
             dinCounts = try await counts
-            applyRootPage(try await roots)
-            state = rootReferences.isEmpty ? .empty : .loaded
+            let loadedRoots = try await roots
+            withAnimation(.smooth(duration: 0.24)) {
+                applyRootPage(loadedRoots)
+                state = rootReferences.isEmpty ? .empty : .loaded
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -160,8 +166,10 @@ final class TechnicalPlacesViewModel {
         state = .loading
         do {
             let results = try await sapDataStore.searchTechnicalObjects(normalized, dinGroup: selectedDINGroup, limit: 500)
-            applySearchResults(results)
-            state = results.isEmpty ? .noResults : .loaded
+            withAnimation(.smooth(duration: 0.24)) {
+                applySearchResults(results)
+                state = results.isEmpty ? .noResults : .loaded
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -170,15 +178,26 @@ final class TechnicalPlacesViewModel {
     }
 
     func selectDIN(_ code: String?) async {
-        selectedDINGroup = selectedDINGroup == code ? nil : code
+        withAnimation(.smooth(duration: 0.2)) {
+            selectedDINGroup = selectedDINGroup == code ? nil : code
+        }
         await updateSearch()
     }
 
     func toggle(_ node: TechnicalObjectNode) async {
-        if expanded.remove(node.reference) != nil { return }
-        expanded.insert(node.reference)
+        if expanded.contains(node.reference) {
+            withAnimation(.smooth(duration: 0.22)) {
+                _ = expanded.remove(node.reference)
+            }
+            return
+        }
+        withAnimation(.smooth(duration: 0.22)) {
+            expanded.insert(node.reference)
+        }
         guard !node.isCityGroup else { return }
-        if childReferences[node.reference] == nil { await loadChildren(of: node.reference, offset: 0) }
+        if childReferences[node.reference] == nil {
+            await loadChildren(of: node.reference, offset: 0)
+        }
     }
 
     func loadMoreChildren(of parent: TechnicalObjectReference) async {
@@ -193,8 +212,10 @@ final class TechnicalPlacesViewModel {
         }
         do {
             guard let detail = try await sapDataStore.technicalObjectDetail(reference) else { return }
-            selectedDetail = detail
-            saveState = .idle
+            withAnimation(.smooth(duration: 0.24)) {
+                selectedDetail = detail
+                saveState = .idle
+            }
             if case let .equipment(equipment) = detail {
                 let item = offlineWorkStore.technicalObjectEdit(equipmentID: reference.objectID)
                 let pending = item?.payload.technicalObjectEdit
@@ -214,9 +235,11 @@ final class TechnicalPlacesViewModel {
     }
 
     func closeDetail() {
-        selectedDetail = nil
-        equipmentDraft = nil
-        saveState = .idle
+        withAnimation(.smooth(duration: 0.24)) {
+            selectedDetail = nil
+            equipmentDraft = nil
+            saveState = .idle
+        }
     }
 
     func saveEquipment() async {
@@ -228,9 +251,13 @@ final class TechnicalPlacesViewModel {
         saveState = .saving
         do {
             _ = try await offlineWorkStore.saveTechnicalObjectEdit(draft.payload)
-            saveState = .savedPending
+            withAnimation(.smooth(duration: 0.2)) {
+                saveState = .savedPending
+            }
         } catch {
-            saveState = .failed
+            withAnimation(.smooth(duration: 0.2)) {
+                saveState = .failed
+            }
         }
     }
 
@@ -250,10 +277,12 @@ final class TechnicalPlacesViewModel {
     private func loadChildren(of parent: TechnicalObjectReference, offset: Int) async {
         do {
             let page = try await sapDataStore.technicalObjectChildren(of: parent, limit: pageSize, offset: offset)
-            page.objects.forEach { nodesByID[$0.reference] = $0 }
-            let new = page.objects.map(\.reference)
-            childReferences[parent] = offset == 0 ? new : childReferences[parent, default: []] + new
-            nextOffsets[parent] = page.nextOffset
+            withAnimation(.smooth(duration: 0.24)) {
+                page.objects.forEach { nodesByID[$0.reference] = $0 }
+                let new = page.objects.map(\.reference)
+                childReferences[parent] = offset == 0 ? new : childReferences[parent, default: []] + new
+                nextOffsets[parent] = page.nextOffset
+            }
         } catch {
             state = .failed
         }

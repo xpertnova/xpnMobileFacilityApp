@@ -50,8 +50,16 @@ final class OfflineWorkStore {
 
     var localWorkCount: Int {
         localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
-            + technicalObjectEditItems.count
+            + technicalObjectEditItems.count + defectItems.count + meterReadingItems.count
             + proofOfQualificationItems.count
+    }
+
+    var defectItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .defect }
+    }
+
+    var meterReadingItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .meterReading }
     }
 
     var briefingItems: [OfflineWorkItem] {
@@ -83,6 +91,10 @@ final class OfflineWorkStore {
         closedDefectNotificationItems.count
     }
 
+    var defectCount: Int {
+        closedDefectNotificationCount + defectItems.count
+    }
+
     func load() async {
         state = .loading
         do {
@@ -107,6 +119,50 @@ final class OfflineWorkStore {
             type: .manualCapture,
             status: .draft,
             payload: .manualCapture(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func saveDefect(
+        id: UUID? = nil,
+        payload: DefectDraftPayload,
+        status: OfflineWorkStatus
+    ) async throws -> OfflineWorkItem {
+        let existing = id.flatMap { requestedID in items.first { $0.id == requestedID } }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .defect,
+            status: status,
+            payload: .defect(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func saveMeterReading(
+        id: UUID? = nil,
+        payload: MeterReadingDraftPayload,
+        status: OfflineWorkStatus
+    ) async throws -> OfflineWorkItem {
+        let existing = id.flatMap { requestedID in items.first { $0.id == requestedID } }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .meterReading,
+            status: status,
+            payload: .meterReading(payload),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
             syncError: nil

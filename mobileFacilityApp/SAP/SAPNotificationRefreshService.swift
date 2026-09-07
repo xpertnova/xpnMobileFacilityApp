@@ -240,8 +240,8 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         var openInspectionRowCount = 0
         var isLastPack = false
 
-        for _ in 1...256 {
-            await progress(.receivingIncomingPackages)
+        for packageIndex in 1...256 {
+            await progress(.receivingIncomingPackages(packageNumber: packageIndex))
             guard let response = try await call(method: "M0002003", parameters: Self.parameters([
                 "PARAMETER1": sapWorkerID,
                 "PARAMETER2": fromRequestID,

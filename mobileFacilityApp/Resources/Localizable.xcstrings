@@ -1692,7 +1692,6 @@
       }
     },
     "common.cancel" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1912,6 +1911,57 @@
       }
     },
     "dashboard.greeting" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Morgen, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good morning, %@"
+          }
+        }
+      }
+    },
+    "dashboard.greeting.afternoon" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Tag, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good afternoon, %@"
+          }
+        }
+      }
+    },
+    "dashboard.greeting.evening" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guten Abend, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Good evening, %@"
+          }
+        }
+      }
+    },
+    "dashboard.greeting.morning" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -5785,7 +5835,110 @@
     "KG %@" : {
 
     },
+    "manual.action.defect.subtitle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldung bei Befunden erstellen – mit Foto, Priorität und lokaler Übergabe."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a notification for a finding with photos, priority, and local handoff."
+          }
+        }
+      }
+    },
+    "manual.action.defect.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Störungsmeldung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report a defect"
+          }
+        }
+      }
+    },
+    "manual.action.masterData.subtitle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technische Plätze und Equipments anzeigen oder bearbeiten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View or maintain technical places and equipment."
+          }
+        }
+      }
+    },
+    "manual.action.masterData.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stammdaten pflegen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage master data"
+          }
+        }
+      }
+    },
+    "manual.action.meter.subtitle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strom-, Gas- oder Wasserzählerwerte strukturiert dokumentieren."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Record electricity, gas, or water meter values."
+          }
+        }
+      }
+    },
+    "manual.action.meter.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messbeleg erfassen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Record meter readings"
+          }
+        }
+      }
+    },
     "manual.category" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5802,6 +5955,7 @@
       }
     },
     "manual.category.issue" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5818,6 +5972,7 @@
       }
     },
     "manual.category.note" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5834,6 +5989,7 @@
       }
     },
     "manual.category.reading" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5845,6 +6001,276 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reading"
+          }
+        }
+      }
+    },
+    "manual.defect.create" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokal vormerken"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queue locally"
+          }
+        }
+      }
+    },
+    "manual.defect.description" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibung / Langtext"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Description / long text"
+          }
+        }
+      }
+    },
+    "manual.defect.din" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DIN-276-Kostengruppe"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "DIN 276 cost group"
+          }
+        }
+      }
+    },
+    "manual.defect.form.edit.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Störungsmeldung bearbeiten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit defect draft"
+          }
+        }
+      }
+    },
+    "manual.defect.form.readOnly.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Störungsmeldung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defect report"
+          }
+        }
+      }
+    },
+    "manual.defect.form.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Störungsmeldung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New defect report"
+          }
+        }
+      }
+    },
+    "manual.defect.object" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldeobjekt (System-TP oder Equipment)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notification object (technical place or equipment)"
+          }
+        }
+      }
+    },
+    "manual.defect.photos" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotobeleg (optional)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo evidence (optional)"
+          }
+        }
+      }
+    },
+    "manual.defect.priority" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Priorität"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Priority"
+          }
+        }
+      }
+    },
+    "manual.defect.priority.high" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoch"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "High"
+          }
+        }
+      }
+    },
+    "manual.defect.priority.low" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niedrig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Low"
+          }
+        }
+      }
+    },
+    "manual.defect.priority.medium" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mittel"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medium"
+          }
+        }
+      }
+    },
+    "manual.defect.readOnly.notice.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Störungsmeldung ist lokal vorgemerkt und schreibgeschützt, da sie auf die Synchronisierung wartet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This defect report is queued locally and is read-only while waiting for synchronization."
+          }
+        }
+      }
+    },
+    "manual.defect.readOnly.notice.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartet auf Synchronisierung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting for synchronization"
+          }
+        }
+      }
+    },
+    "manual.defect.shortText" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurztext"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Short text"
+          }
+        }
+      }
+    },
+    "manual.defect.shortText.placeholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Befund kurz beschreiben"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Briefly describe the finding"
           }
         }
       }
@@ -5884,6 +6310,7 @@
       }
     },
     "manual.guidance.body" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5917,6 +6344,7 @@
       }
     },
     "manual.guidance.title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5932,7 +6360,24 @@
         }
       }
     },
+    "manual.localWork.meter.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messbeleg"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meter reading"
+          }
+        }
+      }
+    },
     "manual.location" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5965,7 +6410,429 @@
         }
       }
     },
+    "manual.meter.book" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messbeleg lokal buchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Record locally"
+          }
+        }
+      }
+    },
+    "manual.meter.empty.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Zählerart sind keine Messpunkte vorhanden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No measuring points are available for this meter type."
+          }
+        }
+      }
+    },
+    "manual.meter.empty.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Messpunkte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No measuring points"
+          }
+        }
+      }
+    },
+    "manual.meter.failure.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Messpunkte konnten nicht geladen werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The measuring points could not be loaded."
+          }
+        }
+      }
+    },
+    "manual.meter.failure.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laden fehlgeschlagen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading failed"
+          }
+        }
+      }
+    },
+    "manual.meter.form.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messbeleg erfassen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Record meter reading"
+          }
+        }
+      }
+    },
+    "manual.meter.kind" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zählerart"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meter type"
+          }
+        }
+      }
+    },
+    "manual.meter.kind.electricity" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strom"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Electricity"
+          }
+        }
+      }
+    },
+    "manual.meter.kind.gas" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gas"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gas"
+          }
+        }
+      }
+    },
+    "manual.meter.kind.water" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wasser"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Water"
+          }
+        }
+      }
+    },
+    "manual.meter.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messpunkte werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading measuring points…"
+          }
+        }
+      }
+    },
+    "manual.meter.note" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bemerkung (optional)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Note (optional)"
+          }
+        }
+      }
+    },
+    "manual.meter.note.placeholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "z. B. Ablesung bei Rundgang"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "e.g. reading taken during inspection"
+          }
+        }
+      }
+    },
+    "manual.meter.point" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messpunkt / Technischer Platz"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Measuring point / technical place"
+          }
+        }
+      }
+    },
+    "manual.meter.preview.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es werden Beispieldaten für die Oberflächenprüfung angezeigt. Sie stammen nicht aus SAP; Speichern und Übertragen sind deaktiviert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sample data is shown for front-end review. It is not loaded from SAP; saving and submission are disabled."
+          }
+        }
+      }
+    },
+    "manual.meter.preview.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Frontend-Vorschau"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Front-end preview"
+          }
+        }
+      }
+    },
+    "manual.meter.previous" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorheriger Zählerstand"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous reading"
+          }
+        }
+      }
+    },
+    "manual.meter.previousDate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Ablesung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last read"
+          }
+        }
+      }
+    },
+    "manual.meter.technicalPlace" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technischer Platz"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical place"
+          }
+        }
+      }
+    },
+    "manual.meter.unavailable.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die SAP-Schnittstelle für Messpunkte ist noch nicht freigegeben. Es werden keine Testdaten angezeigt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The SAP measuring-point interface is not available yet. No test data is shown."
+          }
+        }
+      }
+    },
+    "manual.meter.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messwerte nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meter readings unavailable"
+          }
+        }
+      }
+    },
+    "manual.meter.unit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einheit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unit"
+          }
+        }
+      }
+    },
+    "manual.meter.validation.lessThanPrevious" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der neue Zählerstand darf nicht kleiner als der vorherige sein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The new reading cannot be lower than the previous reading."
+          }
+        }
+      }
+    },
+    "manual.meter.value" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zählerstand"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meter reading"
+          }
+        }
+      }
+    },
+    "manual.meter.value.placeholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuen Zählerstand eingeben"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter the new reading"
+          }
+        }
+      }
+    },
     "manual.note" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5982,6 +6849,7 @@
       }
     },
     "manual.note.placeholder" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5993,6 +6861,90 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Describe the finding or reading …"
+          }
+        }
+      }
+    },
+    "manual.objects.empty.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisieren Sie die SAP-Daten, um ein Meldeobjekt auszuwählen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Refresh SAP data to select a notification object."
+          }
+        }
+      }
+    },
+    "manual.objects.empty.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine technischen Objekte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No technical objects"
+          }
+        }
+      }
+    },
+    "manual.objects.failure.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die technischen Objekte konnten nicht geladen werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical objects could not be loaded."
+          }
+        }
+      }
+    },
+    "manual.objects.failure.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laden fehlgeschlagen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading failed"
+          }
+        }
+      }
+    },
+    "manual.objects.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technische Objekte werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading technical objects…"
           }
         }
       }
@@ -6010,6 +6962,105 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add photo"
+          }
+        }
+      }
+    },
+    "manual.photo.camera" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto aufnehmen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Take photo"
+          }
+        }
+      }
+    },
+    "manual.photo.camera.unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kamera ist auf diesem Gerät nicht verfügbar."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The camera is unavailable on this device."
+          }
+        }
+      }
+    },
+    "manual.photo.error" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Foto konnte nicht lokal gespeichert werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The photo could not be saved locally."
+          }
+        }
+      }
+    },
+    "manual.photo.library" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus Mediathek wählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from library"
+          }
+        }
+      }
+    },
+    "manual.photo.none" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Fotos angehängt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No photos attached"
+          }
+        }
+      }
+    },
+    "manual.photo.remove" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto entfernen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove photo"
           }
         }
       }
@@ -6065,19 +7116,52 @@
         }
       }
     },
+    "manual.saveDraft" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischenspeichern"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save draft"
+          }
+        }
+      }
+    },
+    "manual.select.placeholder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte auswählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select an option"
+          }
+        }
+      }
+    },
     "manual.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einen lokalen Vorgang außerhalb einer geplanten Meldung erfassen"
+            "value" : "Direkt vor Ort anlegen – Meldeobjekt aus der DIN-276-Struktur wählen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Record local work outside a planned notification"
+            "value" : "Create work on site using an object from the DIN 276 structure"
           }
         }
       }
@@ -7503,6 +8587,7 @@
       }
     },
     "offline.save.error.message" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7548,6 +8633,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Review needed"
+          }
+        }
+      }
+    },
+    "offline.status.demoLocal" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokal im Demo-Modus"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved in demo"
           }
         }
       }
@@ -8547,7 +9649,6 @@
       }
     },
     "places.search.clear" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10381,30 +11482,30 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronisierung wird an SAP übergeben …"
+            "value" : "Daten werden im System verarbeitet …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Submitting synchronization to SAP …"
+            "value" : "Data are processed in the system …"
           }
         }
       }
     },
     "sap.refresh.stage.preparing" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Datenpaket wird vorbereitet …"
+            "value" : "Daten werden im System für den Empfang aufbereitet …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preparing SAP data package …"
+            "value" : "Data are prepared in the system for reception …"
           }
         }
       }
@@ -10415,30 +11516,47 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Datenpakete werden empfangen …"
+            "value" : "Datenempfang …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Receiving SAP data packages …"
+            "value" : "Receiving data …"
           }
         }
       }
     },
-    "sap.refresh.stage.saving" : {
+    "sap.refresh.stage.receivingPackage" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP-Daten werden auf diesem iPad gespeichert …"
+            "value" : "Datenempfang – Paket %d"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saving SAP data on this iPad …"
+            "value" : "Receiving package %d"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.saving" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daten werden gespeichert …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saving data …"
           }
         }
       }
@@ -10449,13 +11567,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Synchronisierungsanfrage wird vorbereitet …"
+            "value" : "Datenübertragung …"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preparing synchronization request …"
+            "value" : "Data transfer …"
           }
         }
       }
@@ -10478,18 +11596,18 @@
       }
     },
     "sap.refresh.stage.waiting" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "SAP bereitet die Daten vor …"
+            "value" : "Datenverarbeitung läuft. Vorgang nicht abbrechen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Waiting for SAP to prepare the data …"
+            "value" : "Data processing is running. Do not cancel the process."
           }
         }
       }
@@ -10500,13 +11618,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auf Bestätigung von SAP wird gewartet …"
+            "value" : "Datenverarbeitung läuft. Vorgang nicht abbrechen."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Waiting for SAP confirmation …"
+            "value" : "Data processing is running. Do not cancel the process."
           }
         }
       }

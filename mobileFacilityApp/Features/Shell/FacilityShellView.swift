@@ -5,12 +5,11 @@ struct FacilityShellView: View {
     let onSignOut: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var sapPassword = ""
-    @State private var isSAPRefreshConfirmed = false
     @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
     @State private var networkReachability = NetworkReachabilityMonitor()
 
     private let expandedSidebarWidth: CGFloat = 340
-    private let sidebarAnimation = Animation.easeInOut(duration: 0.42)
+    private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
 
     init(
         demo: FacilityDemoViewModel,
@@ -39,7 +38,7 @@ struct FacilityShellView: View {
                 ZStack {
                     mainContent
                         .id(demo.selection)
-                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                        .transition(.opacity)
 
                     if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
                         NotificationDetailView(
@@ -56,7 +55,7 @@ struct FacilityShellView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(
-                    accessibilityReduceMotion ? nil : .easeInOut(duration: 0.28),
+                    accessibilityReduceMotion ? nil : .smooth(duration: 0.24),
                     value: demo.selection
                 )
                 .animation(
@@ -80,7 +79,7 @@ struct FacilityShellView: View {
                     presentation: $notificationFilterPresentation
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                .transition(.opacity)
                 .zIndex(2)
             }
 
@@ -240,14 +239,9 @@ struct FacilityShellView: View {
 
             if !demo.isDemoMode {
                 Button {
-                    isSAPRefreshConfirmed = false
                     demo.requestSAPRefresh()
                 } label: {
-                    if isSAPRefreshConfirmed {
-                        Label("sidebar.sync.completed", systemImage: "checkmark.circle.fill")
-                    } else {
-                        Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
-                    }
+                    Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: 44)
@@ -269,12 +263,10 @@ struct FacilityShellView: View {
 
     private func refreshSAPData() {
         let password = sapPassword
-        let previousRefreshAt = demo.sapDataStore.lastSuccessfulRefreshAt
         Task {
             await demo.sapDataStore.refresh(sapPassword: password)
             sapPassword = ""
             if demo.sapDataStore.refreshError == nil {
-                isSAPRefreshConfirmed = demo.sapDataStore.lastSuccessfulRefreshAt != previousRefreshAt
                 demo.shouldPresentSAPRefresh = false
             }
         }
@@ -302,7 +294,7 @@ struct FacilityShellView: View {
     private func badge(for destination: AppDestination) -> Int? {
         switch destination {
         case .notifications: demo.allNotificationCount
-        case .defects: demo.offlineWorkStore.closedDefectNotificationCount
+        case .defects: demo.offlineWorkStore.defectCount
         case .drafts: demo.offlineWorkStore.localWorkCount
         default: nil
         }
@@ -361,6 +353,7 @@ private struct SidebarButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .animation(.smooth(duration: 0.2), value: isSelected)
     }
 
     private var badgeTint: Color {
