@@ -49,7 +49,7 @@ struct AppRootView: View {
                 }
             case .ready:
                 if let productionWorkspace {
-                    FacilityShellView(demo: productionWorkspace, onSignOut: signOut)
+                    FacilityShellView(demo: productionWorkspace, onLogout: signOut)
                         .tint(FacilityTheme.accent)
                         .background(FacilityTheme.canvas)
                 } else {
@@ -57,7 +57,7 @@ struct AppRootView: View {
                 }
             case .demo:
                 if let demo {
-                    FacilityShellView(demo: demo)
+                    FacilityShellView(demo: demo, onLogout: exitDemo)
                         .tint(FacilityTheme.accent)
                         .background(FacilityTheme.canvas)
                 } else {
@@ -121,6 +121,12 @@ struct AppRootView: View {
         productionSession = nil
         productionWorkspace = nil
         phase = .authentication
+    }
+
+    private func exitDemo() {
+        demo = nil
+        onboarding = SAPOnboardingState()
+        phase = .launching
     }
 
     private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {

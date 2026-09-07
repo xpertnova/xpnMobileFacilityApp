@@ -12,7 +12,14 @@ final class FacilityDemoViewModel {
     let photoAttachmentStore: any PhotoAttachmentStore
     let workerDisplayName: String
     let workerRole: FacilityUserRole
-    var selection: AppDestination = .overview
+    private(set) var profileSettingsReturnDestination: AppDestination = .overview
+    var selection: AppDestination = .overview {
+        didSet {
+            if oldValue != .profileSettings && selection == .profileSettings {
+                profileSettingsReturnDestination = oldValue
+            }
+        }
+    }
     var isSidebarVisible = true
     var manualCaptureRoute: ManualCaptureRoute = .landing
     var selectedBriefingDraftID: UUID?
@@ -123,7 +130,24 @@ final class FacilityDemoViewModel {
     }
 
     func open(_ destination: AppDestination) {
+        if destination == .profileSettings {
+            openProfileSettings()
+            return
+        }
         selection = destination
+    }
+
+    func openProfileSettings() {
+        if selection != .profileSettings {
+            profileSettingsReturnDestination = selection
+        }
+        selectedOfflineNotificationDetail = nil
+        selection = .profileSettings
+    }
+
+    func closeProfileSettings() {
+        let returnDestination = profileSettingsReturnDestination
+        selection = returnDestination
     }
 
     func openManualDefect(_ itemID: UUID? = nil) {
@@ -236,6 +260,7 @@ final class FacilityDemoViewModel {
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = nil
         offlineNotificationReturnDestination = nil
+        profileSettingsReturnDestination = .overview
         technicalPlacesStore.reset()
         Task {
             await offlineWorkStore.reset()
