@@ -27,7 +27,28 @@ final class FormStandardizationTests: XCTestCase {
 
         XCTAssertEqual(
             StandardFormPDFHeaderRenderer.formattedRange(from: from, to: to),
-            "02.01.2026 13:45 – 03.01.2026 08:05"
+            "02.01.2026 13:45 - 03.01.2026 08:05"
+        )
+    }
+
+    func testPDFArtifactProvidesRawBase64ForSAPDocumentUpload() throws {
+        let pdfData = Data([0x25, 0x50, 0x44, 0x46])
+        let artifact = BriefingPDFArtifact(
+            data: pdfData,
+            fileName: "form.pdf",
+            createdAt: Date(timeIntervalSince1970: 0)
+        )
+
+        XCTAssertEqual(artifact.base64EncodedString, pdfData.base64EncodedString())
+        XCTAssertFalse(artifact.base64EncodedString.hasPrefix("data:"))
+        XCTAssertEqual(Data(base64Encoded: artifact.base64EncodedString), pdfData)
+        XCTAssertEqual(
+            artifact.uploadPayload,
+            FormPDFUploadPayload(
+                fileName: "form.pdf",
+                mimeType: "application/pdf",
+                base64Content: "JVBERg=="
+            )
         )
     }
 

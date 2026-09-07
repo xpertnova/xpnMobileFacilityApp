@@ -99,6 +99,20 @@ Neither the old briefing view model nor the old synchronization service submits 
 
 Therefore, this migration can truthfully show a briefing as **draft** or **pending synchronization**, but must not label it synchronized or claim it reached SAP until the backend owner supplies a sanctioned outbound contract and acknowledgement semantics. In particular, do not infer an outbound request from `T_PARTNER_NEW`, `M0002001`, `M0002021`, or a UI field name.
 
+### Confirmed PDF transport format
+
+The project owner has confirmed that every generated form PDF must cross the
+upload boundary as a raw Base64 string. The Cordova fallback corroborates the
+format: `PdfBuilder.getPdfDocument` calls pdfmake's `getBase64`, and
+`BaseFormController.closeProcess` assigns that value directly to
+`T_0282.FELDWERT`. It is not a `data:application/pdf;base64,...` URL.
+
+All four Swift renderers return the shared `BriefingPDFArtifact`, whose
+`uploadPayload` now contains `application/pdf`, the file name, and raw Base64
+content. This confirms document encoding only; the app must remain in pending
+synchronization until the complete outbound form envelope and SAP
+acknowledgement have been implemented and verified.
+
 ## Design direction for this app
 
 Use the existing Mobile Facility App visual language rather than the legacy form chrome:
