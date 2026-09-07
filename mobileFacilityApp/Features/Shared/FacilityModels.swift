@@ -9,6 +9,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
     case technicalPlaces
     case forms
     case drafts
+    case profileSettings
 
     var id: String { rawValue }
 
@@ -22,6 +23,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
         case .technicalPlaces: return "navigation.technicalPlaces"
         case .forms: return "navigation.forms"
         case .drafts: return "navigation.drafts"
+        case .profileSettings: return "profile.settings.title"
         }
     }
 
@@ -35,6 +37,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
         case .technicalPlaces: return "square.3.layers.3d"
         case .forms: return "document"
         case .drafts: return "arrow.down.to.line.compact"
+        case .profileSettings: return "person.crop.circle"
         }
     }
 }
