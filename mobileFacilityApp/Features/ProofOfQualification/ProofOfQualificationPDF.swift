@@ -5,6 +5,7 @@ struct ProofOfQualificationPDFPayload: Sendable {
   let planNumber: String
   let legacyDocumentID: String
   let instructorName: String
+  let organizationUnit: String
   let contactPerson: String
   let coordinator: String
   let partner: SAPBriefingPartner
@@ -119,6 +120,7 @@ struct ProofOfQualificationPDFRenderer: Sendable {
       StandardFormPDFHeaderData(
         documentTitle: "Kontrolle Qualifikationsnachweis Partnerfirma",
         instructorName: payload.instructorName,
+        organizationUnit: payload.organizationUnit,
         coordinator: payload.coordinator,
         partnerName: payload.partner.name,
         partnerAddress: payload.partner.address,

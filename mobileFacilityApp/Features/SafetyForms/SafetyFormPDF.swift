@@ -17,6 +17,7 @@ struct LegacyElectricalSafetyPDFRenderer: Sendable {
                 StandardFormPDFHeaderData(
                     documentTitle: "Einweisungsformular nur für Dienstleistungen\nArbeiten an, in oder in der Nähe von elektrischen Anlagen",
                     instructorName: record.instructorName,
+                    organizationUnit: record.organizationUnit,
                     coordinator: record.coordinator,
                     partnerName: record.partner?.name ?? "",
                     partnerAddress: record.partner?.address ?? "",
@@ -224,6 +225,7 @@ struct LegacyFirePermitPDFRenderer: Sendable {
                         StandardFormPDFHeaderData(
                             documentTitle: "Erlaubnisschein für feuergefährliche Arbeiten",
                             instructorName: record.instructorName,
+                            organizationUnit: record.organizationUnit,
                             coordinator: record.coordinator,
                             partnerName: record.partner?.name ?? "",
                             partnerAddress: record.partner?.address ?? "",

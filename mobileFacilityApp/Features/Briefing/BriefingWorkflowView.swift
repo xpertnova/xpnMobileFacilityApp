@@ -1261,6 +1261,7 @@ final class BriefingWorkflowViewModel {
         return BriefingPDFPayload(
             planNumber: template.planNumber,
             instructorName: instructorName,
+            organizationUnit: organizationUnit,
             coordinator: draft.coordinator,
             partnerName: partner.name,
             partnerAddress: partner.address,

@@ -4,6 +4,7 @@ import UIKit
 struct StandardFormPDFHeaderData: Sendable, Equatable {
     let documentTitle: String
     let instructorName: String
+    let organizationUnit: String
     let coordinator: String
     let partnerName: String
     let partnerAddress: String
@@ -32,28 +33,52 @@ enum StandardFormPDFHeaderRenderer {
     ) -> CGFloat {
         let contentWidth = pageWidth - margin * 2
         var y = startY
+        let titleHeight = max(
+            58,
+            textHeight(header.documentTitle, width: contentWidth - 16, font: titleFont) + 16
+        )
+        let titleRect = CGRect(x: margin, y: y, width: contentWidth, height: titleHeight)
+        fillAndStroke(titleRect, fill: .white, context: context)
         drawText(
             header.documentTitle,
-            in: CGRect(x: margin, y: y, width: contentWidth, height: 42),
+            in: titleRect.insetBy(dx: 8, dy: 8),
             font: titleFont,
             alignment: .center
         )
-        y += 48
+        y = titleRect.maxY
 
         let partner = [header.partnerName, header.partnerAddress]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n")
+        let instructorHeight = max(
+            46,
+            textHeight("Einweiser/Abnehmer\n(E.ON Mitarbeiter)", width: contentWidth * 0.25 - 12, font: labelFont) + 12,
+            textHeight(header.instructorName, width: contentWidth * 0.5 - 12, font: valueFont) + 12,
+            textHeight(header.organizationUnit, width: contentWidth * 0.25 - 12, font: valueFont) + 12
+        )
+        let instructorRects = [
+            CGRect(x: margin, y: y, width: contentWidth * 0.25, height: instructorHeight),
+            CGRect(x: margin + contentWidth * 0.25, y: y, width: contentWidth * 0.5, height: instructorHeight),
+            CGRect(x: margin + contentWidth * 0.75, y: y, width: contentWidth * 0.25, height: instructorHeight)
+        ]
+        instructorRects.enumerated().forEach { index, rect in
+            fillAndStroke(rect, fill: index == 0 ? labelFill : .white, context: context)
+        }
+        drawText("Einweiser/Abnehmer\n(E.ON Mitarbeiter)", in: instructorRects[0].insetBy(dx: 6, dy: 6), font: labelFont)
+        drawText(header.instructorName, in: instructorRects[1].insetBy(dx: 6, dy: 6), font: valueFont)
+        drawText(header.organizationUnit, in: instructorRects[2].insetBy(dx: 6, dy: 6), font: valueFont)
+        y += instructorHeight
+
         let rows = [
-            ("Unterweisender", header.instructorName),
-            ("Koordinator", header.coordinator),
-            ("Partnerfirma / Auftragnehmer\n(Name und Anschrift)", partner),
-            ("Eingewiesene Person", header.instructedPerson),
-            ("Leistungs- / Arbeitsort", header.workLocation),
+            ("Benannter Koordinator ggf. SiGeKo gemäß BauStellV", header.coordinator),
+            ("Partnerfirma/Auftragnehmer\n(Name und Anschrift)", partner),
+            ("Eingewiesener\n(Verantwortlicher der Partnerfirma für die durchzuführenden Arbeiten)", header.instructedPerson),
+            ("Leistungs-/Arbeitsort", header.workLocation),
             ("Durchzuführende Arbeiten", header.workDescription),
-            ("Ausführung von / bis\n(Datum und Uhrzeit)", formattedRange(from: header.dateFrom, to: header.dateTo))
+            ("Ausführung von ... bis ...\n(Datum und Uhrzeit)", formattedRange(from: header.dateFrom, to: header.dateTo))
         ]
 
-        let labelWidth = contentWidth * 0.4
+        let labelWidth = contentWidth * 0.5
         for (label, value) in rows {
             let valueWidth = contentWidth - labelWidth
             let height = max(
@@ -73,7 +98,7 @@ enum StandardFormPDFHeaderRenderer {
     }
 
     static func formattedRange(from: Date, to: Date) -> String {
-        "\(formattedDateTime(from)) – \(formattedDateTime(to))"
+        "\(formattedDateTime(from)) - \(formattedDateTime(to))"
     }
 
     private static func formattedDateTime(_ value: Date) -> String {

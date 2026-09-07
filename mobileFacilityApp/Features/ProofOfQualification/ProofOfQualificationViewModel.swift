@@ -312,6 +312,7 @@ final class ProofOfQualificationViewModel {
       planNumber: template.planNumber,
       legacyDocumentID: ProofOfQualificationDraftPayload.legacyDocumentID,
       instructorName: instructorName,
+      organizationUnit: organizationUnit,
       contactPerson: contactPerson,
       coordinator: coordinator,
       partner: partner,

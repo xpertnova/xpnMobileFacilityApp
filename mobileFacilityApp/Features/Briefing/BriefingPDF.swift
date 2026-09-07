@@ -31,6 +31,7 @@ struct BriefingPDFPayload: Sendable, Equatable {
 
     let planNumber: String
     let instructorName: String
+    let organizationUnit: String
     let coordinator: String
     let partnerName: String
     let partnerAddress: String
@@ -63,6 +64,29 @@ struct BriefingPDFArtifact: Identifiable, Sendable, Equatable {
         self.fileName = fileName
         self.createdAt = createdAt
     }
+
+    /// Raw PDF bytes encoded for the legacy SAP document field. This is
+    /// intentionally not a data URL: T_0282.FELDWERT expects only Base64.
+    var base64EncodedString: String {
+        data.base64EncodedString()
+    }
+
+    var uploadPayload: FormPDFUploadPayload {
+        FormPDFUploadPayload(
+            fileName: fileName,
+            mimeType: "application/pdf",
+            base64Content: base64EncodedString
+        )
+    }
+}
+
+/// Transport-neutral representation shared by every form renderer. The SAP
+/// adapter can map `base64Content` to T_0282.FELDWERT once its write operation
+/// and acknowledgement semantics are composed at the production boundary.
+struct FormPDFUploadPayload: Codable, Sendable, Equatable {
+    let fileName: String
+    let mimeType: String
+    let base64Content: String
 }
 
 enum BriefingPDFRenderingError: LocalizedError {
@@ -137,6 +161,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
             StandardFormPDFHeaderData(
                 documentTitle: copy.title,
                 instructorName: payload.instructorName,
+                organizationUnit: payload.organizationUnit,
                 coordinator: payload.coordinator,
                 partnerName: payload.partnerName,
                 partnerAddress: payload.partnerAddress,
@@ -240,7 +265,13 @@ struct LegacyBriefingPDFRenderer: Sendable {
         var pageNumber = firstPageNumber
         context.beginPage()
         var graphicsContext = context.cgContext
-        var y = drawChecklistHeader(at: Layout.topMargin, context: graphicsContext, copy: copy)
+        var y = drawSectionOverview(
+            payload.sections,
+            at: Layout.topMargin,
+            context: graphicsContext,
+            copy: copy
+        ) + 8
+        y = drawChecklistHeader(at: y, context: graphicsContext, copy: copy)
 
         for section in payload.sections {
             let firstItemHeight = section.items.first.map(checklistItemHeight) ?? 0
@@ -284,7 +315,8 @@ struct LegacyBriefingPDFRenderer: Sendable {
 
     private func checklistPageCount(for payload: BriefingPDFPayload) -> Int {
         var pages = 1
-        var y = Layout.topMargin + Layout.tableHeaderHeight
+        var y = Layout.topMargin + sectionOverviewHeight(for: payload.sections) + 8
+            + Layout.tableHeaderHeight
         for section in payload.sections {
             let firstItemHeight = section.items.first.map(checklistItemHeight) ?? 0
             if y + Layout.sectionHeight + firstItemHeight > contentBottom {
@@ -302,6 +334,49 @@ struct LegacyBriefingPDFRenderer: Sendable {
             }
         }
         return pages
+    }
+
+    private func drawSectionOverview(
+        _ sections: [BriefingPDFPayload.Section],
+        at y: CGFloat,
+        context: CGContext,
+        copy: BriefingPDFCopy
+    ) -> CGFloat {
+        let numberWidth: CGFloat = 36
+        let headerHeight: CGFloat = 26
+        let rowHeight: CGFloat = 24
+        let numberHeader = CGRect(x: Layout.leftMargin, y: y, width: numberWidth, height: headerHeight)
+        let taskHeader = CGRect(
+            x: numberHeader.maxX,
+            y: y,
+            width: contentWidth - numberWidth,
+            height: headerHeight
+        )
+        drawCell(numberHeader, fill: .white, context: context)
+        drawCell(taskHeader, fill: .white, context: context)
+        drawText(copy.number, in: numberHeader.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+        drawText(copy.tasks, in: taskHeader.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+
+        var rowY = y + headerHeight
+        for section in sections {
+            let numberRect = CGRect(x: Layout.leftMargin, y: rowY, width: numberWidth, height: rowHeight)
+            let titleRect = CGRect(
+                x: numberRect.maxX,
+                y: rowY,
+                width: contentWidth - numberWidth,
+                height: rowHeight
+            )
+            drawCell(numberRect, fill: Layout.sectionFill, context: context)
+            drawCell(titleRect, fill: Layout.sectionFill, context: context)
+            drawText("\(section.number)", in: numberRect.insetBy(dx: 5, dy: 5), font: Layout.bodyBoldFont)
+            drawText(section.title, in: titleRect.insetBy(dx: 5, dy: 5), font: Layout.bodyBoldFont)
+            rowY += rowHeight
+        }
+        return rowY
+    }
+
+    private func sectionOverviewHeight(for sections: [BriefingPDFPayload.Section]) -> CGFloat {
+        26 + CGFloat(sections.count) * 24
     }
 
     private func drawChecklistHeader(
@@ -585,12 +660,12 @@ struct LegacyBriefingPDFRenderer: Sendable {
 private struct BriefingPDFCopy {
     let title = "Einweisung von Partnerfirmen\n(Standort- und Projektmanagement: CHG, ESE, Westnetz)"
     let declarations = [
-        "Mit dieser Einweisung werden standort- und betriebsspezifische Gegebenheiten, Regelungen und Hinweise zu konkreten Arbeitsbedingungen vermittelt.",
-        "Der Eingewiesene unterweist die eingesetzten Mitarbeitenden und gegebenenfalls Subunternehmer vor Beginn der Arbeiten über die Inhalte dieser Einweisung.",
-        "Die Partnerfirma hält während der Arbeiten die maßgeblichen Vorschriften und Regeln zum Arbeits- und Gesundheitsschutz ein."
+        "Mit dieser Einweisung werden z. B. die standort- und betriebsspezifischen Gegebenheiten/Regelungen und Hinweise zu konkreten Arbeitsbedingungen, die zum Zeitpunkt der Auftragsdurchführung bestehen, \"Betriebsfremden\" vermittelt.",
+        "Der Eingewiesene hat die Pflicht, die zum Einsatz kommenden Mitarbeiter/innen der Partnerfirma, oder ggf. eingesetzter Subunternehmer, über die Inhalte der Einweisung vor Beginn der Arbeiten zu unterweisen.",
+        "Gemäß der allgemeinen Einkaufs- und Zahlungsbedingungen hat sich die Partnerfirma verpflichtet, während der durchzuführenden Arbeiten die maßgeblichen Vorschriften und Regeln zum Arbeits- und Gesundheitsschutz einzuhalten."
     ]
     let dateTime = "Datum, Uhrzeit"
-    let signatureInstructor = "Koordinator*in"
+    let signatureInstructor = "Einweiser/Abnehmer"
     let signatureInstructedPerson = "Eingewiesener"
     let signature = "Unterschrift"
     let copyDelivered = "Kopie an Eingewiesenen übergeben."
