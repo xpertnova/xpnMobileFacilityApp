@@ -4,6 +4,7 @@ struct FacilityShellView: View {
     let demo: FacilityDemoViewModel
     let onSignOut: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var sapPassword = ""
     @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
     @State private var networkReachability = NetworkReachabilityMonitor()
@@ -21,6 +22,7 @@ struct FacilityShellView: View {
 
     var body: some View {
         @Bindable var demo = demo
+        let networkStatus = networkReachability.status
 
         ZStack(alignment: .topLeading) {
             HStack(spacing: 0) {
@@ -36,7 +38,7 @@ struct FacilityShellView: View {
                 }
 
                 ZStack {
-                    mainContent
+                    mainContent(networkStatus: networkStatus)
                         .id(demo.selection)
                         .transition(.opacity)
 
@@ -107,6 +109,17 @@ struct FacilityShellView: View {
                 await demo.sapDataStore.loadCachedData()
             }
             await demo.technicalPlacesStore.load()
+        }
+        .task(id: scenePhase) {
+            print("[SAP Connection] 📱 App scenePhase changed to: \(scenePhase)")
+            guard scenePhase == .active else { return }
+            networkReachability.refresh()
+        }
+        .onAppear {
+            networkReachability.start()
+        }
+        .onDisappear {
+            networkReachability.stop()
         }
         .simultaneousGesture(
             DragGesture(minimumDistance: 28)
@@ -301,9 +314,9 @@ struct FacilityShellView: View {
     }
 
     @ViewBuilder
-    private var mainContent: some View {
+    private func mainContent(networkStatus: NetworkReachabilityStatus) -> some View {
         switch demo.selection {
-        case .overview: DashboardView(demo: demo, networkReachability: networkReachability)
+        case .overview: DashboardView(demo: demo, networkStatus: networkStatus)
         case .scan: ScanView()
         case .notifications:
             NotificationsView(
