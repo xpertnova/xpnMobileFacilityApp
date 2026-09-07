@@ -163,6 +163,8 @@ final class ProofOfQualificationViewModel {
     selectedBuildingCode = nil
     selectedContext = nil
     workLocation = ""
+    selectedPartnerID = ""
+    partnerEmail = ""
   }
 
   func selectBuilding(_ code: String) {

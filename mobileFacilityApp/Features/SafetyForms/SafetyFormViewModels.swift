@@ -38,7 +38,7 @@ final class FirePermitViewModel {
 
     var firstValidationIssue: FirePermitValidationIssue? {
         let ordered: [FirePermitValidationIssue] = [
-            .partner, .context, .executionRange, .workDescription, .instructedPerson
+            .context, .coordinator, .partner, .executionRange, .workDescription, .instructedPerson
         ] + FirePermitSignatureSlot.allCases.flatMap { [.signerName($0), .signature($0)] }
         return ordered.first { validationIssues.contains($0) }
     }
@@ -46,6 +46,7 @@ final class FirePermitViewModel {
     var validationIssues: Set<FirePermitValidationIssue> {
         var issues: Set<FirePermitValidationIssue> = []
         if record.context == nil { issues.insert(.context) }
+        if record.coordinator.trimmed.isEmpty { issues.insert(.coordinator) }
         if record.instructedPerson.trimmed.isEmpty { issues.insert(.instructedPerson) }
         if record.partner == nil { issues.insert(.partner) }
         if record.workDescription.trimmed.isEmpty { issues.insert(.workDescription) }
@@ -66,6 +67,8 @@ final class FirePermitViewModel {
         selectedBusinessEntityID = id
         selectedBuildingCode = nil
         record.context = nil
+        record.partner = nil
+        record.partnerEmail = ""
     }
 
     func selectBuilding(_ code: String) {
@@ -225,7 +228,7 @@ final class ElectricalSafetyViewModel {
 
     var firstValidationIssue: ElectricalSafetyValidationIssue? {
         let ordered: [ElectricalSafetyValidationIssue] = [
-            .partner, .context, .executionRange, .workDescription, .instructedPerson,
+            .context, .coordinator, .partner, .executionRange, .workDescription, .instructedPerson,
             .systemResponsibleName, .workResponsibleName
         ] + ElectricalSafetySignatureSlot.allCases.map { .signature($0) }
         return ordered.first { validationIssues.contains($0) }
@@ -234,6 +237,7 @@ final class ElectricalSafetyViewModel {
     var validationIssues: Set<ElectricalSafetyValidationIssue> {
         var issues: Set<ElectricalSafetyValidationIssue> = []
         if draft.context == nil { issues.insert(.context) }
+        if draft.coordinator.trimmed.isEmpty { issues.insert(.coordinator) }
         if draft.instructedPerson.trimmed.isEmpty { issues.insert(.instructedPerson) }
         if draft.partner == nil { issues.insert(.partner) }
         if draft.workDescription.trimmed.isEmpty { issues.insert(.workDescription) }
@@ -255,6 +259,8 @@ final class ElectricalSafetyViewModel {
         selectedBusinessEntityID = id
         selectedBuildingCode = nil
         draft.context = nil
+        draft.partner = nil
+        draft.partnerEmail = ""
     }
 
     func selectBuilding(_ code: String) {

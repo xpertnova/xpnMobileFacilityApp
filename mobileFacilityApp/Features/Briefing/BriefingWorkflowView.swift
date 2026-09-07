@@ -184,9 +184,14 @@ private struct BriefingFormScreen: View {
             partner: viewModel.selectedPartner,
             partnerInvalid: viewModel.isInvalid(.partner),
             partnerID: BriefingWorkflowViewModel.BriefingValidationIssue.partner,
+            isPartnerSelectionEnabled: viewModel.selectedBusinessEntityID != nil,
             selectPartner: { isShowingPartnerEditor = true },
             instructorFirstName: viewModel.instructorFirstName,
             instructorLastName: viewModel.instructorLastName,
+            coordinator: $viewModel.coordinator,
+            coordinatorRequired: true,
+            coordinatorInvalid: viewModel.isInvalid(.coordinator),
+            coordinatorID: BriefingWorkflowViewModel.BriefingValidationIssue.coordinator,
             dateFrom: Binding(get: { viewModel.startDate }, set: viewModel.setStartDate),
             dateTo: $viewModel.endDate,
             dateRangeInvalid: viewModel.isInvalid(.executionRange),
@@ -1010,6 +1015,7 @@ final class BriefingWorkflowViewModel {
         case instructedPerson
         case businessEntity
         case building
+        case coordinator
         case partner
         case executionRange
         case taskDescription
@@ -1021,6 +1027,7 @@ final class BriefingWorkflowViewModel {
         var issues: Set<BriefingValidationIssue> = []
         if selectedBusinessEntityID == nil { issues.insert(.businessEntity) }
         if selectedContext == nil { issues.insert(.building) }
+        if coordinator.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.coordinator) }
         if selectedPartnerID.isEmpty { issues.insert(.partner) }
         if instructedPerson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.instructedPerson) }
         if taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { issues.insert(.taskDescription) }
@@ -1035,6 +1042,7 @@ final class BriefingWorkflowViewModel {
             .partner,
             .businessEntity,
             .building,
+            .coordinator,
             .executionRange,
             .taskDescription,
             .instructedPerson,
@@ -1118,8 +1126,11 @@ final class BriefingWorkflowViewModel {
 
     func selectBusinessEntity(_ value: String) {
         let selection = value.isEmpty ? nil : value
+        guard selectedBusinessEntityID != selection else { return }
         selectedBusinessEntityID = selection
         selectedBuildingCode = nil
+        selectedPartnerID = ""
+        partnerEmail = ""
         if let selection {
             partnerSearchTerm2 = Self.extractPropertyNumber(from: selection)
         } else {

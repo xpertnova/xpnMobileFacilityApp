@@ -8,15 +8,48 @@ final class FormStandardizationTests: XCTestCase {
             [
                 .instructorFirstName,
                 .instructorLastName,
+                .context,
+                .coordinator,
                 .partnerCompany,
                 .instructedPerson,
                 .partnerAddress,
-                .context,
                 .workDescription,
                 .executionStart,
                 .executionEnd
             ]
         )
+    }
+
+    @MainActor
+    func testCoordinatorIsRequiredByBriefingAndSafetyForms() {
+        let safetySource = SafetyFormSource(
+            contexts: [],
+            partners: [],
+            instructorFirstName: "Test",
+            instructorLastName: "User",
+            organizationUnit: ""
+        )
+        XCTAssertTrue(FirePermitViewModel(source: safetySource).validationIssues.contains(.coordinator))
+        XCTAssertTrue(
+            ElectricalSafetyViewModel(source: safetySource, existingDraft: nil)
+                .validationIssues.contains(.coordinator)
+        )
+
+        let briefing = BriefingWorkflowViewModel(
+            source: .init(
+                isDemo: false,
+                contexts: [],
+                partners: [],
+                templates: [],
+                workerProfile: nil,
+                workerName: "Test User",
+                offlineWorkStore: OfflineWorkStore(
+                    repository: InMemoryOfflineWorkRepository(),
+                    workerID: "test"
+                )
+            )
+        )
+        XCTAssertTrue(briefing.validationIssues.contains(.coordinator))
     }
 
     func testGermanPDFDateRangeUsesDateAndTwentyFourHourTime() throws {

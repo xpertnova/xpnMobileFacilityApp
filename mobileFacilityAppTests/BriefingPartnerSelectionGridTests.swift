@@ -88,6 +88,16 @@ final class BriefingPartnerSelectionGridTests: XCTestCase {
         XCTAssertEqual(descending.map(\.id), ["2", "1"])
     }
 
+    func testPartnerTableNameFilterKeepsAlphabeticalNameOrder() {
+        let results = BriefingPartnerSelectionTable.filteredPartners(
+            partners: partners,
+            filters: [.name: "partner"],
+            sort: .nameAscending
+        )
+
+        XCTAssertEqual(results.map(\.name), ["Innoggy Partner"])
+    }
+
     func testExtractPropertyNumberFromBusinessEntity() {
         XCTAssertEqual(BriefingWorkflowViewModel.extractPropertyNumber(from: "DE-ESS-11250"), "11250")
         XCTAssertEqual(BriefingWorkflowViewModel.extractPropertyNumber(from: "DE-ESS-11248"), "11248")
@@ -163,6 +173,35 @@ final class BriefingPartnerSelectionGridTests: XCTestCase {
     }
 
     @MainActor
+    func testChangingBusinessEntityClearsSelectedPartner() {
+        let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "test")
+        let partner = SAPBriefingPartner(
+            id: "partner", client: "100", function: "ZT", name: "Partner",
+            contactName: "Contact", searchTerm1: "Partner", searchTerm2: "11250",
+            street: "Street", houseNumber: "1", postalCode: "12345", city: "City",
+            country: "DE", email: "contact@example.com"
+        )
+        let briefing = BriefingWorkflowViewModel(
+            source: .init(
+                isDemo: false,
+                contexts: [],
+                partners: [partner],
+                templates: [],
+                workerProfile: nil,
+                workerName: "Test",
+                offlineWorkStore: store
+            )
+        )
+        briefing.selectBusinessEntity("DE-ESS-11250")
+        briefing.selectPartner(partner.id)
+
+        briefing.selectBusinessEntity("DE-ESS-10748")
+
+        XCTAssertTrue(briefing.selectedPartnerID.isEmpty)
+        XCTAssertTrue(briefing.partnerEmail.isEmpty)
+    }
+
+    @MainActor
     func testClearingFilterPersistsUntilWorkPropertyChanges() {
         let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "test")
         let briefing = BriefingWorkflowViewModel(
@@ -193,4 +232,3 @@ final class BriefingPartnerSelectionGridTests: XCTestCase {
         XCTAssertEqual(briefing.partnerSearchTerm2, "10748")
     }
 }
-
