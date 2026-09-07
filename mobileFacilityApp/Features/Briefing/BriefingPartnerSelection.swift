@@ -234,9 +234,8 @@ struct LegacyBriefingSignatureDialog: View {
     }
 }
 
-/// The complete legacy table used for partner-company value help. Both
-/// briefing forms provide their data through this neutral presentation model,
-/// keeping the header controls, filters, sorting and selection styling equal.
+/// The partner-company table shared by every form. Its four filters remain
+/// above the table, while column popovers expose sorting only.
 struct BriefingPartnerSelection: Identifiable, Equatable, Sendable {
     let id: String
     let client: String
@@ -411,7 +410,10 @@ struct BriefingPartnerSelectionTable: View {
 
     private func filterPanel(width: CGFloat) -> some View {
         let count = dynamicTypeSize.isAccessibilitySize ? 1 : (width >= 820 ? 4 : 2)
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: count), spacing: 12) {
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: count),
+            spacing: 12
+        ) {
             filterField("externalCompany.parvw", icon: "person.badge.key", column: .function)
             filterField("externalCompany.name", icon: "building.2", column: .name)
             filterField("externalCompany.SORT1", icon: "magnifyingglass", column: .searchTerm1)
@@ -487,14 +489,13 @@ struct BriefingPartnerSelectionTable: View {
 
     private func columnHeader(_ title: Text, width: CGFloat, column: Column) -> some View {
         HStack(spacing: 6) {
-            title
-                .lineLimit(2)
+            title.lineLimit(2)
             Spacer(minLength: 4)
             Button {
                 activeColumnMenu = activeColumnMenu == column ? nil : column
             } label: {
                 Image(systemName: "line.3.horizontal.decrease")
-                    .foregroundStyle(hasFilter(for: column) ? Color.accentColor : .secondary)
+                    .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
@@ -504,7 +505,7 @@ struct BriefingPartnerSelectionTable: View {
                 attachmentAnchor: .rect(.bounds),
                 arrowEdge: .top
             ) {
-                columnMenu(column)
+                columnSortMenu(column)
                     .presentationCompactAdaptation(.popover)
             }
         }
@@ -519,42 +520,32 @@ struct BriefingPartnerSelectionTable: View {
         }
     }
 
-    private func columnMenu(_ column: Column) -> some View {
+    private func columnSortMenu(_ column: Column) -> some View {
         VStack(spacing: 0) {
-            menuButton("flEQ.briefing.partner.sort.ascending") {
+            sortMenuButton("flEQ.briefing.partner.sort.ascending") {
                 sort = column.ascendingSort
                 activeColumnMenu = nil
             }
             Divider()
-            menuButton("flEQ.briefing.partner.sort.descending") {
+            sortMenuButton("flEQ.briefing.partner.sort.descending") {
                 sort = column.ascendingSort.descending
                 activeColumnMenu = nil
             }
-            Divider()
-            HStack(spacing: 10) {
-                Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
-                Text("flEQ.briefing.partner.filter")
-                TextField("flEQ.briefing.partner.filter", text: filterBinding(for: column))
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 8)
-                    .frame(width: 170, height: 44)
-                    .background(Color(uiColor: .systemBackground))
-                    .overlay { RoundedRectangle(cornerRadius: 2).stroke(Color(uiColor: .separator), lineWidth: 1) }
-            }
-            .padding(.horizontal, 12)
-            .frame(minHeight: 48)
         }
         .font(.body)
-        .frame(width: 350)
+        .frame(width: 270)
         .background(Color(uiColor: .systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private func menuButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+    private func sortMenuButton(
+        _ title: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Label(title, systemImage: "line.3.horizontal.decrease")
                 .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                 .padding(.horizontal, 12)
         }
         .buttonStyle(.plain)
@@ -564,7 +555,9 @@ struct BriefingPartnerSelectionTable: View {
         Binding(
             get: { activeColumnMenu == column },
             set: { isPresented in
-                if !isPresented, activeColumnMenu == column { activeColumnMenu = nil }
+                if !isPresented, activeColumnMenu == column {
+                    activeColumnMenu = nil
+                }
             }
         )
     }
@@ -590,7 +583,8 @@ struct BriefingPartnerSelectionTable: View {
         if column == .searchTerm2 && hasBoundSearchTerm2 {
             return !searchTerm2.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        return !columnFilters[column, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return !columnFilters[column, default: ""]
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func partnerRow(_ partner: BriefingPartnerSelection, widths: ColumnWidths) -> some View {

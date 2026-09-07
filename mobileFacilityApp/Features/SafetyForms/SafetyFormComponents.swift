@@ -110,10 +110,11 @@ struct SafetyFormFieldPair<Leading: View, Trailing: View>: View {
 enum StandardFormHeaderField: CaseIterable, Equatable {
     case instructorFirstName
     case instructorLastName
+    case context
+    case coordinator
     case partnerCompany
     case instructedPerson
     case partnerAddress
-    case context
     case workDescription
     case executionStart
     case executionEnd
@@ -124,10 +125,11 @@ enum StandardFormHeaderField: CaseIterable, Equatable {
 let standardFormHeaderFieldOrder: [StandardFormHeaderField] = [
     .instructorFirstName,
     .instructorLastName,
+    .context,
+    .coordinator,
     .partnerCompany,
     .instructedPerson,
     .partnerAddress,
-    .context,
     .workDescription,
     .executionStart,
     .executionEnd
@@ -140,10 +142,15 @@ struct StandardFormHeader<ContextFields: View>: View {
     let partner: SAPBriefingPartner?
     let partnerInvalid: Bool
     let partnerID: AnyHashable
+    let isPartnerSelectionEnabled: Bool
     let selectPartner: () -> Void
     let instructorFirstName: String
     let instructorLastName: String
     @ViewBuilder let contextFields: ContextFields
+    @Binding var coordinator: String
+    let coordinatorRequired: Bool
+    let coordinatorInvalid: Bool
+    let coordinatorID: AnyHashable?
     @Binding var dateFrom: Date
     @Binding var dateTo: Date
     let dateRangeInvalid: Bool
@@ -167,9 +174,14 @@ struct StandardFormHeader<ContextFields: View>: View {
         partner: SAPBriefingPartner?,
         partnerInvalid: Bool,
         partnerID: AnyHashable,
+        isPartnerSelectionEnabled: Bool,
         selectPartner: @escaping () -> Void,
         instructorFirstName: String,
         instructorLastName: String,
+        coordinator: Binding<String>,
+        coordinatorRequired: Bool,
+        coordinatorInvalid: Bool,
+        coordinatorID: AnyHashable?,
         dateFrom: Binding<Date>,
         dateTo: Binding<Date>,
         dateRangeInvalid: Bool,
@@ -185,9 +197,14 @@ struct StandardFormHeader<ContextFields: View>: View {
         self.partner = partner
         self.partnerInvalid = partnerInvalid
         self.partnerID = partnerID
+        self.isPartnerSelectionEnabled = isPartnerSelectionEnabled
         self.selectPartner = selectPartner
         self.instructorFirstName = instructorFirstName
         self.instructorLastName = instructorLastName
+        self._coordinator = coordinator
+        self.coordinatorRequired = coordinatorRequired
+        self.coordinatorInvalid = coordinatorInvalid
+        self.coordinatorID = coordinatorID
         self._dateFrom = dateFrom
         self._dateTo = dateTo
         self.dateRangeInvalid = dateRangeInvalid
@@ -217,11 +234,20 @@ struct StandardFormHeader<ContextFields: View>: View {
                 }
             }
 
+            contextFields
+
+            SafetyFormField("safetyInstrucForm.coordinator", required: coordinatorRequired) {
+                TextField("safetyInstrucForm.coordinator", text: $coordinator)
+                    .briefingFieldChrome(invalid: coordinatorInvalid)
+                    .id(coordinatorID)
+            }
+
             SafetyFormFieldPair {
                 SafetyFormField("externalCompany.name", required: true) {
                     SafetyFormPartnerField(
                         partner: partner,
                         isInvalid: partnerInvalid,
+                        isEnabled: isPartnerSelectionEnabled,
                         action: selectPartner
                     )
                     .id(partnerID)
@@ -245,8 +271,6 @@ struct StandardFormHeader<ContextFields: View>: View {
                     .accessibilityLabel("externalCompany.address")
                     .accessibilityValue(partner?.address ?? "")
             }
-
-            contextFields
 
             SafetyFormField("safetyInstrucForm.workOrder", required: true) {
                 TextField("safetyInstrucForm.workOrder", text: $workDescription)
@@ -691,6 +715,7 @@ struct SafetyFormBusinessEntityPicker: View {
 struct SafetyFormPartnerField: View {
     let partner: SAPBriefingPartner?
     let isInvalid: Bool
+    let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
@@ -701,11 +726,12 @@ struct SafetyFormPartnerField: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "rectangle.on.rectangle")
-                    .foregroundStyle(FacilityTheme.blue)
+                    .foregroundStyle(isEnabled ? FacilityTheme.blue : .secondary)
             }
             .briefingFieldChrome(invalid: isInvalid)
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
     }
 }
 

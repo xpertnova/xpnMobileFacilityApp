@@ -226,6 +226,7 @@ struct FirePermitRecord: Equatable, Sendable {
 
 enum FirePermitValidationIssue: Hashable, Sendable {
     case context
+    case coordinator
     case instructedPerson
     case partner
     case workDescription
@@ -303,6 +304,7 @@ struct ElectricalSafetyDraftPayload: Codable, Equatable, Sendable {
 
 enum ElectricalSafetyValidationIssue: Hashable, Sendable {
     case context
+    case coordinator
     case instructedPerson
     case partner
     case workDescription
