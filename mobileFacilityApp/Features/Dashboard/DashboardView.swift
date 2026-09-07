@@ -2,7 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     let demo: FacilityDemoViewModel
-    let networkReachability: NetworkReachabilityMonitor
+    let networkStatus: NetworkReachabilityStatus
 
     private let metricColumns = Array(
         repeating: GridItem(.flexible(minimum: 0), spacing: 14),
@@ -44,8 +44,8 @@ struct DashboardView: View {
     }
 
     private var dashboardHeader: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            HStack(alignment: .bottom, spacing: 20) {
+        HStack(alignment: .bottom, spacing: 20) {
+            TimelineView(.periodic(from: .now, by: 60)) { context in
                 VStack(alignment: .leading, spacing: 5) {
                     Text(DashboardGreeting.greeting(for: context.date).formatted(workerName: demo.effectiveWorkerDisplayName))
                         .font(.system(size: 29, weight: .bold, design: .rounded))
@@ -54,10 +54,10 @@ struct DashboardView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 12)
-                if !demo.isDemoMode, demo.sapDataStore.isRefreshAvailable {
-                    SAPConnectionBadge(status: networkReachability.status)
-                }
+            }
+            Spacer(minLength: 12)
+            if !demo.isDemoMode, demo.sapDataStore.isRefreshAvailable {
+                SAPConnectionBadge(status: networkStatus)
             }
         }
     }
