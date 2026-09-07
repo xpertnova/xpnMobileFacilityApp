@@ -8,6 +8,10 @@ struct BriefingPartnerSelectionEditor: View {
     let viewModel: BriefingWorkflowViewModel
     let onDismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Namespace private var panelNamespace
+    @State private var session = BriefingPartnerPickerSession()
     @State private var selectedPartnerID: String?
     @State private var isAddingPartner = false
     @State private var partnerDraft = BriefingTemporaryPartner(id: "NEU" + String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(6)), company: "", title: "", contactName: "", email: "", telephone: "", street: "", houseNumber: "", postalCode: "", city: "", country: "")
@@ -19,69 +23,93 @@ struct BriefingPartnerSelectionEditor: View {
     ) {
         self.viewModel = viewModel
         self.onDismiss = onDismiss
-        _selectedPartnerID = State(initialValue: viewModel.selectedPartnerID)
+        _selectedPartnerID = State(initialValue: viewModel.selectedPartnerID.isEmpty ? nil : viewModel.selectedPartnerID)
     }
 
     var body: some View {
         BriefingPartnerSelectionFrame(
-            isConfirmationDisabled: selectedPartnerID == nil,
+            isConfirmationDisabled: isAddingPartner || selectedPartnerID == nil,
             onCancel: onDismiss,
             onConfirm: selectPartner
         ) {
-            ZStack {
-                if isAddingPartner {
-                    ScrollView(.vertical) {
-                        addPartnerForm
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(partnerPanelTransition)
-                } else {
-                    partnerList
+            VStack(spacing: 16) {
+                panelNavigation
+                ZStack {
+                    if isAddingPartner {
+                        ScrollView(.vertical) {
+                            addPartnerForm
+                        }
+                        .scrollDismissesKeyboard(.interactively)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(partnerPanelTransition)
+                    } else {
+                        partnerList
+                            .transition(partnerPanelTransition)
+                    }
                 }
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 24)
             .padding(.vertical, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(partnerPanelAnimation, value: isAddingPartner)
         }
     }
 
-    private var partnerList: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Spacer()
-                addPartnerButton
-            }
-
-            partnerTable
-                .frame(height: 458)
-
-            Spacer(minLength: 0)
+    private var panelNavigation: some View {
+        HStack(spacing: 6) {
+            panelTab("briefing.partnerPicker.showList", icon: "building.2", adding: false)
+            panelTab("briefing.partnerPicker.add", icon: "plus.circle", adding: true)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(5)
+        .background(FacilityTheme.ink.opacity(0.045), in: RoundedRectangle(cornerRadius: 17))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var partnerPanelAnimation: Animation {
-        .easeInOut(duration: 0.24)
+    private func panelTab(_ title: LocalizedStringKey, icon: String, adding: Bool) -> some View {
+        Button {
+            guard isAddingPartner != adding else { return }
+            toggleAddPartner()
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(isAddingPartner == adding ? FacilityTheme.accent : FacilityTheme.ink.opacity(0.65))
+                .padding(.horizontal, 18)
+                .frame(minHeight: 44)
+                .background {
+                    if isAddingPartner == adding {
+                        RoundedRectangle(cornerRadius: 13)
+                            .fill(FacilityTheme.surface)
+                            .shadow(color: FacilityTheme.ink.opacity(0.08), radius: 5, y: 2)
+                            .matchedGeometryEffect(id: "partnerPanel", in: panelNamespace)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isAddingPartner == adding ? .isSelected : [])
+    }
+
+    private var partnerList: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if session.recentlyAddedPartnerID != nil {
+                Label("briefing.partnerPicker.addedNotice", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(FacilityTheme.accent)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(FacilityTheme.accentSoft, in: RoundedRectangle(cornerRadius: 14))
+                    .transition(.opacity)
+            }
+            partnerTable
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var partnerPanelAnimation: Animation? {
+        reduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0)
     }
 
     private var partnerPanelTransition: AnyTransition {
-        .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
-    }
-
-    private var addPartnerButton: some View {
-        Button(action: toggleAddPartner) {
-            Label("briefing.partnerPicker.add", systemImage: "plus")
-                .font(.subheadline.weight(.semibold))
-                .frame(minHeight: 44)
-                .padding(.horizontal, 14)
-        }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.roundedRectangle(radius: 12))
-        .tint(FacilityTheme.accent)
-        .accessibilityLabel(Text("briefing.partnerPicker.add"))
+        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8))
     }
 
     private func selectPartner() {
@@ -92,183 +120,158 @@ struct BriefingPartnerSelectionEditor: View {
     }
 
     private var addPartnerForm: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("dlgAddPartner.form.title.add")
-                    .font(.title2.weight(.semibold))
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(FacilityTheme.ink)
+                Text("briefing.partnerPicker.localHint")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
-                Spacer(minLength: 0)
-
-                Button(action: toggleAddPartner) {
-                    Label("briefing.partnerPicker.showList", systemImage: "list.bullet")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minHeight: 44)
-                        .padding(.horizontal, 14)
+            ViewThatFits(in: .horizontal) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .top, spacing: 16) {
+                        contactCard.frame(minWidth: 340)
+                        addressCard.frame(minWidth: 300)
+                    }
                 }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .tint(FacilityTheme.ink)
-                .accessibilityLabel(Text("briefing.partnerPicker.showList"))
-            }
-            .padding(.bottom, 2)
-
-            partnerDraftRow("dlgAddPartner.form.firma") {
-                partnerDraftTextField(
-                    "dlgAddPartner.form.firma",
-                    text: $partnerDraft.company,
-                    issue: .company
-                )
+                VStack(spacing: 16) {
+                    contactCard
+                    addressCard
+                }
             }
 
-            partnerDraftRow("dlgAddPartner.form.name") {
+            HStack(spacing: 12) {
+                Button(action: addPartnerDraft) {
+                    Label("dlgAddPartner.button.add", systemImage: "plus.circle.fill")
+                        .font(.body.weight(.semibold))
+                        .padding(.horizontal, 24)
+                        .frame(minHeight: 48)
+                }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 13))
+                .tint(FacilityTheme.accent)
+
+                Button("dlgAddPartner.button.reset", action: resetPartnerDraft)
+                    .font(.body.weight(.semibold))
+                    .frame(minHeight: 48)
+                    .padding(.horizontal, 12)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(FacilityTheme.ink)
+                Spacer(minLength: 0)
+            }
+            if hasAttemptedPartnerAdd,
+               partnerDraftIsInvalid(.company) || partnerDraftIsInvalid(.contactName) {
+                Label("flEQ.briefing.partner.validation", systemImage: "exclamationmark.circle.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(FacilityTheme.red)
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private var contactCard: some View {
+        partnerCard("briefing.partnerPicker.contact", icon: "person.crop.square") {
+            partnerDraftRow("dlgAddPartner.form.firma", required: true) {
+                partnerDraftTextField("dlgAddPartner.form.firma", text: $partnerDraft.company, issue: .company)
+            }
+            partnerDraftRow("dlgAddPartner.form.name", required: true) {
                 HStack(spacing: 8) {
-                    Picker("", selection: $partnerDraft.title) {
+                    Picker("briefing.partnerPicker.salutation", selection: $partnerDraft.title) {
                         Text(verbatim: "—").tag("")
                         Text("addUser.title.frau").tag("0001")
                         Text("addUser.title.herr").tag("0002")
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .tint(FacilityTheme.blue)
-                    .padding(.horizontal, 14)
-                    .frame(width: 92, height: 48)
-                    .background(Color(uiColor: .systemBackground))
+                    .tint(FacilityTheme.accent)
+                    .frame(minWidth: 82, minHeight: 48)
+                    .background(FacilityTheme.canvas.opacity(0.6))
                     .partnerFieldChrome(invalid: false)
-
-                    partnerDraftTextField(
-                        "dlgAddPartner.form.vorname",
-                        text: $partnerDraft.contactName,
-                        issue: .contactName
-                    )
+                    partnerDraftTextField("dlgAddPartner.form.vorname", text: $partnerDraft.contactName, issue: .contactName)
                 }
             }
-
             partnerDraftRow("dlgAddPartner.form.email") {
-                partnerDraftTextField(
-                    "dlgAddPartner.form.email",
-                    text: $partnerDraft.email,
-                    issue: .email,
-                    keyboardType: .emailAddress
-                )
+                partnerDraftTextField("dlgAddPartner.form.email", text: $partnerDraft.email, issue: .email, keyboardType: .emailAddress)
             }
-
             partnerDraftRow("dlgAddPartner.form.telephone") {
-                partnerDraftTextField(
-                    "dlgAddPartner.form.telephone",
-                    text: $partnerDraft.telephone,
-                    issue: .telephone,
-                    keyboardType: .phonePad
-                )
+                partnerDraftTextField("dlgAddPartner.form.telephone", text: $partnerDraft.telephone, issue: .telephone, keyboardType: .phonePad)
             }
+        }
+    }
 
+    private var addressCard: some View {
+        partnerCard("briefing.partnerPicker.address", icon: "mappin.and.ellipse") {
             partnerDraftRow("dlgAddPartner.form.strHnr") {
-                HStack(spacing: 10) {
-                    partnerDraftTextField(
-                        "dlgAddPartner.form.strHnr",
-                        text: $partnerDraft.street,
-                        issue: .street
-                    )
-                    .frame(maxWidth: .infinity)
-
-                    partnerDraftTextField(
-                        "",
-                        text: $partnerDraft.houseNumber,
-                        issue: .houseNumber
-                    )
-                    .frame(width: 182)
+                HStack(spacing: 8) {
+                    partnerDraftTextField("briefing.partnerPicker.street", text: $partnerDraft.street, issue: .street)
+                    partnerDraftTextField("briefing.partnerPicker.houseNumber", text: $partnerDraft.houseNumber, issue: .houseNumber)
+                        .frame(maxWidth: 100)
                 }
             }
-
-            partnerDraftRow("dlgAddPartner.form.plzCity") {
-                HStack(spacing: 10) {
-                    partnerDraftTextField(
-                        "",
-                        text: Binding(
-                            get: { partnerDraft.postalCode },
-                            set: { partnerDraft.postalCode = $0.filter(\.isNumber) }
-                        ),
-                        issue: .postalCode,
-                        keyboardType: .numberPad
-                    )
-                    .frame(width: 182)
-
-                    partnerDraftTextField(
-                        "dlgAddPartner.form.plzCity",
-                        text: $partnerDraft.city,
-                        issue: .city
-                    )
-                }
+            partnerDraftRow("briefing.partnerPicker.postalCode") {
+                partnerDraftTextField("briefing.partnerPicker.postalCode", text: Binding(
+                    get: { partnerDraft.postalCode },
+                    set: { partnerDraft.postalCode = $0.filter(\.isNumber) }
+                ), issue: .postalCode, keyboardType: .numberPad)
             }
-
+            partnerDraftRow("briefing.partnerPicker.city") {
+                partnerDraftTextField("briefing.partnerPicker.city", text: $partnerDraft.city, issue: .city)
+            }
             partnerDraftRow("dlgAddPartner.form.country") {
-                Picker("", selection: $partnerDraft.country) {
+                Picker("dlgAddPartner.form.country", selection: $partnerDraft.country) {
                     Text(verbatim: "—").tag("")
-                    ForEach(Self.legacyCountryCodes, id: \.self) { countryCode in
-                        Text(verbatim: countryName(for: countryCode)).tag(countryCode)
+                    ForEach(Self.legacyCountryCodes, id: \.self) { code in
+                        Text(verbatim: countryName(for: code)).tag(code)
                     }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
-                .tint(FacilityTheme.blue)
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                .background(Color(uiColor: .systemBackground))
-                .partnerFieldChrome(invalid: partnerDraftIsInvalid(.country))
-            }
-
-            HStack(spacing: 10) {
-                Button(action: addPartnerDraft) {
-                    Text("dlgAddPartner.button.add")
-                        .font(.body.weight(.semibold))
-                        .frame(minWidth: 220, minHeight: 52)
-                }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
                 .tint(FacilityTheme.accent)
-
-                Button(action: resetPartnerDraft) {
-                    Text("dlgAddPartner.button.reset")
-                        .font(.body.weight(.semibold))
-                        .frame(minWidth: 220, minHeight: 52)
-                }
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.roundedRectangle(radius: 12))
-                .tint(FacilityTheme.ink)
-            }
-
-            if hasAttemptedPartnerAdd,
-               partnerDraftIsInvalid(.company) || partnerDraftIsInvalid(.contactName) {
-                Label(
-                    "flEQ.briefing.partner.validation",
-                    systemImage: "exclamationmark.circle.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(.red)
-                .padding(.leading, 212)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .background(FacilityTheme.canvas.opacity(0.6))
+                .partnerFieldChrome(invalid: false)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 18)
-        .background(Color(uiColor: .systemBackground))
-        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func partnerCard<Content: View>(
+        _ title: LocalizedStringKey, icon: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .foregroundStyle(FacilityTheme.accent)
+                .padding(.bottom, 2)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .facilityCard(padding: 20)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(FacilityTheme.accent.opacity(0.12), lineWidth: 1)
+        }
     }
 
     private func partnerDraftRow<Content: View>(
-        _ title: LocalizedStringKey,
+        _ title: LocalizedStringKey, required: Bool = false,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            HStack(spacing: 0) {
-                Text(verbatim: "*")
-                    .foregroundStyle(.red)
-                    .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 3) {
                 Text(title)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(FacilityTheme.ink.opacity(0.72))
+                if required {
+                    Text(verbatim: "*").foregroundStyle(FacilityTheme.accent)
+                        .accessibilityLabel(Text("briefing.partnerPicker.required"))
+                }
             }
-            .frame(width: 192, alignment: .trailing)
-
-            content()
-                .frame(maxWidth: .infinity)
+            .font(.caption.weight(.semibold))
+            content().frame(maxWidth: .infinity)
         }
     }
 
@@ -285,7 +288,7 @@ struct BriefingPartnerSelectionEditor: View {
             .autocorrectionDisabled(keyboardType == .emailAddress)
             .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(Color(uiColor: .systemBackground))
+            .background(FacilityTheme.canvas.opacity(0.6))
             .partnerFieldChrome(invalid: partnerDraftIsInvalid(issue))
     }
 
@@ -307,7 +310,6 @@ struct BriefingPartnerSelectionEditor: View {
                 return
             }
 
-            selectedPartnerID = nil
             resetPartnerDraft()
             isAddingPartner = true
         }
@@ -325,6 +327,7 @@ struct BriefingPartnerSelectionEditor: View {
         }
         viewModel.addTemporaryPartner(partnerDraft)
         withAnimation(partnerPanelAnimation) {
+            session.recentlyAddedPartnerID = partnerDraft.id
             selectedPartnerID = partnerDraft.id
             isAddingPartner = false
             hasAttemptedPartnerAdd = false
@@ -338,7 +341,7 @@ struct BriefingPartnerSelectionEditor: View {
     private var partnerTable: some View {
         let partners = isAddingPartner ? [] : availablePartners
         return BriefingPartnerSelectionTable(
-            partners: partners.map {
+            partners: session.visiblePartners(in: partners.map {
                 BriefingPartnerSelection(
                     id: $0.id,
                     client: $0.client,
@@ -347,8 +350,12 @@ struct BriefingPartnerSelectionEditor: View {
                     searchTerm1: $0.searchTerm1,
                     searchTerm2: $0.searchTerm2
                 )
-            },
-            selectedPartnerID: $selectedPartnerID
+            }),
+            selectedPartnerID: $selectedPartnerID,
+            searchTerm2: Binding(
+                get: { viewModel.partnerSearchTerm2 },
+                set: { viewModel.partnerSearchTerm2 = $0 }
+            )
         )
     }
 

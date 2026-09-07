@@ -58,7 +58,12 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 20)
-            .background(FacilityTheme.surface)
+            .background {
+                LinearGradient(colors: [FacilityTheme.surface, FacilityTheme.accentSoft.opacity(0.6)], startPoint: .leading, endPoint: .trailing)
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(FacilityTheme.accent.opacity(0.15)).frame(height: 1)
+            }
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,12 +72,22 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
             HStack(spacing: 12) {
                 Spacer()
 
-                Button("safetyInstrucForm.addPartnerCompany.dialog.title.cancel", action: onCancel)
+                Button(action: onCancel) {
+                    Text("safetyInstrucForm.addPartnerCompany.dialog.title.cancel")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minWidth: 88, minHeight: 44)
+                }
                     .buttonStyle(.bordered)
+                    .buttonBorderShape(.roundedRectangle(radius: 12))
                     .tint(FacilityTheme.ink)
 
-                Button(confirmationTitle, action: onConfirm)
+                Button(action: onConfirm) {
+                    Label(confirmationTitle, systemImage: "checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minWidth: 108, minHeight: 44)
+                }
                     .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.roundedRectangle(radius: 12))
                     .tint(FacilityTheme.accent)
                     .disabled(isConfirmationDisabled)
             }
@@ -231,70 +246,227 @@ struct BriefingPartnerSelection: Identifiable, Equatable, Sendable {
     let searchTerm2: String
 }
 
+/// Presentation-only scope: a new frame always starts with the full directory.
+/// Adding a company never removes the other companies from the workflow store.
+struct BriefingPartnerPickerSession {
+    var recentlyAddedPartnerID: String?
+
+    func visiblePartners(in partners: [BriefingPartnerSelection]) -> [BriefingPartnerSelection] {
+        guard let recentlyAddedPartnerID else { return partners }
+        return partners.filter { $0.id == recentlyAddedPartnerID }
+    }
+}
+
 struct BriefingPartnerSelectionTable: View {
     let partners: [BriefingPartnerSelection]
     @Binding var selectedPartnerID: String?
+    @Binding var searchTerm2: String
+    private let hasBoundSearchTerm2: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sort = Sort.nameAscending
     @State private var activeColumnMenu: Column?
-    @State private var columnFilters: [Column: String] = [:]
+    @State private var columnFilters: [Column: String]
+
+    init(
+        partners: [BriefingPartnerSelection],
+        selectedPartnerID: Binding<String?>,
+        searchTerm2: Binding<String>? = nil
+    ) {
+        self.partners = partners
+        self._selectedPartnerID = selectedPartnerID
+        if let searchTerm2 {
+            self._searchTerm2 = searchTerm2
+            self.hasBoundSearchTerm2 = true
+            var initialFilters: [Column: String] = [:]
+            if !searchTerm2.wrappedValue.isEmpty {
+                initialFilters[.searchTerm2] = searchTerm2.wrappedValue
+            }
+            self._columnFilters = State(initialValue: initialFilters)
+        } else {
+            self._searchTerm2 = .constant("")
+            self.hasBoundSearchTerm2 = false
+            self._columnFilters = State(initialValue: [:])
+        }
+    }
+
+    init(
+        partners: [BriefingPartnerSelection],
+        selectedPartnerID: Binding<String?>,
+        initialSearchTerm2: String?
+    ) {
+        self.partners = partners
+        self._selectedPartnerID = selectedPartnerID
+        self._searchTerm2 = .constant(initialSearchTerm2 ?? "")
+        self.hasBoundSearchTerm2 = false
+        var initialFilters: [Column: String] = [:]
+        if let initialSearchTerm2, !initialSearchTerm2.isEmpty {
+            initialFilters[.searchTerm2] = initialSearchTerm2
+        }
+        self._columnFilters = State(initialValue: initialFilters)
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            let widths = ColumnWidths(totalWidth: geometry.size.width)
+            let tableWidth = max(geometry.size.width, 700)
+            let widths = ColumnWidths(totalWidth: tableWidth)
+            VStack(alignment: .leading, spacing: 14) {
+                filterPanel(width: geometry.size.width)
+                HStack(spacing: 8) {
+                    Image(systemName: "building.2")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FacilityTheme.accent)
 
-            VStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    columnHeader(Text(verbatim: "MANDT"), width: widths.client, column: .client)
-                    columnHeader(Text("externalCompany.parvw"), width: widths.function, column: .function)
-                    columnHeader(Text("externalCompany.name"), width: widths.name, column: .name)
-                    columnHeader(Text("externalCompany.SORT1"), width: widths.searchTerm1, column: .searchTerm1)
-                    columnHeader(Text("externalCompany.SORT2"), width: widths.searchTerm2, column: .searchTerm2)
-                }
-                .background(FacilityTheme.canvas)
+                    Text(partnerResultsText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FacilityTheme.ink)
 
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(displayedPartners) { partner in
-                            Button {
-                                selectedPartnerID = partner.id
-                            } label: {
-                                partnerRow(partner, widths: widths)
-                                    .background(
-                                        selectedPartnerID == partner.id
-                                            ? FacilityTheme.accentSoft
-                                            : FacilityTheme.surface
-                                    )
+                    Spacer()
+
+                    if hasActiveFilters {
+                        Button {
+                            columnFilters = [:]
+                            if hasBoundSearchTerm2 {
+                                searchTerm2 = ""
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Text(partner.name))
-                            .accessibilityValue(
-                                selectedPartnerID == partner.id
-                                    ? Text("briefing.partnerPicker.selected")
-                                    : Text("")
-                            )
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                Text("briefing.partnerPicker.clearFilters")
+                                    .font(.subheadline.weight(.medium))
+                            }
+                            .foregroundStyle(FacilityTheme.accent)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(FacilityTheme.accentSoft, in: Capsule())
                         }
+                        .buttonStyle(.plain)
+                        .frame(minHeight: 44)
+                    }
+                }
+                .frame(minHeight: 44)
 
-                        ForEach(0..<max(0, 9 - displayedPartners.count), id: \.self) { _ in
-                            emptyRow(widths: widths)
+                ScrollView(.horizontal) {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            columnHeader(Text("briefing.partnerPicker.client"), width: widths.client, column: .client)
+                            columnHeader(Text("externalCompany.parvw"), width: widths.function, column: .function)
+                            columnHeader(Text("externalCompany.name"), width: widths.name, column: .name)
+                            columnHeader(Text("externalCompany.SORT1"), width: widths.searchTerm1, column: .searchTerm1)
+                            columnHeader(Text("externalCompany.SORT2"), width: widths.searchTerm2, column: .searchTerm2)
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(FacilityTheme.ink.opacity(0.65))
+                        .background(FacilityTheme.accentSoft.opacity(0.5))
+
+                        ScrollView(.vertical) {
+                            LazyVStack(spacing: 0) {
+                                ForEach(displayedPartners) { partner in
+                                    Button {
+                                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                                            selectedPartnerID = partner.id
+                                        }
+                                    } label: {
+                                        partnerRow(partner, widths: widths)
+                                            .background(selectedPartnerID == partner.id ? FacilityTheme.accentSoft : FacilityTheme.surface)
+                                            .overlay(alignment: .leading) {
+                                                if selectedPartnerID == partner.id {
+                                                    Capsule().fill(FacilityTheme.accent).frame(width: 3).padding(.vertical, 10)
+                                                }
+                                            }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(Text(partner.name))
+                                    .accessibilityValue(selectedPartnerID == partner.id ? Text("briefing.partnerPicker.selected") : Text(""))
+                                    .accessibilityAddTraits(selectedPartnerID == partner.id ? .isSelected : [])
+                                }
+                            }
+                        }
+                        .scrollDismissesKeyboard(.interactively)
+                        .overlay {
+                            if displayedPartners.isEmpty {
+                                VStack(spacing: 8) {
+                                    Image(systemName: "magnifyingglass").font(.title2)
+                                    Text("briefing.partnerPicker.empty").font(.headline)
+                                    Text("briefing.partnerPicker.emptyHint").font(.subheadline)
+                                }
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .frame(maxWidth: geometry.size.width)
+                            }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: tableWidth)
                 }
-                .scrollIndicators(.visible)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(FacilityTheme.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.black.opacity(0.10))
+                .background(FacilityTheme.surface)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16).stroke(FacilityTheme.ink.opacity(0.08))
+                }
             }
         }
     }
 
+    private func filterPanel(width: CGFloat) -> some View {
+        let count = dynamicTypeSize.isAccessibilitySize ? 1 : (width >= 820 ? 4 : 2)
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: count), spacing: 12) {
+            filterField("externalCompany.parvw", icon: "person.badge.key", column: .function)
+            filterField("externalCompany.name", icon: "building.2", column: .name)
+            filterField("externalCompany.SORT1", icon: "magnifyingglass", column: .searchTerm1)
+            filterField("externalCompany.SORT2", icon: "magnifyingglass", column: .searchTerm2)
+        }
+        .facilityCard(padding: 16)
+    }
+
+    private func filterField(_ title: LocalizedStringKey, icon: String, column: Column) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(FacilityTheme.ink.opacity(0.7))
+            HStack(spacing: 8) {
+                Image(systemName: icon).foregroundStyle(FacilityTheme.accent).accessibilityHidden(true)
+                TextField("briefing.partnerPicker.filterPlaceholder", text: filterBinding(for: column))
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityLabel(Text(title))
+            }
+            .font(.subheadline)
+            .padding(.horizontal, 12)
+            .frame(minHeight: 46)
+            .background(FacilityTheme.canvas.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(hasFilter(for: column) ? FacilityTheme.accent.opacity(0.5) : FacilityTheme.ink.opacity(0.07))
+            }
+        }
+    }
+
+    private var hasActiveFilters: Bool {
+        if hasBoundSearchTerm2 && !searchTerm2.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+        return columnFilters.contains { column, value in
+            if column == .searchTerm2 && hasBoundSearchTerm2 { return false }
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
     private var displayedPartners: [BriefingPartnerSelection] {
-        Self.filteredPartners(partners: partners, filters: columnFilters, sort: sort)
+        var effectiveFilters = columnFilters
+        if hasBoundSearchTerm2 {
+            effectiveFilters[.searchTerm2] = searchTerm2
+        }
+        return Self.filteredPartners(partners: partners, filters: effectiveFilters, sort: sort)
+    }
+
+    private var partnerResultsText: String {
+        let count = displayedPartners.count
+        if count == 1 {
+            return String(localized: "briefing.partnerPicker.partnerFound")
+        } else {
+            return String(format: String(localized: "briefing.partnerPicker.partnersFound"), count)
+        }
     }
 
     static func filteredPartners(
@@ -316,19 +488,24 @@ struct BriefingPartnerSelectionTable: View {
     private func columnHeader(_ title: Text, width: CGFloat, column: Column) -> some View {
         HStack(spacing: 6) {
             title
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+                .lineLimit(2)
             Spacer(minLength: 4)
             Button {
                 activeColumnMenu = activeColumnMenu == column ? nil : column
             } label: {
                 Image(systemName: "line.3.horizontal.decrease")
                     .foregroundStyle(hasFilter(for: column) ? Color.accentColor : .secondary)
-                    .frame(width: 28, height: 44)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .facilityPopover(isPresented: columnMenuBinding(for: column), arrowEdge: .top) {
+            .accessibilityLabel(title + Text(" ") + Text("briefing.partnerPicker.columnOptions"))
+            .popover(
+                isPresented: columnMenuBinding(for: column),
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .top
+            ) {
                 columnMenu(column)
+                    .presentationCompactAdaptation(.popover)
             }
         }
         .padding(.leading, 12)
@@ -357,10 +534,10 @@ struct BriefingPartnerSelectionTable: View {
             HStack(spacing: 10) {
                 Image(systemName: "line.3.horizontal.decrease").foregroundStyle(.secondary)
                 Text("flEQ.briefing.partner.filter")
-                TextField("", text: filterBinding(for: column))
+                TextField("flEQ.briefing.partner.filter", text: filterBinding(for: column))
                     .textFieldStyle(.plain)
                     .padding(.horizontal, 8)
-                    .frame(width: 170, height: 32)
+                    .frame(width: 170, height: 44)
                     .background(Color(uiColor: .systemBackground))
                     .overlay { RoundedRectangle(cornerRadius: 2).stroke(Color(uiColor: .separator), lineWidth: 1) }
             }
@@ -394,46 +571,56 @@ struct BriefingPartnerSelectionTable: View {
 
     private func filterBinding(for column: Column) -> Binding<String> {
         Binding(
-            get: { columnFilters[column, default: ""] },
-            set: { columnFilters[column] = $0 }
+            get: {
+                if column == .searchTerm2 && hasBoundSearchTerm2 {
+                    return searchTerm2
+                }
+                return columnFilters[column, default: ""]
+            },
+            set: { newValue in
+                columnFilters[column] = newValue
+                if column == .searchTerm2 && hasBoundSearchTerm2 {
+                    searchTerm2 = newValue
+                }
+            }
         )
     }
 
     private func hasFilter(for column: Column) -> Bool {
-        !columnFilters[column, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if column == .searchTerm2 && hasBoundSearchTerm2 {
+            return !searchTerm2.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !columnFilters[column, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func partnerRow(_ partner: BriefingPartnerSelection, widths: ColumnWidths) -> some View {
         HStack(spacing: 0) {
             cell(partner.client, width: widths.client)
             cell(partner.function, width: widths.function)
-            cell(partner.name, width: widths.name)
+            HStack(spacing: 8) {
+                Image(systemName: selectedPartnerID == partner.id ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selectedPartnerID == partner.id ? FacilityTheme.accent : FacilityTheme.ink.opacity(0.2))
+                    .accessibilityHidden(true)
+                Text(partner.name).font(.subheadline.weight(.semibold)).lineLimit(2)
+            }
+            .padding(.horizontal, 12)
+            .frame(width: widths.name, alignment: .leading)
+            .frame(minHeight: 56)
             cell(partner.searchTerm1, width: widths.searchTerm1)
             cell(partner.searchTerm2, width: widths.searchTerm2)
         }
     }
 
-    private func emptyRow(widths: ColumnWidths) -> some View {
-        HStack(spacing: 0) {
-            cell("", width: widths.client); cell("", width: widths.function)
-            cell("", width: widths.name); cell("", width: widths.searchTerm1)
-            cell("", width: widths.searchTerm2)
-        }
-        .accessibilityHidden(true)
-    }
-
     private func cell(_ value: String, width: CGFloat) -> some View {
         Text(value)
-            .foregroundStyle(.primary)
+            .font(.subheadline)
+            .foregroundStyle(FacilityTheme.ink)
             .lineLimit(2)
             .padding(.horizontal, 12)
             .frame(width: width, alignment: .leading)
-            .frame(minHeight: 41)
-            .overlay(alignment: .trailing) {
-                Rectangle().fill(Color(uiColor: .separator)).frame(width: 0.5)
-            }
+            .frame(minHeight: 56)
             .overlay(alignment: .bottom) {
-                Rectangle().fill(Color(uiColor: .separator)).frame(height: 0.5)
+                Rectangle().fill(FacilityTheme.ink.opacity(0.06)).frame(height: 1)
             }
     }
 
@@ -441,8 +628,8 @@ struct BriefingPartnerSelectionTable: View {
         let client: CGFloat; let function: CGFloat; let name: CGFloat
         let searchTerm1: CGFloat; let searchTerm2: CGFloat
         init(totalWidth: CGFloat) {
-            client = totalWidth * 0.14; function = totalWidth * 0.14; name = totalWidth * 0.24
-            searchTerm1 = totalWidth * 0.24
+            client = totalWidth * 0.12; function = totalWidth * 0.16; name = totalWidth * 0.30
+            searchTerm1 = totalWidth * 0.21
             searchTerm2 = totalWidth - client - function - name - searchTerm1
         }
     }

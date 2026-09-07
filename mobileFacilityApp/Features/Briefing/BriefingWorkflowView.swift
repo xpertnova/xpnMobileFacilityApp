@@ -1050,6 +1050,7 @@ final class BriefingWorkflowViewModel {
 
     var partners: [SAPBriefingPartner]
     var temporaryPartner: BriefingTemporaryPartner?
+    var partnerSearchTerm2 = ""
     private var savedWorkID: UUID?
 
     init(source: Source, existingDraft: OfflineWorkItem? = nil) {
@@ -1059,6 +1060,9 @@ final class BriefingWorkflowViewModel {
         guard let existingDraft, let draft = existingDraft.payload.briefing else { return }
         savedWorkID = existingDraft.id
         selectedBusinessEntityID = draft.businessEntityID
+        if !draft.businessEntityID.isEmpty {
+            partnerSearchTerm2 = Self.extractPropertyNumber(from: draft.businessEntityID)
+        }
         selectedBuildingCode = draft.buildingCode
         selectedTemplateID = draft.templateID
         coordinator = draft.coordinator
@@ -1080,6 +1084,18 @@ final class BriefingWorkflowViewModel {
     var availableBuildings: [Context] { source.contexts.filter { $0.businessEntityID == selectedBusinessEntityID }.sorted { $0.buildingTitle < $1.buildingTitle } }
     var selectedBusinessEntity: Context? { businessEntities.first { $0.businessEntityID == selectedBusinessEntityID } }
     var selectedContext: Context? { source.contexts.first { $0.businessEntityID == selectedBusinessEntityID && $0.buildingCode == selectedBuildingCode } }
+    var defaultWorkPropertyNumber: String { partnerSearchTerm2 }
+
+    nonisolated static func extractPropertyNumber(from businessEntityID: String) -> String {
+        let segments = businessEntityID.split(separator: "-")
+        for segment in segments.reversed() {
+            let digits = segment.filter(\.isNumber)
+            if !digits.isEmpty {
+                return String(digits)
+            }
+        }
+        return String(businessEntityID.filter(\.isNumber))
+    }
     var template: SAPBriefingTemplate? { source.templates.first { $0.id == selectedTemplateID } }
     var selectedPartner: SAPBriefingPartner? { partners.first { $0.id == selectedPartnerID } }
     var instructorFirstName: String {
@@ -1102,9 +1118,13 @@ final class BriefingWorkflowViewModel {
 
     func selectBusinessEntity(_ value: String) {
         let selection = value.isEmpty ? nil : value
-        guard selection != selectedBusinessEntityID else { return }
         selectedBusinessEntityID = selection
         selectedBuildingCode = nil
+        if let selection {
+            partnerSearchTerm2 = Self.extractPropertyNumber(from: selection)
+        } else {
+            partnerSearchTerm2 = ""
+        }
     }
     func selectBuilding(_ value: String) { selectedBuildingCode = value.isEmpty ? nil : value }
     func setStartDate(_ value: Date) {
