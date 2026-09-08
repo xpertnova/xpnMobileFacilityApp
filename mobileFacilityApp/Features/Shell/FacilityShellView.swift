@@ -110,9 +110,26 @@ struct FacilityShellView: View {
                 .zIndex(2)
             }
 
+            if !demo.isDemoMode, demo.shouldPresentDraftWarningBeforeSync {
+                Color.black.opacity(0.42)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(5)
+                SAPPreSyncDraftWarningDialog(
+                    draftCount: demo.offlineWorkStore.localWorkCount,
+                    confirm: demo.confirmDiscardDraftsAndSync,
+                    keepDrafts: demo.keepDraftsAndNavigate,
+                    cancel: demo.dismissDraftWarning
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .zIndex(6)
+            }
+
             if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
                 Color.black.opacity(0.42)
                     .ignoresSafeArea()
+                    .transition(.opacity)
                     .zIndex(3)
                 SAPRefreshPasswordDialog(
                     password: $sapPassword,
@@ -123,6 +140,7 @@ struct FacilityShellView: View {
                     cancel: dismissSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
                 .zIndex(4)
             }
         }

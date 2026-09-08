@@ -11156,6 +11156,142 @@
         }
       }
     },
+    "sap.refresh.draftWarning.confirmAction" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwerfen & Synchronisieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard & Synchronize"
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.draftCountBadge" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld nicht synchronisierte Berichte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld pending draft items"
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.irreversibleNotice" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Vorgang kann nicht rückgängig gemacht werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This action cannot be undone."
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.keepDrafts" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berichte behalten & prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep & Review Drafts"
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Gerät befinden sich %lld zwischengespeicherte Berichte. Eine Synchronisierung mit SAP löscht diese Entwürfe unwiderruflich."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There are %lld locally saved draft reports on this device. Synchronizing with SAP will permanently delete these drafts."
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.subtitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokale Änderungen werden bei der Synchronisierung überschrieben."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local changes will be replaced during synchronization."
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.tip" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipp: Wählen Sie „Berichte behalten“, um Ihre Entwürfe vor dem Synchronisieren fertigzustellen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tip: Choose \"Keep Drafts\" if you want to review or submit your work before synchronizing."
+          }
+        }
+      }
+    },
+    "sap.refresh.draftWarning.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht synchronisierte Berichte vorhanden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unsaved Drafts Detected"
+          }
+        }
+      }
+    },
     "sap.refresh.error.configuration" : {
       "extractionState" : "stale",
       "localizations" : {

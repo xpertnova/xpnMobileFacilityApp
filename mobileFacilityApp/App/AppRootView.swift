@@ -130,16 +130,20 @@ struct AppRootView: View {
     }
 
     private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {
+        let tokenStore = KeychainSAPSyncTokenStore()
         let refreshService = onboarding.readConnection.map {
             SAPInboundNotificationRefreshService(
                 connection: $0,
-                synchronizationUserID: session.displayName
+                synchronizationUserID: session.displayName,
+                tokenStore: tokenStore
             )
         }
         return SAPDataStore(
             repository: productionSAPDataCacheRepository,
             refreshService: refreshService,
-            localWorkerID: session.workerID
+            tokenStore: tokenStore,
+            localWorkerID: session.workerID,
+            synchronizationUserID: session.displayName
         )
     }
 }

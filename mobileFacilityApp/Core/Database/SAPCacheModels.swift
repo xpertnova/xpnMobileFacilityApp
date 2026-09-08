@@ -480,6 +480,11 @@ protocol SAPNotificationRefreshService: Sendable {
         sapPassword: String,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPReadSnapshot
+
+    func refresh(
+        usingToken token: String,
+        progress: @escaping SAPReadRefreshProgressHandler
+    ) async throws -> SAPReadSnapshot
 }
 
 enum SAPReadError: LocalizedError {
@@ -488,6 +493,7 @@ enum SAPReadError: LocalizedError {
     case passwordRequired
     case invalidCredentials
     case initialPasswordChangeRequired
+    case tokenInvalidOrExpired
     case preparationTimedOut
     case malformedPayload
     case networkUnavailable
@@ -503,6 +509,7 @@ enum SAPReadError: LocalizedError {
         case .passwordRequired: "A SAP synchronization password is required."
         case .invalidCredentials: "The SAP synchronization password is invalid."
         case .initialPasswordChangeRequired: "The SAP synchronization password must be changed before use."
+        case .tokenInvalidOrExpired: "The SAP session token is invalid or has expired on another device."
         case .preparationTimedOut: "SAP did not finish preparing the notification data in time."
         case .malformedPayload: "SAP returned data in an unsupported format."
         case .networkUnavailable: "The device could not reach SAP."

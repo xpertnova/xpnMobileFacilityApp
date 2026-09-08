@@ -46,6 +46,26 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) M0153003 requires an initial password change before synchronization.")
     }
 
+    static func logTokenCheckStarted(
+        host: String,
+        userID: String,
+        deviceID: String
+    ) {
+        print(
+            "\(prefix) Starting M0155003: user \(redacted(userID)), " +
+                "device \(redactedDeviceID(deviceID)), " +
+                "environment \(host)."
+        )
+    }
+
+    static func logTokenAccepted() {
+        print("\(prefix) M0155003 accepted token.")
+    }
+
+    static func logTokenRejected() {
+        print("\(prefix) M0155003 rejected token (invalid, expired, or active on another device).")
+    }
+
     static func logBackendMessage(method: String, message: String) {
         print("\(prefix) \(method) SAP business response: \(message)")
     }
@@ -160,10 +180,16 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     private static let downloadSchemaVersion = "1.3.2-21-121"
     private let connection: SAPReadConnection
     private let synchronizationUserID: String
+    private let tokenStore: (any SAPSyncTokenStore)?
 
-    init(connection: SAPReadConnection, synchronizationUserID: String) {
+    init(
+        connection: SAPReadConnection,
+        synchronizationUserID: String,
+        tokenStore: (any SAPSyncTokenStore)? = nil
+    ) {
         self.connection = connection
         self.synchronizationUserID = synchronizationUserID
+        self.tokenStore = tokenStore
     }
 
     private var sapWorkerID: String {
@@ -190,8 +216,52 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             deviceID: synchronizationConnection.deviceID
         )
         await progress(.authenticating)
-        try await verify(password: password, connection: synchronizationConnection)
+        let token = try await verify(password: password, connection: synchronizationConnection)
+        if let token, !token.isEmpty {
+            try? tokenStore?.save(token: token, for: sapWorkerID)
+        }
 
+        return try await performInboundSynchronization(
+            connection: synchronizationConnection,
+            progress: progress
+        )
+    }
+
+    func refresh(
+        usingToken token: String,
+        progress: @escaping SAPReadRefreshProgressHandler
+    ) async throws -> SAPReadSnapshot {
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else { throw SAPReadError.tokenInvalidOrExpired }
+        guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
+
+        let synchronizationConnection = connection.newSynchronizationConnection()
+        defer { synchronizationConnection.finishSynchronizationSession() }
+
+        SAPSynchronizationDiagnostics.logSynchronizationStarted(userID: sapWorkerID)
+        SAPSynchronizationDiagnostics.logTokenCheckStarted(
+            host: connection.backendURL.host ?? "unknown host",
+            userID: sapWorkerID,
+            deviceID: synchronizationConnection.deviceID
+        )
+        await progress(.authenticating)
+        do {
+            try await verify(token: trimmedToken, connection: synchronizationConnection)
+        } catch {
+            tokenStore?.deleteToken(for: sapWorkerID)
+            throw error
+        }
+
+        return try await performInboundSynchronization(
+            connection: synchronizationConnection,
+            progress: progress
+        )
+    }
+
+    private func performInboundSynchronization(
+        connection synchronizationConnection: SAPReadConnection,
+        progress: @escaping SAPReadRefreshProgressHandler
+    ) async throws -> SAPReadSnapshot {
         // SAP prepares the FROM package only after the regular TO lifecycle,
         // including an otherwise-empty M0002001 payload. The old SwiftUI app
         // sends it even when there are no pending supported records.
@@ -296,7 +366,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         return snapshot
     }
 
-    private func verify(password: String, connection: SAPReadConnection) async throws {
+    private func verify(password: String, connection: SAPReadConnection) async throws -> String? {
         guard let response = try await call(
             method: "M0153003",
             parameters: Self.parameters([
@@ -326,7 +396,35 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             SAPSynchronizationDiagnostics.logPasswordRejected()
             throw error
         }
-        SAPSynchronizationDiagnostics.logPasswordAccepted(hasToken: false)
+        SAPSynchronizationDiagnostics.logPasswordAccepted(hasToken: authorization.token != nil)
+        return authorization.token
+    }
+
+    private func verify(token: String, connection: SAPReadConnection) async throws {
+        guard let response = try await call(
+            method: "M0155003",
+            parameters: Self.parameters([
+                "PARAMETER1": sapWorkerID,
+                "PARAMETER2": connection.deviceID,
+                "PARAMETER3": token
+            ]),
+            usesLegacyAuthenticationEnvelope: true,
+            connection: connection
+        ) else {
+            throw SAPReadError.malformedPayload
+        }
+        let isValid: Bool
+        do {
+            isValid = try SAPLegacyDataExchangeCodec.tokenAuthorization(from: response)
+        } catch {
+            SAPSynchronizationDiagnostics.logRequestFailure(method: "M0155003", error: error)
+            throw SAPReadError.tokenInvalidOrExpired
+        }
+        guard isValid else {
+            SAPSynchronizationDiagnostics.logTokenRejected()
+            throw SAPReadError.tokenInvalidOrExpired
+        }
+        SAPSynchronizationDiagnostics.logTokenAccepted()
     }
 
     private func submitEmptyOutgoingMetadata(
@@ -527,7 +625,9 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         } else {
             ivData = try SAPLegacyDataExchangeCodec.pack(method: method, parameters: parameters)
         }
-        let request = try dataExchangeRequest(ivData: ivData, connection: connection)
+        let isAuthentication = (method == "M0153003" || method == "M0155003")
+        let timeout: TimeInterval = isAuthentication ? 60 : 300
+        let request = try dataExchangeRequest(ivData: ivData, connection: connection, timeoutInterval: timeout)
         let data: Data
         let response: URLResponse
         do {
@@ -573,12 +673,13 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
 
     private func dataExchangeRequest(
         ivData: String,
-        connection: SAPReadConnection
+        connection: SAPReadConnection,
+        timeoutInterval: TimeInterval = 300
     ) throws -> URLRequest {
         let url = try serviceRoot(connection: connection).appendingPathComponent("DATAEXCHANGESet")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 300
+        request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("X", forHTTPHeaderField: "X-Requested-With")
@@ -673,9 +774,10 @@ private struct SAPEmptyOutgoingSynchronizationData: Encodable {
     let T_0302: [[String: String]] = []
 }
 
-fileprivate struct SAPReadAuthorization {
+struct SAPReadAuthorization {
     let isAccepted: Bool
     let requiresInitialPasswordChange: Bool
+    let token: String?
 }
 
 fileprivate struct SAPInboundPack {
@@ -696,7 +798,7 @@ private enum SAPOutgoingPostAcknowledgement {
     case rejected
 }
 
-private enum SAPLegacyDataExchangeCodec {
+enum SAPLegacyDataExchangeCodec {
     private static let parameterStructureName = "/EZO/MTFMS_PARAMETER"
     private static let synchronizationStructureName = "/EZO/MTFMS_IP4SYNCH"
 
@@ -751,7 +853,7 @@ private enum SAPLegacyDataExchangeCodec {
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
 
-    fileprivate static func authorization(from response: String) throws -> SAPReadAuthorization {
+    static func authorization(from response: String) throws -> SAPReadAuthorization {
         let envelopes = try decodeEnvelopes(response)
         try throwBackendMessage(in: envelopes)
         for envelope in envelopes {
@@ -763,12 +865,43 @@ private enum SAPLegacyDataExchangeCodec {
             let checkPassword = stringValue(value(named: "CHECKPW", in: fields)).uppercased()
             let initialPassword = stringValue(value(named: "PWINITIAL", in: fields)).uppercased()
             let requiresInitialChange = isSAPTrue(initialPassword)
+
+            var extractedToken: String?
+            if let tokenField = value(named: "0155", in: fields) {
+                if let tokenDict = tokenField as? [String: Any] {
+                    let tok = stringValue(value(named: "TOKEN", in: tokenDict)).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !tok.isEmpty { extractedToken = tok }
+                } else if let tokenString = tokenField as? String {
+                    if let nestedDict = try? dictionary(from: tokenString) {
+                        let tok = stringValue(value(named: "TOKEN", in: nestedDict)).trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !tok.isEmpty { extractedToken = tok }
+                    } else if !tokenString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        extractedToken = tokenString.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+
             return SAPReadAuthorization(
                 isAccepted: isSAPTrue(checkPassword) || requiresInitialChange,
-                requiresInitialPasswordChange: requiresInitialChange
+                requiresInitialPasswordChange: requiresInitialChange,
+                token: extractedToken
             )
         }
         throw SAPReadError.malformedPayload
+    }
+
+    static func tokenAuthorization(from response: String) throws -> Bool {
+        let envelopes = try decodeEnvelopes(response)
+        if envelopes.contains(where: { $0.KEY.uppercased() == "TEXT" }) {
+            return false
+        }
+        for envelope in envelopes {
+            guard let fields = try? dictionary(from: envelope.VALUE) else { continue }
+            if let checkPassword = value(named: "CHECKPW", in: fields) {
+                return isSAPTrue(stringValue(checkPassword).uppercased())
+            }
+        }
+        return false
     }
 
     static func validateNoBackendError(_ response: String) throws {
@@ -788,7 +921,7 @@ private enum SAPLegacyDataExchangeCodec {
         }
     }
 
-    static func outgoingPostAcknowledgement(
+    fileprivate static func outgoingPostAcknowledgement(
         from response: String
     ) throws -> SAPOutgoingPostAcknowledgement {
         let envelopes = try decodeEnvelopes(response)

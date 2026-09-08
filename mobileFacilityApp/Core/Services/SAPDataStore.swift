@@ -14,8 +14,10 @@ final class SAPDataStore {
 
     private let repository: any SAPDataCacheRepository
     private let refreshService: (any SAPNotificationRefreshService)?
+    private let tokenStore: (any SAPSyncTokenStore)?
     private let notificationPageSize = 40
     let localWorkerID: String
+    let synchronizationUserID: String
     private(set) var state: State = .loadingCache
     private(set) var cachedData: SAPCachedData = .empty
     private(set) var refreshError: SAPReadError?
@@ -33,11 +35,21 @@ final class SAPDataStore {
     init(
         repository: any SAPDataCacheRepository,
         refreshService: (any SAPNotificationRefreshService)?,
-        localWorkerID: String
+        tokenStore: (any SAPSyncTokenStore)? = nil,
+        localWorkerID: String,
+        synchronizationUserID: String? = nil
     ) {
         self.repository = repository
         self.refreshService = refreshService
+        self.tokenStore = tokenStore
         self.localWorkerID = localWorkerID
+        self.synchronizationUserID = synchronizationUserID ?? localWorkerID
+    }
+
+    var hasValidSavedToken: Bool {
+        guard let tokenStore else { return false }
+        let token = tokenStore.token(for: synchronizationUserID)
+        return token != nil && !(token?.isEmpty ?? true)
     }
 
     var workerProfile: SAPWorkerProfile? { cachedData.workerProfile }
@@ -199,6 +211,88 @@ final class SAPDataStore {
             refreshError = .serviceUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
         }
+    }
+
+    /// Synchronously prepares the store state for token refresh so that UI observers
+    /// immediately see `isRefreshing == true` and `refreshStage == .authenticating`.
+    @discardableResult
+    func beginTokenRefresh() -> Bool {
+        guard state != .refreshing, hasValidSavedToken, refreshService != nil else { return false }
+        state = .refreshing
+        refreshError = nil
+        refreshStage = .authenticating
+        return true
+    }
+
+    /// Attempts to synchronize using the saved SAP token.
+    /// Returns `true` if synchronization succeeded.
+    /// Returns `false` if no token exists, connection is unavailable, or token was rejected by SAP (calling code can prompt for password).
+    @discardableResult
+    func refreshWithSavedToken() async -> Bool {
+        if state != .refreshing {
+            guard hasValidSavedToken else { return false }
+            guard refreshService != nil else {
+                refreshError = .authenticatedConnectionUnavailable
+                state = cachedData.metadata == nil ? .failed : .ready
+                return false
+            }
+            state = .refreshing
+            refreshError = nil
+            refreshStage = .authenticating
+        }
+        guard let tokenStore, let token = tokenStore.token(for: synchronizationUserID), !token.isEmpty else {
+            refreshStage = nil
+            state = cachedData.metadata == nil ? .noData : .ready
+            return false
+        }
+        guard let refreshService else {
+            refreshStage = nil
+            refreshError = .authenticatedConnectionUnavailable
+            state = cachedData.metadata == nil ? .failed : .ready
+            return false
+        }
+        do {
+            let snapshot = try await refreshService.refresh(usingToken: token) { [weak self] stage in
+                self?.refreshStage = stage
+            }
+            refreshStage = .savingSnapshot
+            cachedData = try await repository.replace(
+                with: snapshot,
+                for: localWorkerID,
+                refreshedAt: Date()
+            )
+            try await loadTotalNotificationCount()
+            try await loadNotificationFilterMetadata()
+            try await loadFirstNotificationPage()
+            refreshStage = nil
+            state = .ready
+            return true
+        } catch is CancellationError {
+            refreshStage = nil
+            state = cachedData.metadata == nil ? .noData : .ready
+            return false
+        } catch let error as SAPReadError {
+            refreshStage = nil
+            if case .tokenInvalidOrExpired = error {
+                tokenStore.deleteToken(for: synchronizationUserID)
+                refreshError = nil
+                state = cachedData.metadata == nil ? .noData : .ready
+                return false
+            } else {
+                refreshError = error
+                state = cachedData.metadata == nil ? .failed : .ready
+                return false
+            }
+        } catch {
+            refreshStage = nil
+            refreshError = .serviceUnavailable
+            state = cachedData.metadata == nil ? .failed : .ready
+            return false
+        }
+    }
+
+    func deleteSavedToken() {
+        tokenStore?.deleteToken(for: synchronizationUserID)
     }
 
     func dismissError() {
