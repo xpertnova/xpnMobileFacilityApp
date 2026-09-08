@@ -11,7 +11,20 @@ struct FacilityShellView: View {
     @State private var isShowingUserMenu = false
 
     private let expandedSidebarWidth: CGFloat = 340
+    private let compactSidebarWidth: CGFloat = 72
     private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
+    private let workDestinations: [AppDestination] = [
+        .overview,
+        .scan,
+        .notifications,
+        .manualCapture,
+        .defects,
+        .drafts,
+    ]
+    private let libraryDestinations: [AppDestination] = [
+        .technicalPlaces,
+        .forms,
+    ]
 
     init(
         demo: FacilityDemoViewModel,
@@ -27,16 +40,22 @@ struct FacilityShellView: View {
 
         ZStack(alignment: .topLeading) {
             HStack(spacing: 0) {
-                sidebar(selection: $demo.selection)
-                    .opacity(demo.isSidebarVisible ? 1 : 0)
-                    .offset(x: demo.isSidebarVisible ? 0 : -expandedSidebarWidth)
-                    .allowsHitTesting(demo.isSidebarVisible)
-                    .frame(width: demo.isSidebarVisible ? expandedSidebarWidth : 0, alignment: .leading)
-                    .clipped()
-
-                if demo.isSidebarVisible {
-                    Divider()
+                Group {
+                    if demo.isSidebarExpanded {
+                        sidebar(selection: $demo.selection)
+                            .transition(.opacity)
+                    } else {
+                        compactSidebar(
+                            selection: $demo.selection,
+                            networkStatus: networkStatus
+                        )
+                            .transition(.opacity)
+                    }
                 }
+                .frame(width: activeSidebarWidth, alignment: .leading)
+                .clipped()
+
+                Divider()
 
                 ZStack {
                     mainContent(networkStatus: networkStatus)
@@ -83,21 +102,16 @@ struct FacilityShellView: View {
                 Color.black.opacity(0.001)
                     .contentShape(Rectangle())
                     .ignoresSafeArea()
-                    .padding(.leading, demo.isSidebarVisible ? expandedSidebarWidth : 0)
+                    .padding(.leading, activeSidebarWidth)
                     .onTapGesture {
                         withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
                             isShowingUserMenu = false
                         }
                     }
-            }
-
-            if !demo.isSidebarVisible {
-                sidebarToggleButton(symbol: "sidebar.right", labelKey: "sidebar.show") {
-                    demo.isSidebarVisible = true
-                }
-                .padding(.top, 14)
-                .padding(.leading, 16)
                 .zIndex(1)
+
+                userActionMenuOverlay
+                    .zIndex(2)
             }
 
             if demo.selection == .notifications, notificationFilterPresentation.isPresented {
@@ -127,7 +141,7 @@ struct FacilityShellView: View {
             }
         }
         .background(FacilityTheme.canvas)
-        .animation(sidebarAnimation, value: demo.isSidebarVisible)
+        .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
         .task(id: demo.offlineWorkStore.workerID) {
             await demo.offlineWorkStore.load()
             if !demo.isDemoMode {
@@ -149,100 +163,196 @@ struct FacilityShellView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 28)
                 .onEnded { value in
-                    if demo.isSidebarVisible, value.translation.width < -70 {
-                        demo.isSidebarVisible = false
-                    } else if !demo.isSidebarVisible,
+                    if demo.isSidebarExpanded, value.translation.width < -70 {
+                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                            isShowingUserMenu = false
+                        }
+                        demo.isSidebarExpanded = false
+                    } else if !demo.isSidebarExpanded,
                               value.startLocation.x < 72,
                               value.translation.width > 70 {
-                        demo.isSidebarVisible = true
+                        demo.isSidebarExpanded = true
                     }
                 }
         )
     }
 
     private func sidebar(selection: Binding<AppDestination>) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 10) {
-                    Text(".XPN")
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(.white)
-                        .frame(width: 84, height: 40)
-                        .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("app.title")
-                            .font(.headline.weight(.bold))
-                        Text("app.subtitle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    
-                    Spacer()
-                    
-                    sidebarToggleButton(symbol: "sidebar.left", labelKey: "sidebar.hide") {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                            isShowingUserMenu = false
-                        }
-                        demo.isSidebarVisible = false
-                    }
-                }
-                .padding(.bottom, 28)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 10) {
+                Text(".XPN")
+                    .font(.title3.weight(.heavy))
+                    .foregroundStyle(.white)
+                    .frame(width: 84, height: 40)
+                    .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
-                Text("navigation.work")
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(.secondary)
-                    .tracking(1)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
-
-                ForEach([AppDestination.overview, .scan, .notifications, .manualCapture, .defects, .drafts]) { destination in
-                    SidebarButton(destination: destination, selection: selection, badge: badge(for: destination)) {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                            isShowingUserMenu = false
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("app.title")
+                        .font(.headline.weight(.bold))
+                    Text("app.subtitle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Text("navigation.library")
-                    .font(.caption.weight(.heavy))
-                    .foregroundStyle(.secondary)
-                    .tracking(1)
-                    .padding(.top, 14)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 4)
+                Spacer()
 
-                ForEach([AppDestination.technicalPlaces, .forms]) { destination in
-                    SidebarButton(destination: destination, selection: selection, badge: badge(for: destination)) {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                            isShowingUserMenu = false
-                        }
+                sidebarToggleButton(symbol: "sidebar.left", labelKey: "sidebar.hide") {
+                    withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                        isShowingUserMenu = false
                     }
+                    demo.isSidebarExpanded = false
                 }
-
-                Spacer(minLength: 18)
-
-                localWorkStatusCard
-
-                profileButton
-                    .padding(.top, 8)
             }
-            .padding(16)
-            .frame(width: expandedSidebarWidth)
+            .padding(.bottom, 28)
 
-            if isShowingUserMenu {
-                userActionMenu
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 76)
-                    .transition(.scale(scale: 0.95, anchor: .bottom).combined(with: .opacity))
-                    .zIndex(2)
+            Text("navigation.work")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(.secondary)
+                .tracking(1)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+
+            ForEach(workDestinations) { destination in
+                SidebarButton(destination: destination, selection: selection, badge: badge(for: destination)) {
+                    withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                        isShowingUserMenu = false
+                    }
+                }
             }
+
+            Text("navigation.library")
+                .font(.caption.weight(.heavy))
+                .foregroundStyle(.secondary)
+                .tracking(1)
+                .padding(.top, 14)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 4)
+
+            ForEach(libraryDestinations) { destination in
+                SidebarButton(destination: destination, selection: selection, badge: badge(for: destination)) {
+                    withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                        isShowingUserMenu = false
+                    }
+                }
+            }
+
+            Spacer(minLength: 18)
+
+            localWorkStatusCard
+
+            profileButton
+                .padding(.top, 8)
         }
+        .padding(16)
         .frame(width: expandedSidebarWidth)
         .background(FacilityTheme.sidebar)
         .animation(.snappy(duration: 0.22, extraBounce: 0), value: isShowingUserMenu)
+    }
+
+    private func compactSidebar(
+        selection: Binding<AppDestination>,
+        networkStatus: NetworkReachabilityStatus
+    ) -> some View {
+        VStack(spacing: 0) {
+            sidebarToggleButton(
+                symbol: "sidebar.right",
+                labelKey: "sidebar.show",
+                controlSize: 44
+            ) {
+                demo.isSidebarExpanded = true
+            }
+            .padding(.bottom, 24)
+
+            VStack(spacing: 12) {
+                ForEach(workDestinations) { destination in
+                    CompactSidebarButton(
+                        destination: destination,
+                        selection: selection,
+                        badge: badge(for: destination)
+                    ) {
+                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                            isShowingUserMenu = false
+                        }
+                    }
+                }
+            }
+
+            Divider()
+                .frame(width: 32)
+                .padding(.vertical, 16)
+
+            VStack(spacing: 12) {
+                ForEach(libraryDestinations) { destination in
+                    CompactSidebarButton(
+                        destination: destination,
+                        selection: selection,
+                        badge: badge(for: destination)
+                    ) {
+                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                            isShowingUserMenu = false
+                        }
+                    }
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            if !demo.isDemoMode {
+                Divider()
+                    .frame(width: 32)
+                    .padding(.bottom, 12)
+
+                compactSAPRefreshButton(networkStatus: networkStatus)
+                    .padding(.bottom, 8)
+            }
+
+            compactProfileButton
+        }
+        .padding(.vertical, 14)
+        .frame(width: compactSidebarWidth)
+        .background(FacilityTheme.sidebar)
+    }
+
+    private func compactSAPRefreshButton(networkStatus: NetworkReachabilityStatus) -> some View {
+        let isRefreshing = demo.sapDataStore.isRefreshing
+        let isEnabled = demo.sapDataStore.isRefreshAvailable && networkStatus == .connected && !isRefreshing
+
+        return Button {
+            demo.requestSAPRefresh()
+        } label: {
+            ZStack {
+                if isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(FacilityTheme.navy)
+                } else {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(FacilityTheme.navy)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(alignment: .topTrailing) {
+                if demo.sapDataStore.refreshError != nil {
+                    Circle()
+                        .fill(FacilityTheme.red)
+                        .frame(width: 11, height: 11)
+                        .overlay {
+                            Circle()
+                                .stroke(FacilityTheme.sidebar, lineWidth: 2)
+                        }
+                        .offset(x: 3, y: -3)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled || isRefreshing ? 1 : 0.42)
+        .accessibilityLabel(Text("sap.refresh.sidebarAction"))
     }
 
     private var profileButton: some View {
@@ -285,6 +395,38 @@ struct FacilityShellView: View {
         )
         .accessibilityLabel(Text("profile.menu.accessibilityLabel"))
         .accessibilityHint(Text("profile.menu.accessibilityHint"))
+    }
+
+    private var compactProfileButton: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                isShowingUserMenu.toggle()
+            }
+        } label: {
+            Text(demo.workerInitials)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(FacilityTheme.accent, in: Circle())
+                .frame(width: 52, height: 52)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            isShowingUserMenu || demo.selection == .profileSettings ? FacilityTheme.surface : Color.clear,
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
+        .accessibilityLabel(Text("profile.menu.accessibilityLabel"))
+        .accessibilityHint(Text("profile.menu.accessibilityHint"))
+    }
+
+    private var userActionMenuOverlay: some View {
+        userActionMenu
+            .frame(width: demo.isSidebarExpanded ? expandedSidebarWidth - 32 : 280)
+            .padding(.leading, demo.isSidebarExpanded ? 16 : compactSidebarWidth + 8)
+            .padding(.bottom, demo.isSidebarExpanded ? 76 : 14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .transition(.scale(scale: 0.95, anchor: .bottomLeading).combined(with: .opacity))
     }
 
     private var userActionMenu: some View {
@@ -414,12 +556,17 @@ struct FacilityShellView: View {
         demo.shouldPresentSAPRefresh = false
     }
 
-    private func sidebarToggleButton(symbol: String, labelKey: String, action: @escaping () -> Void) -> some View {
+    private func sidebarToggleButton(
+        symbol: String,
+        labelKey: String,
+        controlSize: CGFloat = 38,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.body.weight(.semibold))
                 .foregroundStyle(FacilityTheme.ink)
-                .frame(width: 38, height: 38)
+                .frame(width: controlSize, height: controlSize)
                 .background(.white, in: Circle())
         }
         .buttonStyle(.plain)
@@ -439,6 +586,10 @@ struct FacilityShellView: View {
         demo.selection == .profileSettings ? demo.profileSettingsReturnDestination : demo.selection
     }
 
+    private var activeSidebarWidth: CGFloat {
+        demo.isSidebarExpanded ? expandedSidebarWidth : compactSidebarWidth
+    }
+
     @ViewBuilder
     private func mainContent(networkStatus: NetworkReachabilityStatus) -> some View {
         switch activeMainDestination {
@@ -456,6 +607,63 @@ struct FacilityShellView: View {
         case .drafts: DraftsView(demo: demo)
         case .profileSettings: EmptyView()
         }
+    }
+}
+
+private struct CompactSidebarButton: View {
+    let destination: AppDestination
+    @Binding var selection: AppDestination
+    let badge: Int?
+    var onSelect: (() -> Void)? = nil
+
+    private var isSelected: Bool { selection == destination }
+
+    var body: some View {
+        Button {
+            onSelect?()
+            selection = destination
+        } label: {
+            Image(systemName: destination.symbol)
+                .font(.title3)
+                .foregroundStyle(isSelected ? .white : FacilityTheme.ink)
+                .frame(width: 48, height: 48)
+                .background(
+                    isSelected ? FacilityTheme.accent : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                )
+                .overlay(alignment: .topTrailing) {
+                    if let badge {
+                        Text(CompactSidebarBadgeFormatter.text(for: badge))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(isSelected ? FacilityTheme.navy : .white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 18, minHeight: 18)
+                            .background(isSelected ? .white : badgeTint, in: Capsule())
+                            .offset(x: 6, y: -5)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(width: 56)
+        .frame(minHeight: 48)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(LocalizedStringKey(destination.titleKey)))
+        .accessibilityValue(Text(badge.map { String($0) } ?? ""))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .animation(.smooth(duration: 0.2), value: isSelected)
+    }
+
+    private var badgeTint: Color {
+        destination == .drafts ? FacilityTheme.orange : FacilityTheme.red
+    }
+}
+
+enum CompactSidebarBadgeFormatter {
+    static func text(for count: Int) -> String {
+        count > 99 ? "99+" : String(count)
     }
 }
 
