@@ -30,6 +30,7 @@ final class FacilityDemoViewModel {
     private var offlineNotificationReturnDestination: AppDestination?
     private var manualDefectReturnDestination: AppDestination?
     var shouldPresentSAPRefresh = false
+    var shouldPresentDraftWarningBeforeSync = false
     var notifications = MockFacilityData.notifications
     var defects = MockFacilityData.defects
     let forms = MockFacilityData.forms
@@ -236,7 +237,46 @@ final class FacilityDemoViewModel {
     func requestSAPRefresh() {
         guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
-        shouldPresentSAPRefresh = true
+        if offlineWorkStore.localWorkCount > 0 {
+            shouldPresentDraftWarningBeforeSync = true
+        } else {
+            proceedWithSAPRefresh()
+        }
+    }
+
+    func confirmDiscardDraftsAndSync() {
+        shouldPresentDraftWarningBeforeSync = false
+        Task {
+            await offlineWorkStore.reset()
+            try? await photoAttachmentStore.reset()
+            proceedWithSAPRefresh()
+        }
+    }
+
+    func dismissDraftWarning() {
+        shouldPresentDraftWarningBeforeSync = false
+    }
+
+    func keepDraftsAndNavigate() {
+        shouldPresentDraftWarningBeforeSync = false
+        open(.drafts)
+    }
+
+    private func proceedWithSAPRefresh() {
+        guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
+        sapDataStore.dismissError()
+        if sapDataStore.hasValidSavedToken {
+            _ = sapDataStore.beginTokenRefresh()
+            shouldPresentSAPRefresh = true
+            Task {
+                let success = await sapDataStore.refreshWithSavedToken()
+                if success {
+                    shouldPresentSAPRefresh = false
+                }
+            }
+        } else {
+            shouldPresentSAPRefresh = true
+        }
     }
 
     func finishChecks(for notification: MaintenanceNotification) {

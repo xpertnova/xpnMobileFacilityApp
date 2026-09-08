@@ -131,17 +131,21 @@ struct AppRootView: View {
     private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {
         do {
             let repository = try SQLiteSAPDataCacheRepository.production(workerID: session.workerID)
+            let tokenStore = KeychainSAPSyncTokenStore()
             let refreshService = onboarding.readConnection.map {
                 SAPInboundNotificationRefreshService(
                     connection: $0,
                     synchronizationUserID: session.displayName,
+                    tokenStore: tokenStore,
                     synchronizationStore: repository
                 )
             }
             return SAPDataStore(
                 repository: repository,
                 refreshService: refreshService,
-                localWorkerID: session.workerID
+                tokenStore: tokenStore,
+                localWorkerID: session.workerID,
+                synchronizationUserID: session.displayName
             )
         } catch {
             return SAPDataStore(
