@@ -131,7 +131,6 @@ private struct BriefingFormScreen: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(FacilityTheme.blue)
                 .frame(minHeight: 44, alignment: .leading)
-                .padding(.leading, workspace.isSidebarVisible ? 0 : 50)
 
                 Text("briefing.form.title")
                     .font(.system(size: 29, weight: .bold))

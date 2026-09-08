@@ -2,25 +2,21 @@ import SwiftUI
 
 struct ProfileSettingsView: View {
     let backDestination: AppDestination?
-    let isSidebarVisible: Bool
     let onBack: (() -> Void)?
 
     @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.resolved(from: nil).rawValue
 
     init(
         backDestination: AppDestination? = nil,
-        isSidebarVisible: Bool = true,
         onBack: (() -> Void)? = nil
     ) {
         self.backDestination = backDestination
-        self.isSidebarVisible = isSidebarVisible
         self.onBack = onBack
     }
 
     init(demo: FacilityDemoViewModel) {
         self.init(
             backDestination: demo.profileSettingsReturnDestination,
-            isSidebarVisible: demo.isSidebarVisible,
             onBack: { demo.closeProfileSettings() }
         )
     }
@@ -48,7 +44,6 @@ struct ProfileSettingsView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(FacilityTheme.blue)
                 .frame(minHeight: 44, alignment: .leading)
-                .padding(.leading, isSidebarVisible ? 0 : 50)
             }
 
             PageHeader("profile.settings.title", subtitle: "profile.settings.subtitle")
@@ -117,7 +112,6 @@ struct ProfileSettingsView: View {
 #Preview {
     ProfileSettingsView(
         backDestination: .notifications,
-        isSidebarVisible: true,
         onBack: {}
     )
     .frame(width: 900, height: 600)

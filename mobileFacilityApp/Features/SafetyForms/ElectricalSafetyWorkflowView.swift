@@ -28,7 +28,6 @@ struct ElectricalSafetyWorkflowView: View {
             SafetyFormPageHeader(
                 title: "electricalSafety.form.title",
                 subtitle: "electricalSafety.form.subtitle",
-                isSidebarVisible: workspace.isSidebarVisible,
                 onClose: onClose
             )
 

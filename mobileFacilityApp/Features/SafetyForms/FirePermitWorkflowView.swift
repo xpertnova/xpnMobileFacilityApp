@@ -19,7 +19,6 @@ struct FirePermitWorkflowView: View {
             SafetyFormPageHeader(
                 title: "forms.fire.title",
                 subtitle: "forms.fire.subtitle",
-                isSidebarVisible: workspace.isSidebarVisible,
                 onClose: onClose
             )
 

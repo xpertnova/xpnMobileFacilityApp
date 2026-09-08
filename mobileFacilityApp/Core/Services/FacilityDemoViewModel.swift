@@ -20,7 +20,7 @@ final class FacilityDemoViewModel {
             }
         }
     }
-    var isSidebarVisible = true
+    var isSidebarExpanded = true
     var manualCaptureRoute: ManualCaptureRoute = .landing
     var selectedBriefingDraftID: UUID?
     var selectedElectricalSafetyDraftID: UUID?

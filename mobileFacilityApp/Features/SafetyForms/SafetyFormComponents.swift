@@ -3,7 +3,6 @@ import SwiftUI
 struct SafetyFormPageHeader: View {
     let title: LocalizedStringKey
     let subtitle: LocalizedStringKey
-    let isSidebarVisible: Bool
     let onClose: () -> Void
 
     var body: some View {
@@ -16,7 +15,6 @@ struct SafetyFormPageHeader: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(FacilityTheme.blue)
                 .frame(minHeight: 44, alignment: .leading)
-                .padding(.leading, isSidebarVisible ? 0 : 50)
 
                 Text(title)
                     .font(.system(size: 29, weight: .bold))

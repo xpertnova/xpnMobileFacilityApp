@@ -60,7 +60,6 @@ private struct ProofOfQualificationFormScreen: View {
       SafetyFormPageHeader(
         title: "qualification.form.title",
         subtitle: "qualification.form.subtitle",
-        isSidebarVisible: workspace.isSidebarVisible,
         onClose: onClose
       )
 
