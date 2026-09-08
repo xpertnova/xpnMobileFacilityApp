@@ -10,11 +10,14 @@ struct SAPRefreshPasswordDialog: View {
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
-        if isRefreshing {
-            SAPRefreshProgressDialog(stage: stage ?? .authenticating)
-        } else {
-            passwordEntry
+        Group {
+            if isRefreshing {
+                SAPRefreshProgressDialog(stage: stage ?? .authenticating)
+            } else {
+                passwordEntry
+            }
         }
+        .animation(.snappy(duration: 0.25), value: isRefreshing)
     }
 
     private var passwordEntry: some View {
@@ -141,6 +144,8 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
         String(localized: "sap.refresh.error.credentials")
     case .initialPasswordChangeRequired:
         String(localized: "sap.refresh.error.initialPassword")
+    case .tokenInvalidOrExpired:
+        String(localized: "The SAP session token is invalid or has expired on another device.")
     case .preparationTimedOut:
         String(localized: "sap.refresh.error.timeout")
     case .networkUnavailable:
