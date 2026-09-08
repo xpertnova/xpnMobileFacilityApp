@@ -121,6 +121,38 @@ enum SAPSynchronizationDiagnostics {
         )
     }
 
+    static func logIncomingPackage(_ tables: [String: [LegacySAPRow]]) {
+        let summary = tables
+            .map { "\($0.key): \($0.value.count)" }
+            .sorted()
+            .joined(separator: ", ")
+        print("\(prefix) Incoming legacy package tables: \(summary.isEmpty ? "none" : summary).")
+    }
+
+    static func logIgnoredColumns(_ columns: Set<String>, table: String) {
+        guard !columns.isEmpty else { return }
+        print(
+            "\(prefix) \(table): ignored server-only columns not present in the legacy schema: " +
+                columns.sorted().joined(separator: ", ") + "."
+        )
+    }
+
+    static func logRejectedColumns(_ columns: Set<String>, table: String) {
+        guard !columns.isEmpty else { return }
+        print(
+            "\(prefix) \(table): rejected columns not present in the legacy schema: " +
+                columns.sorted().joined(separator: ", ") + "."
+        )
+    }
+
+    static func logRejectedValueType(column: String, table: String, type: Any.Type) {
+        print("\(prefix) \(table).\(column): rejected non-scalar value type \(type).")
+    }
+
+    static func logRejectedStructure(table: String, location: String, type: Any.Type) {
+        print("\(prefix) \(table): rejected \(location) structure of type \(type).")
+    }
+
     private static func redacted(_ value: String) -> String {
         guard value.count > 4 else { return "••••" }
         return "\(value.prefix(2))••••\(value.suffix(2))"
@@ -180,15 +212,18 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     private static let downloadSchemaVersion = "1.3.2-21-121"
     private let connection: SAPReadConnection
     private let synchronizationUserID: String
+    private let synchronizationStore: any SAPLegacySynchronizationStore
     private let tokenStore: (any SAPSyncTokenStore)?
 
     init(
         connection: SAPReadConnection,
         synchronizationUserID: String,
-        tokenStore: (any SAPSyncTokenStore)? = nil
+        tokenStore: (any SAPSyncTokenStore)? = nil,
+        synchronizationStore: any SAPLegacySynchronizationStore
     ) {
         self.connection = connection
         self.synchronizationUserID = synchronizationUserID
+        self.synchronizationStore = synchronizationStore
         self.tokenStore = tokenStore
     }
 
@@ -201,7 +236,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     func refresh(
         sapPassword: String,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws -> SAPReadSnapshot {
+    ) async throws -> SAPCachedData {
         let password = sapPassword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !password.isEmpty else { throw SAPReadError.passwordRequired }
         guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
@@ -230,7 +265,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     func refresh(
         usingToken token: String,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws -> SAPReadSnapshot {
+    ) async throws -> SAPCachedData {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else { throw SAPReadError.tokenInvalidOrExpired }
         guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
@@ -261,7 +296,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     private func performInboundSynchronization(
         connection synchronizationConnection: SAPReadConnection,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws -> SAPReadSnapshot {
+    ) async throws -> SAPCachedData {
         // SAP prepares the FROM package only after the regular TO lifecycle,
         // including an otherwise-empty M0002001 payload. The old SwiftUI app
         // sends it even when there are no pending supported records.
@@ -269,22 +304,30 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         let toRequestID = Self.makeRequestID(prefix: "MTFMSYNCTO")
         SAPSynchronizationDiagnostics.logSynchronizationStage(1, "Uploading TO metadata")
         await progress(.uploadingOutgoingMetadata)
-        try await submitEmptyOutgoingMetadata(
-            requestID: toRequestID,
-            connection: synchronizationConnection
-        )
-        SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO documents have no pending payload")
-        
-        SAPSynchronizationDiagnostics.logSynchronizationStage(3, "Triggering TO post")
-        await progress(.postingOutgoingData)
-        try triggerOutgoingPost(requestID: toRequestID, connection: synchronizationConnection)
-        
-        SAPSynchronizationDiagnostics.logSynchronizationStep("Waiting for TO acknowledgement")
-        await progress(.waitingForOutgoingAcknowledgement)
-        try await waitForOutgoingAcknowledgement(
-            requestID: toRequestID,
-            connection: synchronizationConnection
-        )
+        let outgoingPayload = try await synchronizationStore.stageOutgoing(requestID: toRequestID)
+        do {
+            try await submitOutgoingMetadata(
+                requestID: toRequestID,
+                synchronizationData: outgoingPayload,
+                connection: synchronizationConnection
+            )
+            SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO rows staged with request ID")
+
+            SAPSynchronizationDiagnostics.logSynchronizationStage(3, "Triggering TO post")
+            await progress(.postingOutgoingData)
+            try triggerOutgoingPost(requestID: toRequestID, connection: synchronizationConnection)
+
+            SAPSynchronizationDiagnostics.logSynchronizationStep("Waiting for TO acknowledgement")
+            await progress(.waitingForOutgoingAcknowledgement)
+            try await waitForOutgoingAcknowledgement(
+                requestID: toRequestID,
+                connection: synchronizationConnection
+            )
+            try await synchronizationStore.confirmOutgoing(requestID: toRequestID)
+        } catch {
+            await synchronizationStore.abortOutgoing(requestID: toRequestID)
+            throw error
+        }
         
         SAPSynchronizationDiagnostics.logSynchronizationStep("Checking app version")
         await progress(.checkingAppVersion)
@@ -300,70 +343,38 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         await progress(.waitingForIncomingData)
         try await waitForIncomingData(requestID: fromRequestID, connection: synchronizationConnection)
 
-        var notificationsByID: [String: SAPNotificationSummary] = [:]
-        var briefingPartnersByID: [String: SAPBriefingPartner] = [:]
-        var briefingTemplatesByID: [String: SAPBriefingTemplate] = [:]
-        var technicalObjectsByID: [TechnicalObjectReference: TechnicalObjectNode] = [:]
-        var functionalLocationAliases: [String: String] = [:]
-        var cityNames: [TechnicalLocationKey: String] = [:]
-        var workerProfile: SAPWorkerProfile?
-        var openInspectionRowCount = 0
-        var isLastPack = false
-
-        for packageIndex in 1...256 {
-            await progress(.receivingIncomingPackages(packageNumber: packageIndex))
-            guard let response = try await call(method: "M0002003", parameters: Self.parameters([
-                "PARAMETER1": sapWorkerID,
-                "PARAMETER2": fromRequestID,
-                "PARAMETER3": "D"
-            ]), connection: synchronizationConnection) else {
-                throw SAPReadError.malformedPayload
+        try await synchronizationStore.beginIncoming()
+        do {
+            var isLastPack = false
+            for packageIndex in 1...256 {
+                await progress(.receivingIncomingPackages(packageNumber: packageIndex))
+                guard let response = try await call(method: "M0002003", parameters: Self.parameters([
+                    "PARAMETER1": sapWorkerID,
+                    "PARAMETER2": fromRequestID,
+                    "PARAMETER3": "D"
+                ]), connection: synchronizationConnection) else {
+                    throw SAPReadError.malformedPayload
+                }
+                let package = try SAPLegacyDataExchangeCodec.inboundPack(from: response)
+                try await synchronizationStore.appendIncoming(package)
+                isLastPack = package.isLastPackage
+                if isLastPack { break }
             }
-            let pack = try SAPLegacyDataExchangeCodec.inboundPack(from: response)
-            for notification in pack.notifications {
-                notificationsByID[notification.id] = notification
-            }
-            for partner in pack.briefingPartners {
-                briefingPartnersByID[partner.id] = partner
-            }
-            for template in pack.briefingTemplates {
-                briefingTemplatesByID[template.id] = template
-            }
-            for object in pack.technicalObjects {
-                technicalObjectsByID[object.reference] = object
-            }
-            functionalLocationAliases.merge(pack.functionalLocationAliases) { _, latest in latest }
-            cityNames.merge(pack.cityNames) { current, _ in current }
-            openInspectionRowCount += pack.openInspectionRowCount
-            if let profile = pack.workerProfile {
-                workerProfile = profile
-            }
-            isLastPack = pack.isLastPack
-            if isLastPack { break }
-        }
-
-        guard isLastPack else { throw SAPReadError.malformedPayload }
-        guard openInspectionRowCount == 0 || !notificationsByID.isEmpty else {
-            throw SAPReadError.malformedPayload
-        }
-        let snapshot = SAPReadSnapshot(
-            sapWorkerID: sapWorkerID,
-            notifications: notificationsByID.values.sorted { $0.id < $1.id },
-            workerProfile: workerProfile,
-            briefingPartners: briefingPartnersByID.values.sorted {
-                $0.name.localizedStandardCompare($1.name) == .orderedAscending
-            },
-            briefingTemplates: briefingTemplatesByID.values.sorted { $0.id < $1.id },
-            technicalObjects: TechnicalObjectHierarchyNormalizer.normalize(
-                SAPTechnicalObjectMapper.resolveRelationships(
-                    in: Array(technicalObjectsByID.values),
-                    functionalLocationAliases: functionalLocationAliases,
-                    cityNames: cityNames
-                )
+            guard isLastPack else { throw SAPReadError.malformedPayload }
+            await progress(.savingSnapshot)
+            let cachedData = try await synchronizationStore.commitIncoming(
+                sapWorkerID: sapWorkerID,
+                refreshedAt: Date()
             )
-        )
-        SAPSynchronizationDiagnostics.logSynchronizationCompleted(notificationCount: snapshot.notifications.count, businessEntityCount: 0)
-        return snapshot
+            SAPSynchronizationDiagnostics.logSynchronizationCompleted(
+                notificationCount: cachedData.notifications.count,
+                businessEntityCount: 0
+            )
+            return cachedData
+        } catch {
+            await synchronizationStore.abortIncoming()
+            throw error
+        }
     }
 
     private func verify(password: String, connection: SAPReadConnection) async throws -> String? {
@@ -427,8 +438,9 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         SAPSynchronizationDiagnostics.logTokenAccepted()
     }
 
-    private func submitEmptyOutgoingMetadata(
+    private func submitOutgoingMetadata(
         requestID: String,
+        synchronizationData: LegacySAPOutgoingPayload,
         connection: SAPReadConnection
     ) async throws {
         do {
@@ -438,7 +450,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                     "PARAMETER1": sapWorkerID,
                     "PARAMETER2": requestID
                 ]),
-                synchronizationData: SAPEmptyOutgoingSynchronizationData(),
+                synchronizationData: synchronizationData,
                 connection: connection,
                 responseMayBeEmpty: true
             )
@@ -603,7 +615,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         method: String,
         parameters: SAPReadParameters,
         usesLegacyAuthenticationEnvelope: Bool = false,
-        synchronizationData: SAPEmptyOutgoingSynchronizationData? = nil,
+        synchronizationData: LegacySAPOutgoingPayload? = nil,
         connection: SAPReadConnection,
         responseMayBeEmpty: Bool = false
     ) async throws -> String? {
@@ -755,41 +767,10 @@ private struct SAPReadParameters: Encodable {
     }
 }
 
-/// The legacy M0002001 contract requires all tables to be present, even when
-/// this read-only refresh has no approved local records to upload.
-private struct SAPEmptyOutgoingSynchronizationData: Encodable {
-    let T_0281: [[String: String]] = []
-    let T_0283: [[String: String]] = []
-    let T_0152R: [[String: String]] = []
-    let T_0154R: [[String: String]] = []
-    let T_0211R: [[String: String]] = []
-    let T_0212R: [[String: String]] = []
-    let T_0265: [[String: String]] = []
-    let T_0266: [[String: String]] = []
-    let T_0282: [[String: String]] = []
-    let T_0284: [[String: String]] = []
-    let T_0285: [[String: String]] = []
-    let T_0286: [[String: String]] = []
-    let T_0300: [[String: String]] = []
-    let T_0302: [[String: String]] = []
-}
-
-struct SAPReadAuthorization {
+fileprivate struct SAPReadAuthorization {
     let isAccepted: Bool
     let requiresInitialPasswordChange: Bool
     let token: String?
-}
-
-fileprivate struct SAPInboundPack {
-    let notifications: [SAPNotificationSummary]
-    let workerProfile: SAPWorkerProfile?
-    let briefingPartners: [SAPBriefingPartner]
-    let briefingTemplates: [SAPBriefingTemplate]
-    let technicalObjects: [TechnicalObjectNode]
-    let functionalLocationAliases: [String: String]
-    let cityNames: [TechnicalLocationKey: String]
-    let openInspectionRowCount: Int
-    let isLastPack: Bool
 }
 
 private enum SAPOutgoingPostAcknowledgement {
@@ -956,7 +937,7 @@ enum SAPLegacyDataExchangeCodec {
         throw SAPReadError.malformedPayload
     }
 
-    fileprivate static func inboundPack(from response: String) throws -> SAPInboundPack {
+    fileprivate static func inboundPack(from response: String) throws -> LegacySAPIncomingPackage {
         let envelopes = try decodeEnvelopes(response)
         try throwBackendMessage(in: envelopes)
         let structures = try envelopes.compactMap { envelope -> [String: Any]? in
@@ -970,48 +951,120 @@ enum SAPLegacyDataExchangeCodec {
         let isLastPack = parameterStructures.contains {
             stringValue(value(named: "PARAMETER1", in: $0)).uppercased() == "X"
         }
-        let notificationRows = structures.flatMap {
-            value(named: "T_0271", in: $0) as? [[String: Any]] ?? []
+        var tables: [String: [LegacySAPRow]] = [:]
+        for structure in structures {
+            for (rawName, rawValue) in structure {
+                let tableName = rawName.uppercased()
+                let compactName = tableName.replacingOccurrences(of: "_", with: "")
+                let isUserTable = compactName == "T0153"
+                let isExcluded = compactName.hasPrefix("T025")
+                let inboundTableName = compactName.hasPrefix("T")
+                    ? "FROM_T\(compactName.dropFirst())"
+                    : ""
+                guard !isExcluded else { continue }
+                let schemaName = isUserTable ? "USER" : inboundTableName
+                guard let schema = LegacySQLiteSchema.byName[schemaName] else {
+                    continue
+                }
+                let rawRows: [Any]
+                switch rawValue {
+                case let rows as [Any]:
+                    rawRows = rows
+                case is NSNull:
+                    rawRows = []
+                default:
+                    SAPSynchronizationDiagnostics.logRejectedStructure(
+                        table: tableName,
+                        location: "table",
+                        type: Swift.type(of: rawValue)
+                    )
+                    throw SAPReadError.malformedPayload
+                }
+                var rows: [LegacySAPRow] = []
+                var ignoredColumns = Set<String>()
+                let allowedColumns = Set(schema.columns.map(\.name))
+                for (rowIndex, rawRow) in rawRows.enumerated() {
+                    guard let dictionary = rawRow as? [String: Any] else {
+                        SAPSynchronizationDiagnostics.logRejectedStructure(
+                            table: tableName,
+                            location: "row \(rowIndex)",
+                            type: Swift.type(of: rawRow)
+                        )
+                        throw SAPReadError.malformedPayload
+                    }
+                    let unknownColumns = Set(
+                        dictionary.keys.map { $0.uppercased() }.filter { !allowedColumns.contains($0) }
+                    )
+                    if isUserTable {
+                        ignoredColumns.formUnion(unknownColumns)
+                    } else if !unknownColumns.isEmpty {
+                        SAPSynchronizationDiagnostics.logRejectedColumns(unknownColumns, table: tableName)
+                        throw SAPReadError.malformedPayload
+                    }
+                    rows.append(try scalarLegacyRow(
+                        from: dictionary,
+                        allowedColumns: allowedColumns,
+                        ignoringUnknownColumns: isUserTable,
+                        tableName: tableName
+                    ))
+                }
+                SAPSynchronizationDiagnostics.logIgnoredColumns(ignoredColumns, table: tableName)
+                tables[tableName, default: []].append(contentsOf: rows)
+            }
         }
-        let profileRows = structures.flatMap {
-            value(named: "T_0153", in: $0) as? [[String: Any]] ?? []
-        }
-        let briefingPartnerRows = structures.flatMap {
-            value(named: "T_0298", in: $0) as? [[String: Any]] ?? []
-        }
-        let briefingTemplateRows = structures.flatMap {
-            value(named: "T_0267", in: $0) as? [[String: Any]] ?? []
-        }
-        let functionalLocationRows = structures.flatMap {
-            value(named: "T_0261", in: $0) as? [[String: Any]] ?? []
-        }
-        let equipmentRows = structures.flatMap {
-            value(named: "T_0262", in: $0) as? [[String: Any]] ?? []
-        }
-        let mergedNotificationRows = notificationRows.map(mergedNotificationRow(from:))
-        let openInspectionRowCount = mergedNotificationRows.filter {
-            stringValue(value(named: "QMART", in: $0)).uppercased() == "I1" &&
-                stringValue(value(named: "STTXT", in: $0)).uppercased() != "MMAB"
-        }.count
-        return SAPInboundPack(
-            notifications: mergedNotificationRows.compactMap(notification(from:)),
-            workerProfile: profileRows.compactMap(workerProfile(from:)).first,
-            briefingPartners: briefingPartnerRows.compactMap(briefingPartner(from:)),
-            briefingTemplates: briefingTemplateRows.compactMap(briefingTemplate(from:)),
-            technicalObjects: functionalLocationRows.compactMap(SAPTechnicalObjectMapper.functionalLocation(from:))
-                + equipmentRows.compactMap(SAPTechnicalObjectMapper.equipment(from:)),
-            functionalLocationAliases: SAPTechnicalObjectMapper.functionalLocationAliases(
-                from: functionalLocationRows
-            ),
-            cityNames: SAPTechnicalObjectMapper.cityNames(
-                from: mergedNotificationRows + functionalLocationRows + equipmentRows
-            ),
-            openInspectionRowCount: openInspectionRowCount,
-            isLastPack: isLastPack
+        SAPSynchronizationDiagnostics.logIncomingPackage(tables)
+        return LegacySAPIncomingPackage(tables: tables, isLastPackage: isLastPack)
+    }
+
+    /// The Cordova `T_0153` importer selects the fixed USER fields, while the
+    /// regular table importers remain strict. Known columns must stay scalar.
+    static func legacyRow(
+        from dictionary: [String: Any],
+        for schema: LegacySQLiteTable,
+        ignoringUnknownColumns: Bool = false,
+        sourceTableName: String? = nil
+    ) throws -> LegacySAPRow {
+        try scalarLegacyRow(
+            from: dictionary,
+            allowedColumns: Set(schema.columns.map(\.name)),
+            ignoringUnknownColumns: ignoringUnknownColumns,
+            tableName: sourceTableName ?? schema.name
         )
     }
 
-    private static func notification(from row: [String: Any]) -> SAPNotificationSummary? {
+    private static func scalarLegacyRow(
+        from dictionary: [String: Any],
+        allowedColumns: Set<String>,
+        ignoringUnknownColumns: Bool,
+        tableName: String
+    ) throws -> LegacySAPRow {
+        var row: LegacySAPRow = [:]
+        for (rawColumn, value) in dictionary {
+            let column = rawColumn.uppercased()
+            guard allowedColumns.contains(column) else {
+                if ignoringUnknownColumns { continue }
+                throw SAPReadError.malformedPayload
+            }
+            switch value {
+            case is NSNull:
+                row[column] = .some(nil)
+            case let string as String:
+                row[column] = string
+            case let number as NSNumber:
+                row[column] = number.stringValue
+            default:
+                SAPSynchronizationDiagnostics.logRejectedValueType(
+                    column: column,
+                    table: tableName,
+                    type: Swift.type(of: value)
+                )
+                throw SAPReadError.malformedPayload
+            }
+        }
+        return row
+    }
+
+    static func notification(from row: [String: Any]) -> SAPNotificationSummary? {
         let mergedNotificationData = mergedNotificationRow(from: row)
 
         let type = stringValue(value(named: "QMART", in: mergedNotificationData)).uppercased()
@@ -1044,7 +1097,7 @@ enum SAPLegacyDataExchangeCodec {
         return row.merging(planData) { _, planValue in planValue }
     }
 
-    private static func workerProfile(from row: [String: Any]) -> SAPWorkerProfile? {
+    static func workerProfile(from row: [String: Any]) -> SAPWorkerProfile? {
         let personnelNumber = stringValue(value(named: "PERSNR", in: row))
         guard !personnelNumber.isEmpty else { return nil }
         return SAPWorkerProfile(
@@ -1059,7 +1112,7 @@ enum SAPLegacyDataExchangeCodec {
         )
     }
 
-    private static func briefingPartner(from row: [String: Any]) -> SAPBriefingPartner? {
+    static func briefingPartner(from row: [String: Any]) -> SAPBriefingPartner? {
         var data = row
         if let payload = feldwertValue(from: stringValue(value(named: "FELDWERT", in: row))) as? [String: Any] {
             data.merge(payload) { _, payloadValue in payloadValue }
@@ -1084,7 +1137,7 @@ enum SAPLegacyDataExchangeCodec {
         )
     }
 
-    private static func briefingTemplate(from row: [String: Any]) -> SAPBriefingTemplate? {
+    static func briefingTemplate(from row: [String: Any]) -> SAPBriefingTemplate? {
         guard let decodedPayload = feldwertValue(from: stringValue(value(named: "FELDWERT", in: row))) else {
             return nil
         }

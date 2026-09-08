@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AppRootView: View {
     let productionOfflineWorkRepository: any OfflineWorkRepository
-    let productionSAPDataCacheRepository: any SAPDataCacheRepository
     let productionPhotoAttachmentStore: any PhotoAttachmentStore
     @State private var phase: AppPhase = .launching
     @State private var onboarding = SAPOnboardingState()
@@ -130,20 +129,30 @@ struct AppRootView: View {
     }
 
     private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {
-        let tokenStore = KeychainSAPSyncTokenStore()
-        let refreshService = onboarding.readConnection.map {
-            SAPInboundNotificationRefreshService(
-                connection: $0,
-                synchronizationUserID: session.displayName,
-                tokenStore: tokenStore
+        do {
+            let repository = try SQLiteSAPDataCacheRepository.production(workerID: session.workerID)
+            let tokenStore = KeychainSAPSyncTokenStore()
+            let refreshService = onboarding.readConnection.map {
+                SAPInboundNotificationRefreshService(
+                    connection: $0,
+                    synchronizationUserID: session.displayName,
+                    tokenStore: tokenStore,
+                    synchronizationStore: repository
+                )
+            }
+            return SAPDataStore(
+                repository: repository,
+                refreshService: refreshService,
+                tokenStore: tokenStore,
+                localWorkerID: session.workerID,
+                synchronizationUserID: session.displayName
+            )
+        } catch {
+            return SAPDataStore(
+                repository: UnavailableSAPDataCacheRepository(),
+                refreshService: nil,
+                localWorkerID: session.workerID
             )
         }
-        return SAPDataStore(
-            repository: productionSAPDataCacheRepository,
-            refreshService: refreshService,
-            tokenStore: tokenStore,
-            localWorkerID: session.workerID,
-            synchronizationUserID: session.displayName
-        )
     }
 }

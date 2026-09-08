@@ -452,31 +452,31 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
     func refresh(
         sapPassword: String,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws -> SAPReadSnapshot {
+    ) async throws -> SAPCachedData {
         passwordRefreshCallCount += 1
-        return SAPReadSnapshot(
-            sapWorkerID: "TEST_WORKER",
+        return SAPCachedData(
             notifications: [],
             workerProfile: nil,
             briefingPartners: [],
             briefingTemplates: [],
-            technicalObjects: []
+            technicalObjects: [],
+            metadata: SAPCacheMetadata(sapWorkerID: "TEST_WORKER", lastSuccessfulRefreshAt: Date())
         )
     }
 
     func refresh(
         usingToken token: String,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws -> SAPReadSnapshot {
+    ) async throws -> SAPCachedData {
         tokenRefreshCallCount += 1
         if shouldSucceedWithToken {
-            return SAPReadSnapshot(
-                sapWorkerID: "TEST_WORKER",
+            return SAPCachedData(
                 notifications: [],
                 workerProfile: nil,
                 briefingPartners: [],
                 briefingTemplates: [],
-                technicalObjects: []
+                technicalObjects: [],
+                metadata: SAPCacheMetadata(sapWorkerID: "TEST_WORKER", lastSuccessfulRefreshAt: Date())
             )
         } else {
             throw SAPReadError.tokenInvalidOrExpired

@@ -132,33 +132,44 @@ final class TechnicalObjectsTests: XCTestCase {
         XCTAssertEqual(otherWorkerCount, 0)
     }
 
-    func testSQLiteAtomicReplacementWorkerIsolationAndExactNotificationLinks() async throws {
+    func testSQLiteLegacyCommitAndExactNotificationLinks() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
         let repository = try SQLiteSAPDataCacheRepository(databaseURL: url)
-        let location = node(
-            "DE-ESS-FL-420",
-            kind: .functionalLocation,
-            din: "420",
-            city: "Essen",
-            country: "DE",
-            location: "ESS"
-        )
-        let equipment = node("EQ-1", kind: .equipment, parent: location.reference, din: "420")
-        let note = SAPNotificationSummary(id: "N-1", client: "100", title: "Exact", functionalLocationID: "DE-ESS-FL-420", functionalLocationName: "Plant", equipmentID: "EQ-1", startDate: "", endDate: "", systemStatus: "", userStatus: "", rawPayloadJSON: "{}")
-        _ = try await repository.replace(with: .init(sapWorkerID: "1", notifications: [note], workerProfile: nil, technicalObjects: [location, equipment]), for: "w1", refreshedAt: Date())
+        try await repository.beginIncoming()
+        try await repository.appendIncoming(.init(tables: [
+            "T_0261": [[
+                "MANDT": "100", "STRNO": "DE-ESS-FL-420", "TPLNR": "INTERNAL-1",
+                "PLTXT": "Plant", "TPLND": "DE", "TPORT": "ESS", "CITY1": "Essen"
+            ]],
+            "T_0262": [[
+                "MANDT": "100", "EQUNR": "EQ-1", "STRNO": "DE-ESS-FL-420",
+                "TPLNR": "INTERNAL-1", "EQKTX": "Pump"
+            ]],
+            "T_0271": [[
+                "MANDT": "100", "QMNUM": "N-1", "QMART": "I1", "QMTXT": "Exact",
+                "STTXT": "OSNO", "STRNO": "DE-ESS-FL-420", "PLTXT": "Plant", "EQUNR": "EQ-1"
+            ]]
+        ], isLastPackage: true))
+        _ = try await repository.commitIncoming(sapWorkerID: "1", refreshedAt: Date())
         let workerCount = try await repository.technicalObjectCount(for: "w1", kind: .equipment)
-        let otherWorkerCount = try await repository.technicalObjectCount(for: "w2", kind: .equipment)
         XCTAssertEqual(workerCount, 1)
-        XCTAssertEqual(otherWorkerCount, 0)
         let storedRoots = try await repository.loadTechnicalObjectRoots(for: "w1", limit: 10, offset: 0)
         XCTAssertEqual(storedRoots.objects.first?.cityName, "Essen")
         XCTAssertEqual(storedRoots.objects.first?.locationCode, "ESS")
-        guard case let .equipment(detail)? = try await repository.loadTechnicalObjectDetail(for: "w1", reference: equipment.reference) else {
+        let equipmentReference = TechnicalObjectReference(kind: .equipment, objectID: "EQ-1")
+        guard case let .equipment(detail)? = try await repository.loadTechnicalObjectDetail(for: "w1", reference: equipmentReference) else {
             return XCTFail("Missing equipment detail")
         }
         XCTAssertEqual(detail.linkedNotifications.map(\.id), ["N-1"])
-        _ = try await repository.replace(with: .init(sapWorkerID: "1", notifications: [], workerProfile: nil, technicalObjects: [location]), for: "w1", refreshedAt: Date())
+        try await repository.beginIncoming()
+        try await repository.appendIncoming(.init(tables: [
+            "T_0261": [[
+                "MANDT": "100", "STRNO": "DE-ESS-FL-420", "TPLNR": "INTERNAL-1",
+                "PLTXT": "Plant", "TPLND": "DE", "TPORT": "ESS", "CITY1": "Essen"
+            ]]
+        ], isLastPackage: true))
+        _ = try await repository.commitIncoming(sapWorkerID: "1", refreshedAt: Date())
         let replacedCount = try await repository.technicalObjectCount(for: "w1", kind: .equipment)
         XCTAssertEqual(replacedCount, 0)
     }
@@ -196,13 +207,24 @@ final class TechnicalObjectsTests: XCTestCase {
         XCTAssertEqual(model.visibleRows[1].depth, 1)
     }
 
-    func testSQLiteVersionFourMigrationBackfillsEquipmentID() async throws {
+    func testOldNormalizedCacheIsNotImportedOrModified() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
         try createVersionFourCache(at: url)
-        let repository = try SQLiteSAPDataCacheRepository(databaseURL: url)
-        let page = try await repository.loadNotifications(for: "w1", matching: "", structuralFilter: .empty, limit: 10, offset: 0)
-        XCTAssertEqual(page.notifications.first?.equipmentID, "EQ-BACKFILL")
+        XCTAssertThrowsError(try SQLiteSAPDataCacheRepository(databaseURL: url))
+        var database: OpaquePointer?
+        XCTAssertEqual(url.path.withCString {
+            SQLiteC.open($0, &database, SQLiteC.openReadWrite | SQLiteC.openFullMutex, nil)
+        }, SQLiteC.ok)
+        defer { _ = SQLiteC.close(database) }
+        var statement: OpaquePointer?
+        XCTAssertEqual("SELECT raw_payload_json FROM sap_notifications".withCString {
+            SQLiteC.prepare(database, $0, -1, &statement, nil)
+        }, SQLiteC.ok)
+        defer { _ = SQLiteC.finalize(statement) }
+        XCTAssertEqual(SQLiteC.step(statement), SQLiteC.row)
+        let storedText = try XCTUnwrap(SQLiteC.columnText(statement, 0))
+        XCTAssertEqual(String(cString: storedText), "{\"EQUNR\":\"EQ-BACKFILL\"}")
     }
 
     @MainActor
