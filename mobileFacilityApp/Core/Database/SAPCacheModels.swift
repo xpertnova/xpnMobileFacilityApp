@@ -454,11 +454,40 @@ protocol SAPDataCacheRepository: TechnicalObjectRepository {
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata]
-    func replace(
-        with snapshot: SAPReadSnapshot,
-        for localWorkerID: String,
-        refreshedAt: Date
-    ) async throws -> SAPCachedData
+}
+
+typealias LegacySAPRow = [String: String?]
+
+struct LegacySAPIncomingPackage: Sendable {
+    let tables: [String: [LegacySAPRow]]
+    let isLastPackage: Bool
+}
+
+struct LegacySAPOutgoingPayload: Encodable, Sendable {
+    let T_0281: [[String: String]]
+    let T_0283: [[String: String]]
+    let T_0152R: [[String: String]]
+    let T_0154R: [[String: String]]
+    let T_0211R: [[String: String]]
+    let T_0212R: [[String: String]]
+    let T_0265: [[String: String]]
+    let T_0266: [[String: String]]
+    let T_0282: [[String: String]]
+    let T_0284: [[String: String]]
+    let T_0285: [[String: String]]
+    let T_0286: [[String: String]]
+    let T_0300: [[String: String]]
+    let T_0302: [[String: String]]
+}
+
+protocol SAPLegacySynchronizationStore: Sendable {
+    func stageOutgoing(requestID: String) async throws -> LegacySAPOutgoingPayload
+    func confirmOutgoing(requestID: String) async throws
+    func abortOutgoing(requestID: String) async
+    func beginIncoming() async throws
+    func appendIncoming(_ package: LegacySAPIncomingPackage) async throws
+    func commitIncoming(sapWorkerID: String, refreshedAt: Date) async throws -> SAPCachedData
+    func abortIncoming() async
 }
 
 enum SAPReadRefreshStage: Equatable, Sendable {
@@ -479,7 +508,7 @@ protocol SAPNotificationRefreshService: Sendable {
     func refresh(
         sapPassword: String,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws -> SAPReadSnapshot
+    ) async throws -> SAPCachedData
 }
 
 enum SAPReadError: LocalizedError {

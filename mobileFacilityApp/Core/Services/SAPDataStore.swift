@@ -173,15 +173,9 @@ final class SAPDataStore {
         refreshError = nil
         refreshStage = .authenticating
         do {
-            let snapshot = try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
+            cachedData = try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
                 self?.refreshStage = stage
             }
-            refreshStage = .savingSnapshot
-            cachedData = try await repository.replace(
-                with: snapshot,
-                for: localWorkerID,
-                refreshedAt: Date()
-            )
             try await loadTotalNotificationCount()
             try await loadNotificationFilterMetadata()
             try await loadFirstNotificationPage()
