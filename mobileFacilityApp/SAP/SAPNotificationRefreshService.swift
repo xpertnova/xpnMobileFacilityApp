@@ -767,7 +767,7 @@ private struct SAPReadParameters: Encodable {
     }
 }
 
-fileprivate struct SAPReadAuthorization {
+struct SAPReadAuthorization {
     let isAccepted: Bool
     let requiresInitialPasswordChange: Bool
     let token: String?

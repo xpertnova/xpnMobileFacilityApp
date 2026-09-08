@@ -162,9 +162,7 @@ struct FacilityShellView: View {
         .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
         .task(id: demo.offlineWorkStore.workerID) {
             await demo.offlineWorkStore.load()
-            if !demo.isDemoMode {
-                await demo.sapDataStore.loadCachedData()
-            }
+            await demo.sapDataStore.loadCachedData()
             await demo.technicalPlacesStore.load()
         }
         .task(id: scenePhase) {
@@ -612,7 +610,7 @@ struct FacilityShellView: View {
     private func mainContent(networkStatus: NetworkReachabilityStatus) -> some View {
         switch activeMainDestination {
         case .overview: DashboardView(demo: demo, networkStatus: networkStatus)
-        case .scan: ScanView()
+        case .scan: ScanView(demo: demo)
         case .notifications:
             NotificationsView(
                 demo: demo,

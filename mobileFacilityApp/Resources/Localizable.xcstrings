@@ -12019,6 +12019,57 @@
         }
       }
     },
+    "scan.action.openSettings" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen öffnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "scan.action.retry" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try again"
+          }
+        }
+      }
+    },
+    "scan.action.scanning" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanne …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanning …"
+          }
+        }
+      }
+    },
     "scan.action.simulate" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12059,13 +12110,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scan-Simulation starten"
+            "value" : "Scan starten"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Start scan simulation"
+            "value" : "Start scan"
           }
         }
       }
@@ -12076,13 +12127,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kamerazugriff ist im Demo-Modus nicht aktiv."
+            "value" : "Im Demo-Modus wird ein fester lokaler QR-Code verwendet; die Kamera bleibt inaktiv."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Camera access is not active in demo mode."
+            "value" : "Demo mode uses a fixed local QR code; the camera remains inactive."
           }
         }
       }
@@ -12187,19 +12238,172 @@
         }
       }
     },
+    "scan.error.cache.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die lokal gespeicherten Daten konnten nicht gelesen werden. Bitte erneut versuchen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The locally stored data could not be read. Please try again."
+          }
+        }
+      }
+    },
+    "scan.error.camera.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamera nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Camera unavailable"
+          }
+        }
+      }
+    },
+    "scan.error.cameraPermission.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Kamerazugriff in den Einstellungen, um QR-Codes zu scannen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow camera access in Settings to scan QR codes."
+          }
+        }
+      }
+    },
+    "scan.error.cameraUnavailable.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Gerät konnte keine Kamera für den QR-Scan gestartet werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A camera for QR scanning could not be started on this device."
+          }
+        }
+      }
+    },
+    "scan.error.invalid.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der QR-Code enthält keine unterstützten MTFM- oder MIHM-Daten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The QR code does not contain supported MTFM or MIHM data."
+          }
+        }
+      }
+    },
+    "scan.error.invalid.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungültiger QR-Code"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invalid QR code"
+          }
+        }
+      }
+    },
+    "scan.error.lookup.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Wartungsmeldung verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No maintenance notification available"
+          }
+        }
+      }
+    },
+    "scan.error.noMatches.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen QR-Code wurde keine offene Wartungsmeldung gefunden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No open maintenance notification was found for this QR code."
+          }
+        }
+      }
+    },
+    "scan.error.synchronizationRequired.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisiere zuerst die SAP-Daten und versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronize SAP data first, then try again."
+          }
+        }
+      }
+    },
     "scan.instructions.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Starte die Simulation, um einen technischen Platz aus den Demo-Daten zu erkennen."
+            "value" : "Starte den QR-Scan, um passende Wartungsmeldungen in den lokal synchronisierten Daten zu finden."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Start the simulation to identify a technical place from the demo data."
+            "value" : "Start QR scanning to find matching maintenance notifications in synchronized local data."
           }
         }
       }
@@ -12357,19 +12561,51 @@
         }
       }
     },
+    "scan.results.subtitle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle die Wartungsmeldung aus, die du öffnen möchtest."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the maintenance notification you want to open."
+          }
+        }
+      }
+    },
+    "scan.results.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mehrere Wartungsmeldungen gefunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multiple maintenance notifications found"
+          }
+        }
+      }
+    },
     "scan.subtitle" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Technischen Platz oder Equipment per QR-Code / RFID identifizieren"
+            "value" : "QR-Code scannen und passende lokale Wartungsmeldungen öffnen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Identify a technical place or equipment by QR code / RFID"
+            "value" : "Scan a QR code and open matching local maintenance notifications"
           }
         }
       }
@@ -12397,13 +12633,64 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scan-Simulation abgeschlossen"
+            "value" : "QR-Code erkannt"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scan simulation complete"
+            "value" : "QR code recognized"
+          }
+        }
+      }
+    },
+    "scan.viewport.configuring" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamera wird vorbereitet …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing camera …"
+          }
+        }
+      }
+    },
+    "scan.viewport.failed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan konnte nicht abgeschlossen werden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The scan could not be completed"
+          }
+        }
+      }
+    },
+    "scan.viewport.permission" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamerazugriff wird geprüft …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Checking camera access …"
           }
         }
       }
@@ -12421,6 +12708,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Point the camera at the asset QR code …"
+          }
+        }
+      }
+    },
+    "scan.viewport.resolving" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wartungsmeldungen werden gesucht …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Looking up maintenance notifications …"
           }
         }
       }

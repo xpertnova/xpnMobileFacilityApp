@@ -102,6 +102,11 @@ final class SAPDataStore {
         return locations + equipment
     }
 
+    func resolveQRCode(_ payload: LegacyQRCodePayload) async throws -> [SAPNotificationSummary] {
+        guard hasCache else { throw QRCodeResolutionError.synchronizationRequired }
+        return try await repository.resolveQRCode(payload, for: localWorkerID)
+    }
+
     func loadCachedData() async {
         state = .loadingCache
         do {

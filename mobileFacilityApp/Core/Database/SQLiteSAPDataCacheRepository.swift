@@ -145,6 +145,61 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return Array(Set(values)).sorted { $0.id < $1.id }
     }
 
+    func resolveQRCode(
+        _ payload: LegacyQRCodePayload,
+        for localWorkerID: String
+    ) async throws -> [SAPNotificationSummary] {
+        try validateWorker(localWorkerID)
+        guard let database else { throw QRCodeResolutionError.cacheUnavailable }
+
+        let notifications = try Self.activeNotifications(on: database)
+        let matches: [SAPNotificationSummary]
+        switch payload {
+        case let .mtfm(controlKey, functionalLocationID, equipmentID):
+            let identifiers = try Self.remappedIdentifiers(
+                functionalLocationID: functionalLocationID,
+                equipmentID: equipmentID,
+                on: database
+            )
+            matches = Self.matchMTFMNotifications(
+                notifications,
+                controlKey: controlKey,
+                functionalLocationID: identifiers.functionalLocationID,
+                equipmentID: identifiers.equipmentID
+            )
+
+        case let .mihm(objectNumber, technicalReference):
+            let directMatches = notifications.filter {
+                $0.legacyString(named: "TPWEH") == objectNumber
+                    && $0.legacyString(named: "EQFNR") == technicalReference
+            }
+            if !directMatches.isEmpty {
+                matches = directMatches
+            } else {
+                let mappedObject = try Self.rows(in: "FROM_T0273", on: database).last {
+                    Self.string("STRNO", in: $0).contains(objectNumber)
+                        && Self.string("EQFNR", in: $0) == technicalReference
+                }
+                if let mappedObject {
+                    matches = Self.matchMTFMNotifications(
+                        notifications,
+                        controlKey: nil,
+                        functionalLocationID: Self.string("STRNO", in: mappedObject),
+                        equipmentID: Self.optionalString("EQUNR", in: mappedObject)
+                    )
+                } else {
+                    matches = []
+                }
+            }
+        }
+
+        var uniqueMatches: [String: SAPNotificationSummary] = [:]
+        for match in matches where uniqueMatches[match.id] == nil {
+            uniqueMatches[match.id] = match
+        }
+        return uniqueMatches.values.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+    }
+
     func loadTechnicalObjectRoots(
         for localWorkerID: String,
         limit: Int,
@@ -546,6 +601,84 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     private static func notifications(on database: OpaquePointer) throws -> [SAPNotificationSummary] {
         try rows(in: "FROM_T0271", on: database)
             .compactMap(SAPLegacyDataExchangeCodec.notification(from:))
+    }
+
+    private static func activeNotifications(on database: OpaquePointer) throws -> [SAPNotificationSummary] {
+        let locallyProcessed = try rows(in: "TO_T0281", on: database)
+        let latestByNotification = Dictionary(grouping: locallyProcessed) {
+            string("QMNUM", in: $0)
+        }.compactMapValues { rows in
+            rows.max {
+                let lhs = (string("CREATEDDATE", in: $0), string("CREATEDTIME", in: $0))
+                let rhs = (string("CREATEDDATE", in: $1), string("CREATEDTIME", in: $1))
+                return lhs < rhs
+            }
+        }
+
+        return try notifications(on: database).filter { notification in
+            guard let local = latestByNotification[notification.id] else { return true }
+            let status = string("STTXT", in: local).uppercased()
+            return status == "MIAR" || status == "MOFN" || string("REQID", in: local) == "X"
+        }
+    }
+
+    private static func remappedIdentifiers(
+        functionalLocationID: String,
+        equipmentID: String?,
+        on database: OpaquePointer
+    ) throws -> (functionalLocationID: String, equipmentID: String?) {
+        let mappings = try rows(in: "FROM_T0213", on: database)
+        let mapping: [String: Any]?
+        if let equipmentID {
+            mapping = mappings.last { string("EQUNR_S4I", in: $0) == equipmentID }
+        } else {
+            mapping = mappings.last { string("STRNO_S4I", in: $0) == functionalLocationID }
+        }
+
+        guard let mapping else { return (functionalLocationID, equipmentID) }
+        if let mappedEquipment = optionalString("EQUNR_S4U", in: mapping),
+           let equipmentRow = try rows(in: "FROM_T0273", on: database).last(where: {
+               string("EQUNR", in: $0) == mappedEquipment
+           })
+        {
+            return (
+                string("STRNO", in: equipmentRow),
+                optionalString("EQUNR", in: equipmentRow)
+            )
+        }
+        if let mappedLocation = optionalString("STRNO_S4U", in: mapping) {
+            return (mappedLocation, nil)
+        }
+        return (functionalLocationID, equipmentID)
+    }
+
+    private static func matchMTFMNotifications(
+        _ notifications: [SAPNotificationSummary],
+        controlKey: String?,
+        functionalLocationID: String,
+        equipmentID: String?
+    ) -> [SAPNotificationSummary] {
+        notifications.filter { notification in
+            guard notification.functionalLocationID == functionalLocationID else { return false }
+            if let equipmentID {
+                guard notification.equipmentID.hasSuffix(equipmentID) else { return false }
+            } else {
+                guard notification.equipmentID.isEmpty else { return false }
+            }
+            if let controlKey {
+                return notification.legacyControlKey == controlKey
+            }
+            return true
+        }
+    }
+
+    private static func string(_ key: String, in row: [String: Any]) -> String {
+        (row[key] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func optionalString(_ key: String, in row: [String: Any]) -> String? {
+        let value = string(key, in: row)
+        return value.isEmpty || value == "%" ? nil : value
     }
 
     private static func technicalObjects(on database: OpaquePointer) throws -> [TechnicalObjectNode] {

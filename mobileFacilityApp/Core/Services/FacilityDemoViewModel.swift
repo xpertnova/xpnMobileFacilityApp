@@ -225,6 +225,12 @@ final class FacilityDemoViewModel {
         return true
     }
 
+    func openScannedNotification(_ notification: SAPNotificationSummary) {
+        selectedNotificationID = nil
+        selectedOfflineNotificationDetail = SAPNotificationDetail(summary: notification)
+        offlineNotificationReturnDestination = .scan
+    }
+
     /// Saved reviews are presented over their source screen and return there
     /// when the user closes the detail.
     func dismissOfflineNotificationDetail() {
