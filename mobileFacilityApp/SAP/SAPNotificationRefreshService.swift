@@ -834,7 +834,7 @@ enum SAPLegacyDataExchangeCodec {
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
 
-    static func authorization(from response: String) throws -> SAPReadAuthorization {
+    fileprivate static func authorization(from response: String) throws -> SAPReadAuthorization {
         let envelopes = try decodeEnvelopes(response)
         try throwBackendMessage(in: envelopes)
         for envelope in envelopes {

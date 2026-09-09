@@ -1,4 +1,6 @@
 import XCTest
+import CoreGraphics
+import PDFKit
 @testable import mobileFacilityApp
 
 final class FormStandardizationTests: XCTestCase {
@@ -83,6 +85,62 @@ final class FormStandardizationTests: XCTestCase {
                 base64Content: "JVBERg=="
             )
         )
+    }
+
+    func testFirePermitPDFMatchesFivePageLegacyDocumentStructure() throws {
+        let source = SafetyFormSource(
+            contexts: [],
+            partners: [],
+            instructorFirstName: "Ada",
+            instructorLastName: "Lovelace",
+            organizationUnit: "E.ON"
+        )
+        var record = FirePermitRecord(source: source, now: Date(timeIntervalSince1970: 0))
+        record.context = safetyFormContextFixture
+        record.workDescription = "Welding work"
+
+        let artifact = try LegacyFirePermitPDFRenderer().render(record)
+
+        XCTAssertEqual(artifact.fileName, "Feuererlaubnisschein.pdf")
+        XCTAssertEqual(pdfPageCount(in: artifact.data), 5)
+    }
+
+    func testElectricalSafetyPDFMatchesTwoPageLegacyDocumentStructure() throws {
+        let source = SafetyFormSource(
+            contexts: [],
+            partners: [],
+            instructorFirstName: "Ada",
+            instructorLastName: "Lovelace",
+            organizationUnit: "E.ON"
+        )
+        var record = ElectricalSafetyDraftPayload(source: source, now: Date(timeIntervalSince1970: 0))
+        record.context = safetyFormContextFixture
+        record.workplace = "Switch room"
+        record.electricalWork = "Inspection"
+
+        let artifact = try LegacyElectricalSafetyPDFRenderer().render(record)
+
+        XCTAssertEqual(artifact.fileName, "Einweisungsformular.pdf")
+        XCTAssertEqual(pdfPageCount(in: artifact.data), 2)
+    }
+
+    func testSafetyPDFAlwaysIncludesTheLegalCompanyFooter() throws {
+        let source = SafetyFormSource(
+            contexts: [],
+            partners: [],
+            instructorFirstName: "Ada",
+            instructorLastName: "Lovelace",
+            organizationUnit: "External contractor"
+        )
+        var record = FirePermitRecord(source: source, now: Date(timeIntervalSince1970: 0))
+        record.context = safetyFormContextFixture
+
+        let artifact = try LegacyFirePermitPDFRenderer().render(record)
+        let text = try XCTUnwrap(PDFDocument(data: artifact.data)?.string)
+
+        XCTAssertTrue(text.contains("Geschäftsführer/Managing Directors"))
+        XCTAssertTrue(text.contains("E.ON Service GmbH Sitz/Head Office: Essen"))
+        XCTAssertTrue(text.contains("Seite 1 von 5"))
     }
 
     func testLockedSignatureRequirementUsesTheLocalizedSignerFieldLabel() {
@@ -289,5 +347,24 @@ final class FormStandardizationTests: XCTestCase {
         briefing.endDate = Date(timeIntervalSince1970: 1_000)
         briefing.setStartDate(later)
         XCTAssertEqual(briefing.endDate, later)
+    }
+
+    private var safetyFormContextFixture: SafetyFormContext {
+        SafetyFormContext(
+            businessEntityID: "BE-1",
+            businessEntityTitle: "Essen",
+            buildingCode: "GB01",
+            buildingTitle: "Main building",
+            functionalLocationID: "DE-ESS-001",
+            functionalLocationTitle: "Switch room"
+        )
+    }
+
+    private func pdfPageCount(in data: Data) -> Int? {
+        guard let provider = CGDataProvider(data: data as CFData),
+              let document = CGPDFDocument(provider) else {
+            return nil
+        }
+        return document.numberOfPages
     }
 }
