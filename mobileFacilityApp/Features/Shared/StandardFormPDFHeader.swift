@@ -17,11 +17,10 @@ struct StandardFormPDFHeaderData: Sendable, Equatable {
 
 /// Fixed-German PDF header shared by all four form renderers.
 enum StandardFormPDFHeaderRenderer {
-    private static let labelFont = UIFont.boldSystemFont(ofSize: 9)
-    private static let valueFont = UIFont.systemFont(ofSize: 9)
-    private static let titleFont = UIFont.boldSystemFont(ofSize: 17)
-    private static let border = UIColor.black.withAlphaComponent(0.72)
-    private static let labelFill = UIColor(white: 0.96, alpha: 1)
+    private static let labelFont = UIFont.systemFont(ofSize: 9.5)
+    private static let valueFont = UIFont.systemFont(ofSize: 9.5)
+    private static let titleFont = UIFont.boldSystemFont(ofSize: 20)
+    private static let border = UIColor.black
 
     @discardableResult
     static func draw(
@@ -34,7 +33,7 @@ enum StandardFormPDFHeaderRenderer {
         let contentWidth = pageWidth - margin * 2
         var y = startY
         let titleHeight = max(
-            58,
+            46,
             textHeight(header.documentTitle, width: contentWidth - 16, font: titleFont) + 16
         )
         let titleRect = CGRect(x: margin, y: y, width: contentWidth, height: titleHeight)
@@ -52,7 +51,7 @@ enum StandardFormPDFHeaderRenderer {
             .joined(separator: "\n")
         let instructorHeight = max(
             46,
-            textHeight("Einweiser/Abnehmer\n(E.ON Mitarbeiter)", width: contentWidth * 0.25 - 12, font: labelFont) + 12,
+            textHeight("Abnehmer (E.ON Mitarbeiter)", width: contentWidth * 0.25 - 12, font: labelFont) + 12,
             textHeight(header.instructorName, width: contentWidth * 0.5 - 12, font: valueFont) + 12,
             textHeight(header.organizationUnit, width: contentWidth * 0.25 - 12, font: valueFont) + 12
         )
@@ -61,10 +60,10 @@ enum StandardFormPDFHeaderRenderer {
             CGRect(x: margin + contentWidth * 0.25, y: y, width: contentWidth * 0.5, height: instructorHeight),
             CGRect(x: margin + contentWidth * 0.75, y: y, width: contentWidth * 0.25, height: instructorHeight)
         ]
-        instructorRects.enumerated().forEach { index, rect in
-            fillAndStroke(rect, fill: index == 0 ? labelFill : .white, context: context)
+        instructorRects.forEach { rect in
+            fillAndStroke(rect, fill: .white, context: context)
         }
-        drawText("Einweiser/Abnehmer\n(E.ON Mitarbeiter)", in: instructorRects[0].insetBy(dx: 6, dy: 6), font: labelFont)
+        drawText("Abnehmer (E.ON Mitarbeiter)", in: instructorRects[0].insetBy(dx: 5, dy: 5), font: labelFont)
         drawText(header.instructorName, in: instructorRects[1].insetBy(dx: 6, dy: 6), font: valueFont)
         drawText(header.organizationUnit, in: instructorRects[2].insetBy(dx: 6, dy: 6), font: valueFont)
         y += instructorHeight
@@ -82,13 +81,13 @@ enum StandardFormPDFHeaderRenderer {
         for (label, value) in rows {
             let valueWidth = contentWidth - labelWidth
             let height = max(
-                34,
+                40,
                 textHeight(label, width: labelWidth - 12, font: labelFont) + 12,
                 textHeight(value, width: valueWidth - 12, font: valueFont) + 12
             )
             let labelRect = CGRect(x: margin, y: y, width: labelWidth, height: height)
             let valueRect = CGRect(x: labelRect.maxX, y: y, width: valueWidth, height: height)
-            fillAndStroke(labelRect, fill: labelFill, context: context)
+            fillAndStroke(labelRect, fill: .white, context: context)
             fillAndStroke(valueRect, fill: .white, context: context)
             drawText(label, in: labelRect.insetBy(dx: 6, dy: 6), font: labelFont)
             drawText(value, in: valueRect.insetBy(dx: 6, dy: 6), font: valueFont)
@@ -127,8 +126,10 @@ enum StandardFormPDFHeaderRenderer {
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byWordWrapping
         (value as NSString).draw(
-            in: rect,
-            withAttributes: [.font: font, .paragraphStyle: paragraph, .foregroundColor: UIColor.black]
+            with: rect,
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .paragraphStyle: paragraph, .foregroundColor: UIColor.black],
+            context: nil
         )
     }
 
