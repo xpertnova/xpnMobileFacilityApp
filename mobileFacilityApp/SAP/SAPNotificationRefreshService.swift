@@ -81,6 +81,52 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) \(method) failed: \(error.localizedDescription)")
     }
 
+    /// Produces a support-safe summary for an HTTP error response. In
+    /// particular, this must never include the request body, password, OAuth
+    /// token, cookie, complete endpoint, or the raw response body.
+    static func httpFailureSummary(
+        method: String,
+        response: HTTPURLResponse,
+        responseBody: Data = Data()
+    ) -> String {
+        var details = ["HTTP \(response.statusCode)"]
+
+        if let correlationID = response.value(forHTTPHeaderField: "X-Correlation-ID")
+            ?? response.value(forHTTPHeaderField: "X-CorrelationID")
+            ?? response.value(forHTTPHeaderField: "X-Request-ID")
+            ?? response.value(forHTTPHeaderField: "X-Vcap-Request-Id"),
+           let safeCorrelationID = safeCorrelationID(from: correlationID) {
+            details.append("correlation ID=\(safeCorrelationID)")
+        }
+
+        if let challenge = response.value(forHTTPHeaderField: "WWW-Authenticate"),
+           let scheme = authenticationScheme(from: challenge) {
+            details.append("authentication challenge=\(scheme)")
+        }
+
+        if let odataError = safeODataErrorSummary(from: responseBody) {
+            details.append(odataError)
+        }
+
+        let summary = "\(prefix) \(method) received \(details.joined(separator: "; "))"
+        return summary.hasSuffix(".") ? summary : summary + "."
+    }
+
+    static func logHTTPFailure(
+        method: String,
+        response: HTTPURLResponse,
+        responseBody: Data
+    ) {
+        print(httpFailureSummary(method: method, response: response, responseBody: responseBody))
+    }
+
+    static func logSynchronizationTransport(reusesOnboardingSession: Bool) {
+        let mode = reusesOnboardingSession
+            ? "Debug transport: reusing the authenticated onboarding session."
+            : "Transport: using an isolated copy of the authenticated onboarding session."
+        print("\(prefix) \(mode)")
+    }
+
     static func logOnboardingIdentityFailure(_ error: Error) {
         print("\(prefix) Could not resolve the SAP synchronization identity: \(error.localizedDescription)")
     }
@@ -162,11 +208,91 @@ enum SAPSynchronizationDiagnostics {
         guard value.count > 6 else { return "••••" }
         return "••••\(value.suffix(6))"
     }
+
+    private static func safeCorrelationID(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 128 else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.:"))
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return trimmed
+    }
+
+    private static func authenticationScheme(from value: String) -> String? {
+        let scheme = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0 == " " || $0 == "," })
+            .first
+            .map(String.init) ?? ""
+        guard !scheme.isEmpty, scheme.count <= 32,
+              scheme.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) })
+        else {
+            return nil
+        }
+        return scheme
+    }
+
+    /// Extracts only standard OData error fields. Raw error pages are not
+    /// printed: they can contain gateway configuration or sensitive data.
+    private static func safeODataErrorSummary(from data: Data) -> String? {
+        guard !data.isEmpty, data.count <= 64 * 1024,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = root["error"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        let code = safeODataErrorCode(error["code"] as? String)
+        let rawMessage: String?
+        if let message = error["message"] as? [String: Any] {
+            rawMessage = message["value"] as? String
+        } else {
+            rawMessage = error["message"] as? String
+        }
+        let message = safeODataErrorMessage(rawMessage)
+
+        switch (code, message) {
+        case let (code?, message?):
+            return "SAP error code=\(code); SAP reason=\(message)"
+        case let (code?, nil):
+            return "SAP error code=\(code)"
+        case let (nil, message?):
+            return "SAP reason=\(message)"
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    private static func safeODataErrorCode(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 128 else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "/_.:-"))
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return trimmed
+    }
+
+    private static func safeODataErrorMessage(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !normalized.isEmpty, normalized.count <= 280 else { return nil }
+
+        let lowered = normalized.lowercased()
+        let unsafeMarkers = [
+            "bearer ", "basic ", "token", "password", "cookie", "authorization:",
+            "http://", "https://", "/sap/", "@", "user=", "username=", "device="
+        ]
+        guard !unsafeMarkers.contains(where: { lowered.contains($0) }) else { return nil }
+        return normalized
+    }
 }
 struct SAPReadConnection: @unchecked Sendable {
     let backendURL: URL
     let sapURLSession: SAPURLSession
     let deviceID: String
+    private let invalidatesSessionWhenFinished: Bool
 
     static func resolve(from context: OnboardingContext) async throws -> SAPReadConnection {
         guard
@@ -180,13 +306,17 @@ struct SAPReadConnection: @unchecked Sendable {
         return SAPReadConnection(
             backendURL: settings.backendURL,
             sapURLSession: context.sapURLSession,
-            deviceID: deviceID
+            deviceID: deviceID,
+            invalidatesSessionWhenFinished: false
         )
     }
 
     /// Each synchronization gets its own session. The retained onboarding
     /// session remains the authenticated template for a later refresh.
-    func newSynchronizationConnection() -> SAPReadConnection {
+    func newSynchronizationConnection(reusingOnboardingSession: Bool = false) -> SAPReadConnection {
+        if reusingOnboardingSession {
+            return self
+        }
         let synchronizationSession = sapURLSession.copy(
             configuration: sapURLSession.configuration,
             delegate: sapURLSession.delegate,
@@ -196,11 +326,13 @@ struct SAPReadConnection: @unchecked Sendable {
         return SAPReadConnection(
             backendURL: backendURL,
             sapURLSession: synchronizationSession,
-            deviceID: deviceID
+            deviceID: deviceID,
+            invalidatesSessionWhenFinished: true
         )
     }
 
     func finishSynchronizationSession() {
+        guard invalidatesSessionWhenFinished else { return }
         sapURLSession.finishTasksAndInvalidate()
     }
 }
@@ -209,28 +341,42 @@ struct SAPReadConnection: @unchecked Sendable {
 /// response payloads, tokens, or complete device/user identifiers here.
 
 struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
-    private static let downloadSchemaVersion = "1.3.2-21-121"
+    private static let downloadSchemaVersion = "1.3.8-58-358"
     private let connection: SAPReadConnection
     private let synchronizationUserID: String
     private let synchronizationStore: any SAPLegacySynchronizationStore
     private let tokenStore: (any SAPSyncTokenStore)?
+    private let tokenStoreAccountID: String
 
     init(
         connection: SAPReadConnection,
         synchronizationUserID: String,
         tokenStore: (any SAPSyncTokenStore)? = nil,
+        tokenStoreAccountID: String? = nil,
         synchronizationStore: any SAPLegacySynchronizationStore
     ) {
         self.connection = connection
         self.synchronizationUserID = synchronizationUserID
         self.synchronizationStore = synchronizationStore
         self.tokenStore = tokenStore
+        self.tokenStoreAccountID = tokenStoreAccountID ?? synchronizationUserID
     }
 
     private var sapWorkerID: String {
         synchronizationUserID
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased(with: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// A narrow A/B transport check for diagnosing an OAuth/session failure.
+    /// It is available only in Debug builds and must be enabled explicitly in
+    /// Xcode with the launch argument `-SAPSyncReuseOnboardingSession`.
+    private static var reusesOnboardingSessionForDebugging: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-SAPSyncReuseOnboardingSession")
+        #else
+        false
+        #endif
     }
 
     func refresh(
@@ -241,9 +387,15 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         guard !password.isEmpty else { throw SAPReadError.passwordRequired }
         guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
 
-        let synchronizationConnection = connection.newSynchronizationConnection()
+        let reusesOnboardingSession = Self.reusesOnboardingSessionForDebugging
+        let synchronizationConnection = connection.newSynchronizationConnection(
+            reusingOnboardingSession: reusesOnboardingSession
+        )
         defer { synchronizationConnection.finishSynchronizationSession() }
 
+        SAPSynchronizationDiagnostics.logSynchronizationTransport(
+            reusesOnboardingSession: reusesOnboardingSession
+        )
         SAPSynchronizationDiagnostics.logSynchronizationStarted(userID: sapWorkerID)
         SAPSynchronizationDiagnostics.logPasswordCheckStarted(
             host: connection.backendURL.host ?? "unknown host",
@@ -253,7 +405,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         await progress(.authenticating)
         let token = try await verify(password: password, connection: synchronizationConnection)
         if let token, !token.isEmpty {
-            try? tokenStore?.save(token: token, for: sapWorkerID)
+            try? tokenStore?.save(token: token, for: tokenStoreAccountID)
         }
 
         return try await performInboundSynchronization(
@@ -270,9 +422,15 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         guard !trimmedToken.isEmpty else { throw SAPReadError.tokenInvalidOrExpired }
         guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
 
-        let synchronizationConnection = connection.newSynchronizationConnection()
+        let reusesOnboardingSession = Self.reusesOnboardingSessionForDebugging
+        let synchronizationConnection = connection.newSynchronizationConnection(
+            reusingOnboardingSession: reusesOnboardingSession
+        )
         defer { synchronizationConnection.finishSynchronizationSession() }
 
+        SAPSynchronizationDiagnostics.logSynchronizationTransport(
+            reusesOnboardingSession: reusesOnboardingSession
+        )
         SAPSynchronizationDiagnostics.logSynchronizationStarted(userID: sapWorkerID)
         SAPSynchronizationDiagnostics.logTokenCheckStarted(
             host: connection.backendURL.host ?? "unknown host",
@@ -283,7 +441,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         do {
             try await verify(token: trimmedToken, connection: synchronizationConnection)
         } catch {
-            tokenStore?.deleteToken(for: sapWorkerID)
+            tokenStore?.deleteToken(for: tokenStoreAccountID)
             throw error
         }
 
@@ -667,6 +825,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             payload = nil
         }
         guard (200...299).contains(httpResponse.statusCode) else {
+            SAPSynchronizationDiagnostics.logHTTPFailure(
+                method: method,
+                response: httpResponse,
+                responseBody: data
+            )
             throw SAPReadError.httpStatus(httpResponse.statusCode)
         }
         guard !data.isEmpty else {
@@ -702,18 +865,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     }
 
     private func serviceRoot(connection: SAPReadConnection) throws -> URL {
-        guard
-            let parametersURL = Bundle.main.url(forResource: "AppParameters", withExtension: "plist"),
-            let parametersData = try? Data(contentsOf: parametersURL),
-            let parameters = try? PropertyListSerialization.propertyList(from: parametersData, format: nil) as? [String: Any],
-            let destinations = parameters["Destinations"] as? [String: Any],
-            let destination = destinations["XPNMTFMODDAEXSRVEntities"] as? String
-        else {
+        guard let serviceRoot = SAPDataExchangeEndpoint.configuredServiceRoot(
+            backendURL: connection.backendURL
+        ) else {
             throw SAPReadError.configurationUnavailable
         }
-        let path = destination.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !path.isEmpty else { throw SAPReadError.configurationUnavailable }
-        return connection.backendURL.appendingPathComponent(path, isDirectory: true)
+        return serviceRoot
     }
 
     private static func parameters(_ overrides: [String: String]) -> SAPReadParameters {
@@ -767,7 +924,7 @@ private struct SAPReadParameters: Encodable {
     }
 }
 
-fileprivate struct SAPReadAuthorization {
+struct SAPReadAuthorization {
     let isAccepted: Bool
     let requiresInitialPasswordChange: Bool
     let token: String?

@@ -18,10 +18,12 @@ final class SAPDataStore {
     private let notificationPageSize = 40
     let localWorkerID: String
     let synchronizationUserID: String
+    private let tokenStoreAccountID: String
     private(set) var state: State = .loadingCache
     private(set) var cachedData: SAPCachedData = .empty
     private(set) var refreshError: SAPReadError?
     private(set) var refreshStage: SAPReadRefreshStage?
+    private(set) var refreshFailureContext: SAPRefreshFailureContext?
     private(set) var notifications: [SAPNotificationSummary] = []
     private(set) var matchingNotificationCount = 0
     private(set) var totalNotificationCount = 0
@@ -37,18 +39,20 @@ final class SAPDataStore {
         refreshService: (any SAPNotificationRefreshService)?,
         tokenStore: (any SAPSyncTokenStore)? = nil,
         localWorkerID: String,
-        synchronizationUserID: String? = nil
+        synchronizationUserID: String? = nil,
+        tokenStoreAccountID: String? = nil
     ) {
         self.repository = repository
         self.refreshService = refreshService
         self.tokenStore = tokenStore
         self.localWorkerID = localWorkerID
         self.synchronizationUserID = synchronizationUserID ?? localWorkerID
+        self.tokenStoreAccountID = tokenStoreAccountID ?? self.synchronizationUserID
     }
 
     var hasValidSavedToken: Bool {
         guard let tokenStore else { return false }
-        let token = tokenStore.token(for: synchronizationUserID)
+        let token = tokenStore.token(for: tokenStoreAccountID)
         return token != nil && !(token?.isEmpty ?? true)
     }
 
@@ -177,6 +181,7 @@ final class SAPDataStore {
     func refresh(sapPassword: String) async {
         guard state != .refreshing else { return }
         guard let refreshService else {
+            refreshFailureContext = nil
             refreshError = .authenticatedConnectionUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
             return
@@ -184,6 +189,7 @@ final class SAPDataStore {
         state = .refreshing
         refreshError = nil
         refreshStage = .authenticating
+        refreshFailureContext = nil
         do {
             cachedData = try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
                 self?.refreshStage = stage
@@ -195,12 +201,15 @@ final class SAPDataStore {
             state = .ready
         } catch is CancellationError {
             refreshStage = nil
+            refreshFailureContext = nil
             state = cachedData.metadata == nil ? .noData : .ready
         } catch let error as SAPReadError {
+            recordRefreshFailure(error, authenticationMethod: .password)
             refreshStage = nil
             refreshError = error
             state = cachedData.metadata == nil ? .failed : .ready
         } catch {
+            recordRefreshFailure(.serviceUnavailable, authenticationMethod: .password)
             refreshStage = nil
             refreshError = .serviceUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
@@ -215,6 +224,7 @@ final class SAPDataStore {
         state = .refreshing
         refreshError = nil
         refreshStage = .authenticating
+        refreshFailureContext = nil
         return true
     }
 
@@ -226,6 +236,7 @@ final class SAPDataStore {
         if state != .refreshing {
             guard hasValidSavedToken else { return false }
             guard refreshService != nil else {
+                refreshFailureContext = nil
                 refreshError = .authenticatedConnectionUnavailable
                 state = cachedData.metadata == nil ? .failed : .ready
                 return false
@@ -233,14 +244,16 @@ final class SAPDataStore {
             state = .refreshing
             refreshError = nil
             refreshStage = .authenticating
+            refreshFailureContext = nil
         }
-        guard let tokenStore, let token = tokenStore.token(for: synchronizationUserID), !token.isEmpty else {
+        guard let tokenStore, let token = tokenStore.token(for: tokenStoreAccountID), !token.isEmpty else {
             refreshStage = nil
             state = cachedData.metadata == nil ? .noData : .ready
             return false
         }
         guard let refreshService else {
             refreshStage = nil
+            refreshFailureContext = nil
             refreshError = .authenticatedConnectionUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
             return false
@@ -257,21 +270,26 @@ final class SAPDataStore {
             return true
         } catch is CancellationError {
             refreshStage = nil
+            refreshFailureContext = nil
             state = cachedData.metadata == nil ? .noData : .ready
             return false
         } catch let error as SAPReadError {
-            refreshStage = nil
-            if case .tokenInvalidOrExpired = error {
-                tokenStore.deleteToken(for: synchronizationUserID)
+            if shouldDiscardSavedToken(for: error) {
+                tokenStore.deleteToken(for: tokenStoreAccountID)
+                refreshStage = nil
+                refreshFailureContext = nil
                 refreshError = nil
                 state = cachedData.metadata == nil ? .noData : .ready
                 return false
             } else {
+                recordRefreshFailure(error, authenticationMethod: .savedToken)
+                refreshStage = nil
                 refreshError = error
                 state = cachedData.metadata == nil ? .failed : .ready
                 return false
             }
         } catch {
+            recordRefreshFailure(.serviceUnavailable, authenticationMethod: .savedToken)
             refreshStage = nil
             refreshError = .serviceUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
@@ -280,14 +298,35 @@ final class SAPDataStore {
     }
 
     func deleteSavedToken() {
-        tokenStore?.deleteToken(for: synchronizationUserID)
+        tokenStore?.deleteToken(for: tokenStoreAccountID)
     }
 
     func dismissError() {
         refreshError = nil
+        refreshFailureContext = nil
         if state == .failed {
             state = cachedData.metadata == nil ? .noData : .ready
         }
+    }
+
+    private func shouldDiscardSavedToken(for error: SAPReadError) -> Bool {
+        switch error {
+        case .tokenInvalidOrExpired, .httpStatus(401), .httpStatus(403):
+            true
+        default:
+            false
+        }
+    }
+
+    private func recordRefreshFailure(
+        _ error: SAPReadError,
+        authenticationMethod: SAPRefreshAuthenticationMethod
+    ) {
+        refreshFailureContext = SAPRefreshFailureContext(
+            authenticationMethod: authenticationMethod,
+            stage: refreshStage ?? .authenticating,
+            error: error
+        )
     }
 
     private func loadFirstNotificationPage() async throws {
