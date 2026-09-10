@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Application Identifier</key>
+	<string>com.eon.pm.mtfm.sdk</string>
+	<key>Application Type</key>
+	<string>Online</string>
+	<key>Destinations</key>
+	<dict>
+		<key>AuthenticationPath</key>
+		<string>CEO_100_MTFM</string>
+		<key>XPNMTFMODDAEXSRVEntities</key>
+		<string>CEO_100_MTFM/sap/opu/odata/ezo/daex4tu</string>
+	</dict>
+	<key>Digital Signature Public Key</key>
+	<string>DigitalSignaturePublicKey.pem</string>
+	<key>Localizable Strings File Name</key>
+	<string></string>
+</dict>
+</plist>
