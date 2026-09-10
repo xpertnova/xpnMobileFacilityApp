@@ -7,10 +7,24 @@ struct NotificationStructuralFilterPresentationState {
     var expandedField: StructuralFilterField?
 }
 
+struct NotificationSearchState: Equatable {
+    var draftQuery = ""
+    private(set) var appliedQuery = ""
+
+    /// Keeps text entry separate from the query currently applied to the list.
+    /// Returns whether a new search needs to be performed.
+    mutating func submit() -> Bool {
+        let normalizedQuery = draftQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedQuery != appliedQuery else { return false }
+        appliedQuery = normalizedQuery
+        return true
+    }
+}
+
 struct NotificationsView: View {
     let demo: FacilityDemoViewModel
     @Binding var filterPresentation: NotificationStructuralFilterPresentationState
-    @State private var query = ""
+    @State private var search = NotificationSearchState()
     @State private var filterSelection: NotificationFilter = .all
     @State private var lastVisibleNotificationID: String?
     @State private var scrollRestoreID: String?
@@ -32,11 +46,11 @@ struct NotificationsView: View {
             case .draft: return notification.status == .draft
             }
         }
-        guard !query.isEmpty else { return filtered }
+        guard !search.appliedQuery.isEmpty else { return filtered }
         return filtered.filter {
-            $0.title.localizedCaseInsensitiveContains(query) ||
-            $0.location.localizedCaseInsensitiveContains(query) ||
-            $0.id.localizedCaseInsensitiveContains(query)
+            $0.title.localizedCaseInsensitiveContains(search.appliedQuery) ||
+            $0.location.localizedCaseInsensitiveContains(search.appliedQuery) ||
+            $0.id.localizedCaseInsensitiveContains(search.appliedQuery)
         }
     }
 
@@ -108,12 +122,6 @@ struct NotificationsView: View {
             await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
             await demo.sapDataStore.loadCachedData()
         }
-        .task(id: query) {
-            guard !demo.isDemoMode else { return }
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            await demo.sapDataStore.updateNotificationSearch(query)
-        }
     }
 
     @ViewBuilder
@@ -151,53 +159,67 @@ struct NotificationsView: View {
                     Text("notifications.structuralFilter.open")
                         .lineLimit(1)
                 }
-
-                if filterPresentation.appliedFilter.hasBusinessEntity {
-                    Image(systemName: "checkmark.circle.fill")
-                        .accessibilityHidden(true)
-                }
             }
-            .fontWeight(.semibold)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(
+                filterPresentation.appliedFilter.hasBusinessEntity ? .white : FacilityTheme.ink
+            )
+            .padding(.horizontal, showsTitle ? 14 : 0)
             .fixedSize(horizontal: true, vertical: false)
-            .frame(minHeight: 44)
+            .frame(minWidth: showsTitle ? nil : 48, minHeight: 44)
+            .background(
+                filterPresentation.appliedFilter.hasBusinessEntity ? FacilityTheme.accent : FacilityTheme.surface,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(
+                        filterPresentation.appliedFilter.hasBusinessEntity
+                            ? Color.white.opacity(0.22)
+                            : FacilityTheme.accent.opacity(0.26),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(
+                color: filterPresentation.appliedFilter.hasBusinessEntity
+                    ? FacilityTheme.accent.opacity(0.18)
+                    : Color.black.opacity(0.04),
+                radius: 5,
+                y: 2
+            )
         }
-        .buttonStyle(.bordered)
-        .tint(FacilityTheme.accent)
-        .background(
-            filterPresentation.appliedFilter.hasBusinessEntity ? FacilityTheme.accentSoft : .clear,
-            in: Capsule()
-        )
+        .buttonStyle(.plain)
         .accessibilityLabel(Text("notifications.structuralFilter.open"))
         .accessibilityValue(
             filterPresentation.appliedFilter.hasBusinessEntity
                 ? Text("\(appliedStructuralFilterNotificationCount)")
                 : Text("—")
         )
+        .accessibilityAddTraits(
+            filterPresentation.appliedFilter.hasBusinessEntity ? .isSelected : []
+        )
+        .animation(.smooth(duration: 0.2), value: filterPresentation.appliedFilter.hasBusinessEntity)
     }
 
     private var filterButtonSymbol: some View {
         ZStack(alignment: .topTrailing) {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.title3)
-                .frame(width: 26, height: 26, alignment: .bottomLeading)
+            Image(systemName: "line.3.horizontal.decrease")
+                .font(.body.weight(.semibold))
+                .frame(width: 24, height: 24, alignment: .bottomLeading)
 
             if filterPresentation.appliedFilter.hasBusinessEntity {
                 Text(appliedStructuralFilterNotificationCount, format: .number)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(.white)
+                    .foregroundStyle(FacilityTheme.accent)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 19, minHeight: 19)
-                    .background(FacilityTheme.accent, in: Capsule())
-                    .overlay {
-                        Capsule()
-                            .stroke(.white, lineWidth: 1.5)
-                    }
-                    .offset(x: 7, y: -5)
+                    .background(.white, in: Capsule())
+                    .offset(x: 7, y: -6)
                     .accessibilityHidden(true)
             }
         }
-        .frame(width: 33, height: 28, alignment: .bottomLeading)
+        .frame(width: 31, height: 26, alignment: .bottomLeading)
         .accessibilityHidden(true)
     }
 
@@ -232,12 +254,42 @@ struct NotificationsView: View {
             Text("🔍")
                 .font(.body)
                 .accessibilityHidden(true)
-            TextField("notifications.search", text: $query)
+            TextField("notifications.search", text: $search.draftQuery)
                 .textFieldStyle(.plain)
+                .submitLabel(.search)
+                .onSubmit(submitSearch)
+
+            Button(action: submitSearch) {
+                Label("notifications.search.action", systemImage: "magnifyingglass")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(
+                        FacilityTheme.accent,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                    }
+                    .shadow(color: FacilityTheme.accent.opacity(0.18), radius: 5, y: 2)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 40)
+        .frame(maxWidth: .infinity, minHeight: 44)
         .background(Color(white: 0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func submitSearch() {
+        guard search.submit() else { return }
+        guard !demo.isDemoMode else { return }
+
+        let appliedQuery = search.appliedQuery
+        Task {
+            await demo.sapDataStore.updateNotificationSearch(appliedQuery)
+        }
     }
 
     private var notificationList: some View {
