@@ -23,6 +23,72 @@ final class SAPSyncTokenTests: XCTestCase {
         XCTAssertNil(store.token(for: workerID))
     }
 
+    func testLandscapeScopedAccountsDoNotReuseTokens() throws {
+        let store = InMemorySAPSyncTokenStore()
+        let qaAccount = SAPSyncTokenScope.account(
+            synchronizationUserID: "S500128",
+            landscapeFingerprint: "qa-landscape"
+        )
+        let productionAccount = SAPSyncTokenScope.account(
+            synchronizationUserID: "S500128",
+            landscapeFingerprint: "production-landscape"
+        )
+
+        XCTAssertNotEqual(qaAccount, productionAccount)
+        try store.save(token: "QA-TOKEN", for: qaAccount)
+        XCTAssertEqual(store.token(for: qaAccount), "QA-TOKEN")
+        XCTAssertNil(store.token(for: productionAccount))
+    }
+
+    func testHTTPFailureDiagnosticKeepsOnlySafeResponseMetadata() throws {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: XCTUnwrap(URL(string: "https://example.invalid/hidden")),
+            statusCode: 403,
+            httpVersion: nil,
+            headerFields: [
+                "X-Correlation-ID": "gateway-trace-123",
+                "WWW-Authenticate": "Bearer realm=protected-resource",
+                "Set-Cookie": "must-not-appear"
+            ]
+        ))
+
+        let summary = SAPSynchronizationDiagnostics.httpFailureSummary(
+            method: "M0153003",
+            response: response
+        )
+
+        XCTAssertEqual(
+            summary,
+            "[SAP Sync Debug] M0153003 received HTTP 403; correlation ID=gateway-trace-123; authentication challenge=Bearer."
+        )
+        XCTAssertFalse(summary.contains("Set-Cookie"))
+        XCTAssertFalse(summary.contains("protected-resource"))
+        XCTAssertFalse(summary.contains("example.invalid"))
+    }
+
+    func testHTTPFailureDiagnosticIncludesSafeODataErrorDetails() throws {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: XCTUnwrap(URL(string: "https://example.invalid/hidden")),
+            statusCode: 403,
+            httpVersion: nil,
+            headerFields: nil
+        ))
+        let responseBody = Data("""
+        {"error":{"code":"/IWFND/CM_COS/004","message":{"value":"No authorization for this request."}}}
+        """.utf8)
+
+        let summary = SAPSynchronizationDiagnostics.httpFailureSummary(
+            method: "M0153003",
+            response: response,
+            responseBody: responseBody
+        )
+
+        XCTAssertEqual(
+            summary,
+            "[SAP Sync Debug] M0153003 received HTTP 403; SAP error code=/IWFND/CM_COS/004; SAP reason=No authorization for this request."
+        )
+    }
+
     func testCodecTokenExtractionFromDictionary() throws {
         let envelopeJSON = """
         [
@@ -188,6 +254,53 @@ final class SAPSyncTokenTests: XCTestCase {
         // Store updated with new token
         try tokenStore.save(token: "NEW_SAVED_TOKEN", for: workerID)
         XCTAssertTrue(dataStore.hasValidSavedToken)
+    }
+
+    @MainActor
+    func testForbiddenSavedTokenIsDiscardedBeforePasswordFallback() async throws {
+        let tokenStore = InMemorySAPSyncTokenStore()
+        let workerID = "TEST_WORKER"
+        try tokenStore.save(token: "STALE_TOKEN", for: workerID)
+
+        let mockService = MockTokenRefreshService()
+        mockService.tokenRefreshError = .httpStatus(403)
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            tokenStore: tokenStore,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        let didRefresh = await dataStore.refreshWithSavedToken()
+        XCTAssertFalse(didRefresh)
+        XCTAssertFalse(dataStore.hasValidSavedToken)
+        XCTAssertNil(tokenStore.token(for: workerID))
+        XCTAssertNil(dataStore.refreshError)
+    }
+
+    @MainActor
+    func testPasswordRefreshFailureKeepsSafeFailureContextForTheDialog() async throws {
+        let workerID = "TEST_WORKER"
+        let mockService = MockTokenRefreshService()
+        mockService.passwordRefreshError = .httpStatus(403)
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        await dataStore.refresh(sapPassword: "not-stored")
+
+        guard let failureContext = dataStore.refreshFailureContext else {
+            return XCTFail("Expected the dialog to receive a failure context")
+        }
+        XCTAssertEqual(failureContext.authenticationMethod, .password)
+        XCTAssertEqual(failureContext.stage, .authenticating)
+        guard case .httpStatus(403) = failureContext.error else {
+            return XCTFail("Expected the dialog context to retain HTTP 403")
+        }
     }
 
     @MainActor
@@ -445,6 +558,8 @@ final class SAPSyncTokenTests: XCTestCase {
 
 private final class MockTokenRefreshService: SAPNotificationRefreshService, @unchecked Sendable {
     var shouldSucceedWithToken = true
+    var tokenRefreshError: SAPReadError?
+    var passwordRefreshError: SAPReadError?
     var returnedTokenOnPasswordSync: String?
     var tokenRefreshCallCount = 0
     var passwordRefreshCallCount = 0
@@ -454,6 +569,9 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         passwordRefreshCallCount += 1
+        if let passwordRefreshError {
+            throw passwordRefreshError
+        }
         return SAPCachedData(
             notifications: [],
             workerProfile: nil,
@@ -469,6 +587,9 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         tokenRefreshCallCount += 1
+        if let tokenRefreshError {
+            throw tokenRefreshError
+        }
         if shouldSucceedWithToken {
             return SAPCachedData(
                 notifications: [],

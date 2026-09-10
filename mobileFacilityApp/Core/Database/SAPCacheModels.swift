@@ -502,6 +502,24 @@ enum SAPReadRefreshStage: Equatable, Sendable {
     case savingSnapshot
 }
 
+enum SAPRefreshAuthenticationMethod: Equatable, Sendable {
+    /// The separate password entered in the synchronization dialog.
+    case password
+    /// The short-lived session token stored after a successful password check.
+    case savedToken
+}
+
+/// Safe, user-visible context for a failed synchronization attempt.
+///
+/// This deliberately contains neither the password, token, worker ID, endpoint,
+/// nor a backend payload. It lets the UI explain which synchronization step
+/// failed without exposing credentials or tenant configuration.
+struct SAPRefreshFailureContext: Sendable {
+    let authenticationMethod: SAPRefreshAuthenticationMethod
+    let stage: SAPReadRefreshStage
+    let error: SAPReadError
+}
+
 typealias SAPReadRefreshProgressHandler = @MainActor @Sendable (SAPReadRefreshStage) -> Void
 
 protocol SAPNotificationRefreshService: Sendable {
@@ -516,7 +534,7 @@ protocol SAPNotificationRefreshService: Sendable {
     ) async throws -> SAPCachedData
 }
 
-enum SAPReadError: LocalizedError {
+enum SAPReadError: LocalizedError, Sendable {
     case configurationUnavailable
     case authenticatedConnectionUnavailable
     case passwordRequired

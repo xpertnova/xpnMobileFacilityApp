@@ -7,6 +7,21 @@ protocol SAPSyncTokenStore: Sendable {
     func deleteToken(for workerID: String)
 }
 
+/// A synchronization token belongs to both a worker and the SAP landscape
+/// that issued it. Keeping those identities together prevents a QA landscape
+/// from reusing a token created for another landscape.
+enum SAPSyncTokenScope {
+    static func account(
+        synchronizationUserID: String,
+        landscapeFingerprint: String
+    ) -> String {
+        let userID = synchronizationUserID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fingerprint = landscapeFingerprint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fingerprint.isEmpty else { return userID }
+        return "\(userID)\u{1F}\(fingerprint)"
+    }
+}
+
 final class KeychainSAPSyncTokenStore: SAPSyncTokenStore, @unchecked Sendable {
     private let service: String
 

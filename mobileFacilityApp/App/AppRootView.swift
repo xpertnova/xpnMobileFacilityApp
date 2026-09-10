@@ -132,20 +132,35 @@ struct AppRootView: View {
         do {
             let repository = try SQLiteSAPDataCacheRepository.production(workerID: session.workerID)
             let tokenStore = KeychainSAPSyncTokenStore()
-            let refreshService = onboarding.readConnection.map {
-                SAPInboundNotificationRefreshService(
-                    connection: $0,
-                    synchronizationUserID: session.displayName,
-                    tokenStore: tokenStore,
-                    synchronizationStore: repository
+            guard let connection = onboarding.readConnection else {
+                return SAPDataStore(
+                    repository: UnavailableSAPDataCacheRepository(),
+                    refreshService: nil,
+                    localWorkerID: session.workerID
                 )
             }
+            // The confirmed contract uses the worker ID entered at the app
+            // login (for example, S50828) for legacy MTFM synchronization.
+            // It is distinct from both the display name and the OAuth profile.
+            let synchronizationUserID = session.workerID
+            let tokenStoreAccountID = SAPSyncTokenScope.account(
+                synchronizationUserID: synchronizationUserID,
+                landscapeFingerprint: onboarding.landscapeFingerprint ?? "unresolved-landscape"
+            )
+            let refreshService = SAPInboundNotificationRefreshService(
+                connection: connection,
+                synchronizationUserID: synchronizationUserID,
+                tokenStore: tokenStore,
+                tokenStoreAccountID: tokenStoreAccountID,
+                synchronizationStore: repository
+            )
             return SAPDataStore(
                 repository: repository,
                 refreshService: refreshService,
                 tokenStore: tokenStore,
                 localWorkerID: session.workerID,
-                synchronizationUserID: session.displayName
+                synchronizationUserID: synchronizationUserID,
+                tokenStoreAccountID: tokenStoreAccountID
             )
         } catch {
             return SAPDataStore(

@@ -13,8 +13,7 @@ DerivedData/
 Release-xcframework/
 
 # SAP landscape configuration is local and can contain tenant-specific values.
-mobileFacilityApp/ConfigurationProvider.plist
-mobileFacilityApp/AppParameters.plist
+.local-sap-config-backups/
 
 ## Obj-C/Swift specific
 *.hmap

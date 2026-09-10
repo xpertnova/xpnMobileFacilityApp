@@ -11530,6 +11530,142 @@
         }
       }
     },
+    "sap.refresh.details.forbiddenExplanation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP hat die Anfrage zur Prüfung der Zugangsdaten abgelehnt, bevor die Synchronisierung begann. Die App verwendet dafür die bei der App-Anmeldung eingegebene Mitarbeiter-ID und das separate SAP-Synchronisierungspasswort. Wenn beides korrekt ist, muss der SAP-Zugang geprüft werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP rejected the credential-verification request before synchronization began. The app uses the worker ID entered at app login and the separate SAP synchronization password. If both are correct, SAP access needs to be checked."
+          }
+        }
+      }
+    },
+    "sap.refresh.details.httpStatus" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTP %d"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTP %d"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.operation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP-Vorgang"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP operation"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.passwordOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0153003 · SAP-Passwortprüfung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0153003 · SAP password check"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.response" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serverantwort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server response"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.savedTokenOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0155003 · gespeicherte Sitzung prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0155003 · saved session check"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.stage" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgebrochen bei"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stopped during"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details"
+          }
+        }
+      }
+    },
     "sap.refresh.error.configuration" : {
       "extractionState" : "stale",
       "localizations" : {

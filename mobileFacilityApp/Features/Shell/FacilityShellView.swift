@@ -150,6 +150,7 @@ struct FacilityShellView: View {
                     isRefreshing: demo.sapDataStore.isRefreshing,
                     stage: demo.sapDataStore.refreshStage,
                     error: demo.sapDataStore.refreshError,
+                    failureContext: demo.sapDataStore.refreshFailureContext,
                     refresh: refreshSAPData,
                     cancel: dismissSAPRefresh
                 )
