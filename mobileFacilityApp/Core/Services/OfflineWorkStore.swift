@@ -51,7 +51,7 @@ final class OfflineWorkStore {
     var localWorkCount: Int {
         localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
             + technicalObjectEditItems.count + defectItems.count + meterReadingItems.count
-            + proofOfQualificationItems.count
+            + proofOfQualificationItems.count + photoCollectionItems.count
     }
 
     var defectItems: [OfflineWorkItem] {
@@ -76,6 +76,44 @@ final class OfflineWorkStore {
 
     var proofOfQualificationItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .proofOfQualification }
+    }
+
+    var photoCollectionItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .photoCollection }
+    }
+
+    func photoCollection(for scope: LocalPhotoScope) -> OfflineWorkItem? {
+        photoCollectionItems.first { $0.payload.photoCollection?.scope == scope }
+    }
+
+    func savePhotoCollection(
+        scope: LocalPhotoScope,
+        attachments: [LocalPhotoAttachment],
+        retainEmpty: Bool = false
+    ) async throws -> OfflineWorkItem? {
+        let existing = photoCollection(for: scope)
+        if attachments.isEmpty && !retainEmpty {
+            if let existing {
+                try await repository.delete(ids: [existing.id])
+                await load()
+            }
+            return nil
+        }
+
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .photoCollection,
+            status: .draft,
+            payload: .photoCollection(.init(scope: scope, attachments: attachments)),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
     }
 
     /// A defect is a failed checklist result from a notification that was
@@ -187,7 +225,7 @@ final class OfflineWorkStore {
             id: existing?.id ?? UUID(),
             workerID: workerID,
             type: .notificationReview,
-            status: .draft,
+            status: payload.isClosedLocally ? .pendingSynchronization : .draft,
             payload: .notificationReview(payload),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,

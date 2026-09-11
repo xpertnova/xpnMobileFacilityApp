@@ -108,6 +108,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 payload = .technicalObjectEdit(try decoder.decode(TechnicalObjectEditPayload.self, from: data))
             case .proofOfQualification:
                 payload = .proofOfQualification(try decoder.decode(ProofOfQualificationDraftPayload.self, from: data))
+            case .photoCollection:
+                payload = .photoCollection(try decoder.decode(PhotoCollectionDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -134,6 +136,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             payloadData = try? JSONEncoder().encode(payload)
         case let (.proofOfQualification, .proofOfQualification(payload)):
             payloadData = try? JSONEncoder().encode(payload)
+        case let (.photoCollection, .photoCollection(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil
         }
@@ -155,6 +159,25 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
     func resetWork(for workerID: String) async throws {
         guard let database else { throw OfflineWorkRepositoryError.unavailable }
         try Self.execute(on: database, "DELETE FROM offline_work_items WHERE worker_id = ?", bindings: [workerID])
+    }
+
+    func delete(ids: [UUID]) async throws {
+        guard let database else { throw OfflineWorkRepositoryError.unavailable }
+        guard !ids.isEmpty else { return }
+        try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
+        do {
+            for id in ids {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM offline_work_items WHERE id = ?",
+                    bindings: [id.uuidString]
+                )
+            }
+            try Self.execute(on: database, "COMMIT")
+        } catch {
+            try? Self.execute(on: database, "ROLLBACK")
+            throw error
+        }
     }
 
     private static func migrate(on database: OpaquePointer) throws {

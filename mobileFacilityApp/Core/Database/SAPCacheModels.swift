@@ -342,6 +342,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
         let id: String
         let title: String
         let information: String
+        let resultElementID: String
+        let commentElementID: String
     }
 
     let summary: SAPNotificationSummary
@@ -381,10 +383,41 @@ struct SAPNotificationDetail: Equatable, Sendable {
             let title = Self.stringValue(named: "LTXA1", in: row)
             guard !title.isEmpty else { return nil }
             let operation = Self.stringValue(named: "VORNR", in: row)
+            let control = Self.stringValue(named: "STEUS", in: row)
+            guard !operation.isEmpty, !control.isEmpty else { return nil }
+            let properties = Self.value(named: "T_PROPS", in: row) as? [[String: Any]] ?? []
+            let resultPosition = properties.compactMap { property -> Int? in
+                let position: Int?
+                switch Self.value(named: "POSNR", in: property) {
+                case let number as NSNumber where number.intValue > 0:
+                    position = number.intValue
+                case let string as String:
+                    position = Int(string).flatMap { $0 > 0 ? $0 : nil }
+                default:
+                    position = nil
+                }
+                guard let position else { return nil }
+                let defaultValues = Self.stringValue(named: "DFVAL", in: property)
+                guard normalizedRowType == "MEASURE"
+                        || (!defaultValues.isEmpty && !defaultValues.contains("ICON_"))
+                else { return nil }
+                return position
+            }
+            .sorted()
+            .first
+            guard let resultPosition else { return nil }
+            let cadence = Self.stringValue(named: "KTEX1", in: row)
+            let postfix = control == "TFM3"
+                ? "-" + cadence.filter { !$0.isNumber }
+                : ""
+            let resultElementID = "\(control)-\(operation)-\(resultPosition)\(postfix)"
+            let commentElementID = "\(control)-\(operation)-9B"
             return InspectionItem(
-                id: operation.isEmpty ? "position-\(index)" : operation,
+                id: resultElementID.isEmpty ? "position-\(index)" : resultElementID,
                 title: title,
-                information: Self.stringValue(named: "LTXA2", in: row)
+                information: Self.stringValue(named: "LTXA2", in: row),
+                resultElementID: resultElementID,
+                commentElementID: commentElementID
             )
         }
     }
@@ -405,7 +438,13 @@ struct SAPNotificationDetail: Equatable, Sendable {
         structure = offlineSnapshot.structure
         equipmentID = offlineSnapshot.equipmentID
         inspectionItems = offlineSnapshot.inspectionItems.map {
-            InspectionItem(id: $0.id, title: $0.title, information: $0.information)
+            InspectionItem(
+                id: $0.id,
+                title: $0.title,
+                information: $0.information,
+                resultElementID: $0.resultElementID ?? "",
+                commentElementID: $0.commentElementID ?? ""
+            )
         }
     }
 
@@ -437,7 +476,13 @@ extension OfflineNotificationSnapshot {
         structure = detail.structure
         equipmentID = detail.equipmentID
         inspectionItems = detail.inspectionItems.map {
-            InspectionItem(id: $0.id, title: $0.title, information: $0.information)
+            InspectionItem(
+                id: $0.id,
+                title: $0.title,
+                information: $0.information,
+                resultElementID: $0.resultElementID,
+                commentElementID: $0.commentElementID
+            )
         }
     }
 }
@@ -490,9 +535,19 @@ protocol SAPLegacySynchronizationStore: Sendable {
     func abortIncoming() async
 }
 
+protocol SAPNotificationOutgoingStore: Sendable {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow]
+    ) async throws
+}
+
 enum SAPReadRefreshStage: Equatable, Sendable {
     case authenticating
     case uploadingOutgoingMetadata
+    case uploadingOutgoingDocuments(current: Int, total: Int)
     case postingOutgoingData
     case waitingForOutgoingAcknowledgement
     case checkingAppVersion

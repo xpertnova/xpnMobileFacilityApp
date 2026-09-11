@@ -168,6 +168,12 @@ private extension SAPReadRefreshStage {
             String(localized: "sap.refresh.stage.authenticating")
         case .uploadingOutgoingMetadata:
             String(localized: "sap.refresh.stage.uploading")
+        case let .uploadingOutgoingDocuments(current, total):
+            String(
+                format: String(localized: "sap.refresh.stage.uploadingDocuments"),
+                current,
+                total
+            )
         case .postingOutgoingData:
             String(localized: "sap.refresh.stage.posting")
         case .waitingForOutgoingAcknowledgement:

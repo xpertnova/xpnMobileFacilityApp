@@ -3,19 +3,41 @@ import SwiftUI
 struct TechnicalPlacesView: View {
     let demo: FacilityDemoViewModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var photoWorkspaceScope: LocalPhotoScope?
 
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
-        Group {
-            if let detail = model.selectedDetail {
-                TechnicalObjectDetailView(model: model, detail: detail)
-                    .transition(.opacity)
+        ZStack {
+            if let photoWorkspaceScope {
+                LocalPhotoWorkspace(
+                    scope: photoWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    photoStore: demo.photoAttachmentStore,
+                    close: { self.photoWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
             } else {
-                hierarchy(model)
-                    .transition(.opacity)
+                Group {
+                    if let detail = model.selectedDetail {
+                        TechnicalObjectDetailView(
+                            model: model,
+                            detail: detail,
+                            photoCount: photoCount(for: detail),
+                            openPhotos: { photoWorkspaceScope = photoScope(for: detail) }
+                        )
+                    } else {
+                        hierarchy(model)
+                    }
+                }
+                .transition(PhotoWorkspaceMotion.source)
             }
         }
         .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.selectedDetail != nil)
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: photoWorkspaceScope
+        )
         .task { if model.state == .idle { await model.load() } }
         .task(id: model.query) {
             do { try await Task.sleep(for: .milliseconds(350)); await model.updateSearch() } catch { }
@@ -26,6 +48,20 @@ struct TechnicalPlacesView: View {
         )) {
             Button("common.ok", role: .cancel) { model.unavailableActionKey = nil }
         } message: { Text(LocalizedStringKey(model.unavailableActionKey ?? "places.unavailable.message")) }
+    }
+
+    private func photoScope(for detail: TechnicalObjectDetail) -> LocalPhotoScope {
+        LocalPhotoScope(
+            workflow: .technicalObject,
+            ownerID: detail.object.reference.objectID,
+            displayTitle: String(localized: "photos.workspace.title"),
+            displaySubtitle: detail.object.displayName
+        )
+    }
+
+    private func photoCount(for detail: TechnicalObjectDetail) -> Int {
+        demo.offlineWorkStore.photoCollection(for: photoScope(for: detail))?
+            .payload.photoCollection?.attachments.count ?? 0
     }
 
     private func hierarchy(_ model: TechnicalPlacesViewModel) -> some View {
@@ -248,6 +284,8 @@ private struct ObjectBadge: View {
 private struct TechnicalObjectDetailView: View {
     @Bindable var model: TechnicalPlacesViewModel
     let detail: TechnicalObjectDetail
+    let photoCount: Int
+    let openPhotos: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
@@ -263,6 +301,7 @@ private struct TechnicalObjectDetailView: View {
                     Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
                     Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
                     if !detail.object.displayStatus.isEmpty { ObjectBadge(detail.object.displayStatus, color: FacilityTheme.accent) }
+                    PhotoWorkspaceButton(count: photoCount, action: openPhotos)
                     if geometry.size.width >= 900 {
                         HStack(alignment: .top, spacing: 16) { primaryCard; sideCards.frame(width: 405) }
                     } else {

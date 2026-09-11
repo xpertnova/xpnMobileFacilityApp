@@ -28,6 +28,7 @@ final class DefectCaptureViewModel {
 
     private(set) var state: LoadState = .idle
     private(set) var editingID: UUID?
+    private(set) var isExistingDraft = false
     private(set) var itemStatus: OfflineWorkStatus?
     private(set) var objects: [DefectObjectOption] = []
     private(set) var isSaving = false
@@ -62,7 +63,8 @@ final class DefectCaptureViewModel {
     func load(itemID: UUID?) async {
         await discardStagedPhotos()
         resetFields()
-        editingID = itemID
+        isExistingDraft = itemID != nil
+        editingID = itemID ?? UUID()
         if objects.isEmpty {
             state = .loading
         }
@@ -184,6 +186,7 @@ final class DefectCaptureViewModel {
 
     private func resetFields() {
         editingID = nil
+        isExistingDraft = false
         itemStatus = nil
         selectedObjectID = nil
         priority = .medium
@@ -254,7 +257,7 @@ final class MeterReadingViewModel {
     }
 
     func load(itemID: UUID?) async {
-        editingID = itemID
+        editingID = itemID ?? UUID()
         valueText = ""
         note = ""
         saveFailed = false

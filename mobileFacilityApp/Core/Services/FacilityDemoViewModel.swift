@@ -110,7 +110,7 @@ final class FacilityDemoViewModel {
 
     private func locallySavedNotificationReview(for notificationID: String) -> NotificationReviewDraftPayload? {
         offlineWorkStore.items.first {
-            $0.type == .notificationReview && $0.status == .draft &&
+            $0.type == .notificationReview && $0.status != .synchronized &&
             $0.payload.notificationReview?.notificationID == notificationID
         }?.payload.notificationReview
     }
@@ -237,20 +237,12 @@ final class FacilityDemoViewModel {
     func requestSAPRefresh() {
         guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
-        if offlineWorkStore.localWorkCount > 0 {
-            shouldPresentDraftWarningBeforeSync = true
-        } else {
-            proceedWithSAPRefresh()
-        }
+        proceedWithSAPRefresh()
     }
 
     func confirmDiscardDraftsAndSync() {
         shouldPresentDraftWarningBeforeSync = false
-        Task {
-            await offlineWorkStore.reset()
-            try? await photoAttachmentStore.reset()
-            proceedWithSAPRefresh()
-        }
+        proceedWithSAPRefresh()
     }
 
     func dismissDraftWarning() {
@@ -271,6 +263,7 @@ final class FacilityDemoViewModel {
             Task {
                 let success = await sapDataStore.refreshWithSavedToken()
                 if success {
+                    await offlineWorkStore.load()
                     shouldPresentSAPRefresh = false
                 }
             }

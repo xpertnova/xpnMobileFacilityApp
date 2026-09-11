@@ -1,19 +1,48 @@
 import SwiftUI
 import UIKit
+import AVFoundation
 
 enum CameraCaptureAvailability {
     static var isAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
     }
+
+    static func requestAccess() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await withCheckedContinuation { continuation in
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    continuation.resume(returning: granted)
+                }
+            }
+        case .denied, .restricted:
+            return false
+        @unknown default:
+            return false
+        }
+    }
 }
 
 enum JPEGPhotoEncoder {
-    static func encode(_ data: Data) -> Data? {
-        UIImage(data: data)?.jpegData(compressionQuality: 0.82)
+    static func encode(_ data: Data, compressionQuality: CGFloat = 0.82) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        return encode(image, compressionQuality: compressionQuality)
+    }
+
+    static func encode(_ image: UIImage, compressionQuality: CGFloat = 0.82) -> Data? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        let normalized = UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
+        return normalized.jpegData(compressionQuality: compressionQuality)
     }
 }
 
 struct CameraCaptureView: UIViewControllerRepresentable {
+    var compressionQuality: CGFloat = 0.82
     let onCapture: (Data) -> Void
     let onCancel: () -> Void
 
@@ -45,7 +74,9 @@ struct CameraCaptureView: UIViewControllerRepresentable {
             didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
         ) {
             guard let image = info[.originalImage] as? UIImage,
-                  let data = image.jpegData(compressionQuality: 0.82) else {
+                  let data = JPEGPhotoEncoder.encode(
+                    image, compressionQuality: parent.compressionQuality
+                  ) else {
                 parent.onCancel()
                 return
             }

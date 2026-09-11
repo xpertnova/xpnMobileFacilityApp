@@ -142,7 +142,6 @@ private struct BriefingFormScreen: View {
             }
 
             Spacer(minLength: 12)
-
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 18)
@@ -1060,12 +1059,12 @@ final class BriefingWorkflowViewModel {
     var partnerSearchTerm2 = ""
     private var savedWorkID: UUID?
 
-    init(source: Source, existingDraft: OfflineWorkItem? = nil) {
+    init(source: Source, existingDraft: OfflineWorkItem? = nil, draftID: UUID? = nil) {
         self.source = source
         partners = source.partners
         selectedTemplateID = source.templates.first(where: \.isStandardBriefing)?.id ?? source.templates.first?.id ?? ""
+        savedWorkID = existingDraft?.id ?? draftID
         guard let existingDraft, let draft = existingDraft.payload.briefing else { return }
-        savedWorkID = existingDraft.id
         selectedBusinessEntityID = draft.businessEntityID
         if !draft.businessEntityID.isEmpty {
             partnerSearchTerm2 = Self.extractPropertyNumber(from: draft.businessEntityID)

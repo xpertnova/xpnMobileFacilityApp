@@ -196,11 +196,11 @@ final class ElectricalSafetyViewModel {
     var selectedBuildingCode: String?
     private var savedWorkID: UUID?
 
-    init(source: SafetyFormSource, existingDraft: OfflineWorkItem?) {
+    init(source: SafetyFormSource, existingDraft: OfflineWorkItem?, draftID: UUID? = nil) {
         self.source = source
+        savedWorkID = existingDraft?.id ?? draftID
         if let existingDraft, let payload = existingDraft.payload.electricalSafety {
             draft = payload
-            savedWorkID = existingDraft.id
             selectedBusinessEntityID = payload.context?.businessEntityID
             selectedBuildingCode = payload.context?.buildingCode
         } else {
