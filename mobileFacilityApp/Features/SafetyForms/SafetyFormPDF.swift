@@ -130,26 +130,7 @@ struct LegacyElectricalSafetyPDFRenderer: Sendable {
         let renderer = UIGraphicsPDFRenderer(bounds: SafetyPDFCanvas.page)
         let data = renderer.pdfData { pdf in
             pdf.beginPage()
-            _ = StandardFormPDFHeaderRenderer.draw(
-                StandardFormPDFHeaderData(
-                    documentTitle: "Einweisungsformular nur für Dienstleistungen\nArbeiten an, in oder in der Nähe von elektrischen Anlagen",
-                    instructorName: record.instructorName,
-                    organizationUnit: record.organizationUnit,
-                    coordinator: record.coordinator,
-                    partnerName: record.partner?.name ?? "",
-                    partnerAddress: record.partner?.address ?? "",
-                    instructedPerson: record.instructedPerson,
-                    workLocation: location(context),
-                    workDescription: record.workDescription,
-                    dateFrom: record.executionStart,
-                    dateTo: record.executionEnd
-                ),
-                in: pdf.cgContext,
-                pageWidth: SafetyPDFCanvas.page.width,
-                margin: SafetyPDFCanvas.margin,
-                startY: SafetyPDFCanvas.margin
-            )
-            SafetyPDFCanvas.footer(pageNumber: 1, pageCount: 2, context: pdf.cgContext)
+            drawFirstPage(record, context: context, pdf: pdf.cgContext)
 
             pdf.beginPage()
             drawBody(record, context: pdf.cgContext)
@@ -160,66 +141,160 @@ struct LegacyElectricalSafetyPDFRenderer: Sendable {
     }
 
     private func location(_ context: SafetyFormContext) -> String {
-        [context.functionalLocationID, context.businessEntityTitle, context.buildingTitle, context.functionalLocationTitle]
+        let be = context.businessEntityTitle.isEmpty ? context.businessEntityID : context.businessEntityTitle
+        let bld = context.buildingTitle.isEmpty ? context.buildingCode : context.buildingTitle
+        let fl = context.functionalLocationTitle.isEmpty ? context.functionalLocationID : context.functionalLocationTitle
+        return [be, bld, fl]
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .joined(separator: "\n")
+    }
+
+    private func drawFirstPage(
+        _ record: ElectricalSafetyDraftPayload,
+        context: SafetyFormContext,
+        pdf: CGContext
+    ) {
+        let margin = SafetyPDFCanvas.margin
+        let contentWidth = SafetyPDFCanvas.contentWidth
+        var y = margin
+
+        // Title Box
+        let title = "Einweisungsformular nur für Dienstleistungen\nArbeiten an, in oder in der Nähe von elektrischen\nAnlagen"
+        let titleFont = UIFont.boldSystemFont(ofSize: 18)
+        let titleHeight = max(
+            52,
+            textHeight(title, width: contentWidth - 16, font: titleFont) + 16
+        )
+        let titleRect = CGRect(x: margin, y: y, width: contentWidth, height: titleHeight)
+        SafetyPDFCanvas.cell(titleRect, fill: .white, context: pdf)
+        SafetyPDFCanvas.text(
+            title,
+            in: titleRect.insetBy(dx: 8, dy: 7),
+            font: titleFont,
+            alignment: .center
+        )
+        y = titleRect.maxY
+
+        // Row 1: Abnehmer(E.ON Mitarbeiter) | Name | Orgunit
+        let r1Col1Width = contentWidth * 0.25
+        let r1Col2Width = contentWidth * 0.50
+        let r1Col3Width = contentWidth * 0.25
+        let r1Label = "Abnehmer(E.ON Mitarbeiter)"
+        let orgText = record.organizationUnit.isEmpty ? "e.on" : record.organizationUnit
+        let r1Org = "\(orgText)\n(E.ON-Organisationseinheit)"
+        let bodyFont = UIFont.systemFont(ofSize: 9.5)
+        let r1Height = max(
+            36,
+            textHeight(r1Label, width: r1Col1Width - 10, font: bodyFont) + 10,
+            textHeight(record.instructorName, width: r1Col2Width - 10, font: bodyFont) + 10,
+            textHeight(r1Org, width: r1Col3Width - 10, font: bodyFont) + 10
+        )
+        let r1Rect1 = CGRect(x: margin, y: y, width: r1Col1Width, height: r1Height)
+        let r1Rect2 = CGRect(x: r1Rect1.maxX, y: y, width: r1Col2Width, height: r1Height)
+        let r1Rect3 = CGRect(x: r1Rect2.maxX, y: y, width: r1Col3Width, height: r1Height)
+        SafetyPDFCanvas.cell(r1Rect1, context: pdf)
+        SafetyPDFCanvas.cell(r1Rect2, context: pdf)
+        SafetyPDFCanvas.cell(r1Rect3, context: pdf)
+        SafetyPDFCanvas.text(r1Label, in: r1Rect1.insetBy(dx: 5, dy: 5), font: bodyFont)
+        SafetyPDFCanvas.text(record.instructorName, in: r1Rect2.insetBy(dx: 5, dy: 5), font: bodyFont)
+        SafetyPDFCanvas.text(r1Org, in: r1Rect3.insetBy(dx: 5, dy: 5), font: bodyFont)
+        y += r1Height
+
+        // Rows 2 through 7 (50% / 50% split)
+        let labelColWidth = contentWidth * 0.50
+        let valueColWidth = contentWidth * 0.50
+
+        let partner = [record.partner?.name, record.partner?.address]
+            .compactMap { $0 }
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+        let loc = location(context)
+        let dateRange = "\(SafetyPDFCanvas.date(record.executionStart)) - \(SafetyPDFCanvas.date(record.executionEnd))"
+
+        let gridRows: [(String, String)] = [
+            ("Benannter Koordinator ggf. SiGeKo gemäß BauStellV:\n(Wird bei gegenseitiger Gefährdung durch den Einweiser/Abnehmer\nbenannt)", record.coordinator),
+            ("Partnerfirma/Auftragnehmer:\n(Name und Anschrift)", partner),
+            ("Eingewiesener:\n(Verantwortlicher der Partnerfirma für die durchzuführenden Arbeiten)", record.instructedPerson),
+            ("Leistungs-/Arbeitsort:", loc),
+            ("Durchzuführende Arbeiten:", record.workDescription),
+            ("Ausführung von ... bis... :\n(Datum)", dateRange)
+        ]
+
+        for (lbl, val) in gridRows {
+            let rowHeight = max(
+                34,
+                textHeight(lbl, width: labelColWidth - 10, font: bodyFont) + 10,
+                textHeight(val, width: valueColWidth - 10, font: bodyFont) + 10
+            )
+            let lblRect = CGRect(x: margin, y: y, width: labelColWidth, height: rowHeight)
+            let valRect = CGRect(x: lblRect.maxX, y: y, width: valueColWidth, height: rowHeight)
+            SafetyPDFCanvas.cell(lblRect, context: pdf)
+            SafetyPDFCanvas.cell(valRect, context: pdf)
+            SafetyPDFCanvas.text(lbl, in: lblRect.insetBy(dx: 5, dy: 5), font: bodyFont)
+            SafetyPDFCanvas.text(val, in: valRect.insetBy(dx: 5, dy: 5), font: bodyFont)
+            y += rowHeight
+        }
+
+        SafetyPDFCanvas.footer(pageNumber: 1, pageCount: 2, context: pdf)
     }
 
     private func drawBody(_ record: ElectricalSafetyDraftPayload, context: CGContext) {
         let x = SafetyPDFCanvas.margin
         let width = SafetyPDFCanvas.contentWidth
-        let body = UIFont.systemFont(ofSize: 9.5)
-        let small = UIFont.systemFont(ofSize: 7.2)
+        let body = UIFont.systemFont(ofSize: 10)
+        let small = UIFont.systemFont(ofSize: 8)
 
-        SafetyPDFCanvas.text("Einweisungsformular", in: CGRect(x: x, y: 27, width: 150, height: 24), font: .boldSystemFont(ofSize: 16), color: SafetyPDFCanvas.blue)
-        SafetyPDFCanvas.text("nur für Dienstleistungen", in: CGRect(x: x + 151, y: 27, width: 205, height: 24), font: .boldSystemFont(ofSize: 16), color: SafetyPDFCanvas.lightBlue)
-        SafetyPDFCanvas.text("Arbeiten an, in oder in der Nähe von elektrischen Anlagen", in: CGRect(x: x, y: 55, width: width, height: 20), font: .systemFont(ofSize: 13))
-        section("Arbeitsstelle", y: 94)
-        labeledLine("Arbeitsstelle", value: record.workplace, y: 112)
-        labeledLine("Durchzuführende Arbeiten", value: record.electricalWork, y: 145)
-        responsible("Anlagenverantwortlicher", person: record.systemResponsible, y: 184)
-        responsible("Arbeitsverantwortlicher", person: record.workResponsible, y: 224)
+        SafetyPDFCanvas.text("Einweisungsformular", in: CGRect(x: x, y: 25, width: 175, height: 24), font: .boldSystemFont(ofSize: 18), color: SafetyPDFCanvas.blue)
+        SafetyPDFCanvas.text("nur für Dienstleistungen", in: CGRect(x: x + 175, y: 25, width: 220, height: 24), font: .boldSystemFont(ofSize: 18), color: SafetyPDFCanvas.lightBlue)
+        SafetyPDFCanvas.text("Arbeiten an, in oder in der Nähe von elektrischen Anlagen", in: CGRect(x: x, y: 53, width: width, height: 20), font: .systemFont(ofSize: 14))
 
-        SafetyPDFCanvas.text("Geplante Arbeitsmethoden", in: CGRect(x: x, y: 266, width: 190, height: 19), font: .systemFont(ofSize: 14), color: SafetyPDFCanvas.blue)
-        SafetyPDFCanvas.text("(entsprechend VDE 0705-100)", in: CGRect(x: x + 188, y: 269, width: 190, height: 16), font: body)
-        radioRow("Arbeiten im spannungsfreien Zustand", record.workDeEnergized, y: 298)
-        radioRow("Arbeiten unter Spannung", record.workLive, y: 322)
-        radioRow("Arbeiten in der Nähe unter Spannung stehender Teile", record.workNearLiveParts, y: 346)
+        section("Arbeitsstelle", y: 93)
+        fieldRow("Arbeitsstelle", value: record.workplace, y: 112)
+        fieldRow("Durchzuführende Arbeiten", value: record.electricalWork, y: 146)
+        responsible("Anlagenverantwortlicher", person: record.systemResponsible, y: 181)
+        responsible("Arbeitsverantwortlicher", person: record.workResponsible, y: 222)
 
-        section("Einweisung", y: 382)
+        SafetyPDFCanvas.text("Geplante Arbeitsmethoden", in: CGRect(x: x, y: 260, width: 190, height: 19), font: .systemFont(ofSize: 14), color: SafetyPDFCanvas.blue)
+        SafetyPDFCanvas.text("(entsprechend VDE 0705-100)", in: CGRect(x: x + 190, y: 263, width: 200, height: 16), font: body)
+        radioRow("Arbeiten im spannungsfreien Zustand", record.workDeEnergized, y: 287)
+        radioRow("Arbeiten unter Spannung", record.workLive, y: 311)
+        radioRow("Arbeiten in der Nähe unter Spannung stehender Teile", record.workNearLiveParts, y: 335)
+
+        section("Einweisung", y: 373)
         SafetyPDFCanvas.text(
-            "Eine Einweisung über die bei der Durchführung der Arbeiten zu beachtenden Verhaltensmaßnahmen und Maßnahmen zur Gefahrenabwehr, in Bezug auf die elektrische Gefährdung durch die Anlage und die Anlagenumgebung ist durch den Anlagenverantwortlichen erfolgt an:",
-            in: CGRect(x: x, y: 404, width: width, height: 42),
+            "Eine Einweisung über die bei der Durchführung der Arbeiten zu beachtenden Verhaltensmaßnamen und Maßnahmen zur Gefahrenabwehr, in Bezug auf die elektrische Gefährdung durch die Anlage und die Anlagenumgebung ist durch den Anlagenveranstwortlichen erfolgt an:",
+            in: CGRect(x: x, y: 396, width: width, height: 42),
             font: body
         )
-        radioRow("Arbeitsverantwortlicher", record.instructedWorkResponsible, y: 458)
-        radioRow("zusätzliche Arbeitskräfte", record.instructedAdditionalWorkers, y: 482)
+        radioRow("Arbeitsverantwortlicher", record.instructedWorkResponsible, y: 442)
+        radioRow("zusätzliche Arbeitskräfte", record.instructedAdditionalWorkers, y: 466)
         SafetyPDFCanvas.text(
             "Stichworte zum Inhalt der Einweisung und zusätzliche Hinweise (zum Beispiel Einbauorte von Arbeitserden, Abstände, Kennzeichen, zusätzliche Sicherheitsmaßnahmen, Telefonnummer der zuständigen Organisationseinheit)",
-            in: CGRect(x: x, y: 506, width: width, height: 34),
+            in: CGRect(x: x, y: 488, width: width, height: 34),
             font: body
         )
-        for lineY in [552.0, 570.0, 588.0] {
-            SafetyPDFCanvas.line(from: CGPoint(x: x, y: lineY), to: CGPoint(x: x + width, y: lineY), color: UIColor.black.withAlphaComponent(0.45), context: context)
+        if !record.instructionNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            SafetyPDFCanvas.text(record.instructionNotes, in: CGRect(x: x + 5, y: 524, width: width - 10, height: 47), font: body)
         }
-        SafetyPDFCanvas.text(record.instructionNotes, in: CGRect(x: x + 5, y: 540, width: width - 10, height: 47), font: body)
 
-        signatureStage("Erteilung der DE und Bestätigung der Einweisung", date: record.handoverDate, first: record.signatures[.handoverSystemResponsible]?.pngData, second: record.signatures[.handoverWorkResponsible]?.pngData, y: 610)
-        signatureStage("Rückgabe der DE", date: record.returnDate, first: record.signatures[.returnSystemResponsible]?.pngData, second: record.signatures[.returnWorkResponsible]?.pngData, y: 701)
+        signatureStage("Erteilung der DE und Bestätigung der Einweisung", date: record.handoverDate, first: record.signatures[.handoverSystemResponsible]?.pngData, second: record.signatures[.handoverWorkResponsible]?.pngData, y: 548)
+        signatureStage("Rückgabe der DE", date: record.returnDate, first: record.signatures[.returnSystemResponsible]?.pngData, second: record.signatures[.returnWorkResponsible]?.pngData, y: 643)
 
         func section(_ title: String, y: CGFloat) {
             SafetyPDFCanvas.text(title, in: CGRect(x: x, y: y, width: width, height: 19), font: .systemFont(ofSize: 14), color: SafetyPDFCanvas.blue)
         }
-        func labeledLine(_ label: String, value: String, y: CGFloat) {
-            SafetyPDFCanvas.text(label, in: CGRect(x: x + 5, y: y, width: 124, height: 18), font: body)
-            SafetyPDFCanvas.underlinedValue(value, in: CGRect(x: x + 130, y: y - 1, width: width - 130, height: 17), font: body, context: context)
+        func fieldRow(_ label: String, value: String, y: CGFloat) {
+            SafetyPDFCanvas.text(label, in: CGRect(x: x + 5, y: y, width: 140, height: 18), font: body)
+            if !value.isEmpty {
+                SafetyPDFCanvas.text(value, in: CGRect(x: x + 154, y: y, width: width - 154, height: 18), font: body)
+            }
         }
         func responsible(_ label: String, person: ElectricalSafetyDraftPayload.ResponsiblePerson, y: CGFloat) {
-            SafetyPDFCanvas.text(label, in: CGRect(x: x + 5, y: y, width: 126, height: 18), font: body)
+            SafetyPDFCanvas.text(label, in: CGRect(x: x + 5, y: y, width: 140, height: 18), font: body)
             let rects = [
-                CGRect(x: x + 130, y: y - 1, width: 108, height: 17),
-                CGRect(x: x + 254, y: y - 1, width: 166, height: 17),
-                CGRect(x: x + 437, y: y - 1, width: 108, height: 17)
+                CGRect(x: x + 129, y: y - 1, width: 109, height: 17),
+                CGRect(x: x + 252, y: y - 1, width: 169, height: 17),
+                CGRect(x: x + 435, y: y - 1, width: 109, height: 17)
             ]
             let values = [person.name, person.company, person.telephone]
             let labels = ["Name", "Firma", "Mobil/Telefon"]
@@ -229,8 +304,8 @@ struct LegacyElectricalSafetyPDFRenderer: Sendable {
             }
         }
         func radioRow(_ label: String, _ selected: Bool, y: CGFloat) {
-            SafetyPDFCanvas.radio(selected, at: CGPoint(x: x + 11, y: y + 6), context: context)
-            SafetyPDFCanvas.text(label, in: CGRect(x: x + 27, y: y - 1, width: width - 27, height: 18), font: body)
+            SafetyPDFCanvas.radio(selected, at: CGPoint(x: x + 10, y: y + 6), context: context)
+            SafetyPDFCanvas.text(label, in: CGRect(x: x + 28, y: y - 1, width: width - 28, height: 18), font: body)
         }
         func signatureStage(_ title: String, date: Date, first: Data?, second: Data?, y: CGFloat) {
             SafetyPDFCanvas.text(title, in: CGRect(x: x, y: y, width: width, height: 20), font: .systemFont(ofSize: 14), color: SafetyPDFCanvas.blue)
@@ -246,6 +321,20 @@ struct LegacyElectricalSafetyPDFRenderer: Sendable {
                 SafetyPDFCanvas.text(labels[index], in: CGRect(x: rects[index].minX + 5, y: rects[index].maxY + 2, width: rects[index].width, height: 12), font: small)
             }
         }
+    }
+
+    private func textHeight(_ value: String, width: CGFloat, font: UIFont) -> CGFloat {
+        guard !value.isEmpty else { return font.lineHeight }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        return ceil(
+            (value as NSString).boundingRect(
+                with: CGSize(width: max(width, 1), height: .greatestFiniteMagnitude),
+                options: [.usesLineFragmentOrigin, .usesFontLeading],
+                attributes: [.font: font, .paragraphStyle: paragraph],
+                context: nil
+            ).height
+        )
     }
 }
 

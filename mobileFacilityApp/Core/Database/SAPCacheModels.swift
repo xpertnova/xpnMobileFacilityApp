@@ -242,6 +242,7 @@ struct SAPBriefingTemplateSection: Codable, Equatable, Identifiable, Sendable {
     let id: String
     /// A dynamic SAP section title. Do not localize or rewrite it in the UI.
     let title: String
+    var subtitle: String? = nil
     let isOptional: Bool
     let items: [SAPBriefingTemplateItem]
 }
