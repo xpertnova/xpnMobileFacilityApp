@@ -38,6 +38,7 @@ final class ProofOfQualificationViewModel {
   init(
     source: ProofOfQualificationSource,
     existingDraft: OfflineWorkItem? = nil,
+    draftID: UUID? = nil,
     now: Date = .now
   ) {
     self.source = source
@@ -49,9 +50,9 @@ final class ProofOfQualificationViewModel {
     organizationUnit = source.organizationUnit
     executionStart = now
     executionEnd = now
+    savedWorkID = existingDraft?.id ?? draftID
 
     guard let existingDraft, let draft = existingDraft.payload.proofOfQualification else { return }
-    savedWorkID = existingDraft.id
     template = draft.template
     instructorFirstName = draft.instructorFirstName
     instructorLastName = draft.instructorLastName

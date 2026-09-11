@@ -424,7 +424,7 @@ final class SAPSyncTokenTests: XCTestCase {
     }
 
     @MainActor
-    func testViewModelSAPRefreshWithPendingDraftsShowsWarningDialog() async throws {
+    func testViewModelSAPRefreshWithPendingDraftsPreservesDraftAndShowsPasswordPrompt() async throws {
         let workerID = "TEST_WORKER"
         let repo = InMemoryOfflineWorkRepository()
         let offlineWorkStore = OfflineWorkStore(repository: repo, workerID: workerID)
@@ -467,32 +467,16 @@ final class SAPSyncTokenTests: XCTestCase {
             workerRole: .technician
         )
 
-        // Request refresh with pending drafts
         viewModel.requestSAPRefresh()
 
-        // Warning dialog must be presented; sync must NOT have started yet
-        XCTAssertTrue(viewModel.shouldPresentDraftWarningBeforeSync)
-        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
+        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
+        XCTAssertTrue(viewModel.shouldPresentSAPRefresh)
         XCTAssertFalse(dataStore.isRefreshing)
-
-        // Dismiss warning via cancel
-        viewModel.dismissDraftWarning()
-        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
-        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
-        XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
-
-        // Request again, then choose "Keep & Review Drafts"
-        viewModel.requestSAPRefresh()
-        XCTAssertTrue(viewModel.shouldPresentDraftWarningBeforeSync)
-        viewModel.keepDraftsAndNavigate()
-        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
-        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
-        XCTAssertEqual(viewModel.selection, .drafts)
         XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
     }
 
     @MainActor
-    func testViewModelConfirmDiscardDraftsAndSyncResetsDraftsAndProceedsWithSync() async throws {
+    func testLegacyConfirmActionPreservesDraftsAndProceedsWithSync() async throws {
         let workerID = "TEST_WORKER"
         let repo = InMemoryOfflineWorkRepository()
         let offlineWorkStore = OfflineWorkStore(repository: repo, workerID: workerID)
@@ -538,19 +522,13 @@ final class SAPSyncTokenTests: XCTestCase {
             workerRole: .technician
         )
 
-        // Request refresh -> shows warning
-        viewModel.requestSAPRefresh()
-        XCTAssertTrue(viewModel.shouldPresentDraftWarningBeforeSync)
-
-        // Confirm discard and sync
         viewModel.confirmDiscardDraftsAndSync()
         XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
 
         // Allow async Task (reset and refresh) to complete
         try await Task.sleep(for: .milliseconds(60))
 
-        // Drafts should now be discarded
-        XCTAssertEqual(offlineWorkStore.localWorkCount, 0)
+        XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
         // Token sync was invoked
         XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
     }

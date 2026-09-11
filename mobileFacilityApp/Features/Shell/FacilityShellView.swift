@@ -66,6 +66,7 @@ struct FacilityShellView: View {
                         NotificationDetailView(
                             detail: selectedOfflineNotificationDetail,
                             offlineWorkStore: demo.offlineWorkStore,
+                            photoAttachmentStore: demo.photoAttachmentStore,
                             backDestination: demo.offlineNotificationDetailReturnDestination,
                             dismiss: { demo.dismissOfflineNotificationDetail() }
                         )
@@ -563,6 +564,7 @@ struct FacilityShellView: View {
             await demo.sapDataStore.refresh(sapPassword: password)
             sapPassword = ""
             if demo.sapDataStore.refreshError == nil {
+                await demo.offlineWorkStore.load()
                 demo.shouldPresentSAPRefresh = false
             }
         }

@@ -9,6 +9,78 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case electricalSafety
     case technicalObjectEdit
     case proofOfQualification
+    case photoCollection
+}
+
+enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
+    case notification
+    case defect
+    case meterReading
+    case briefing
+    case electricalSafety
+    case firePermit
+    case proofOfQualification
+    case technicalObject
+
+    var titleKey: String {
+        switch self {
+        case .notification: "notifications.title"
+        case .defect: "manual.defect.form.title"
+        case .meterReading: "manual.meter.form.title"
+        case .briefing: "forms.briefing.title"
+        case .electricalSafety: "forms.electrical.title"
+        case .firePermit: "forms.fire.title"
+        case .proofOfQualification: "forms.qualification.title"
+        case .technicalObject: "places.title"
+        }
+    }
+}
+
+/// Stable, worker-scoped ownership for a local-only photo collection. A row
+/// identifier is used only where the business workflow has independent rows,
+/// currently maintenance-notification checklist items.
+struct LocalPhotoScope: Codable, Equatable, Hashable, Sendable {
+    let workflow: LocalPhotoWorkflow
+    let ownerID: String
+    let rowID: String?
+    let displayTitle: String
+    let displaySubtitle: String
+
+    init(
+        workflow: LocalPhotoWorkflow,
+        ownerID: String,
+        rowID: String? = nil,
+        displayTitle: String,
+        displaySubtitle: String = ""
+    ) {
+        self.workflow = workflow
+        self.ownerID = ownerID
+        self.rowID = rowID
+        self.displayTitle = displayTitle
+        self.displaySubtitle = displaySubtitle
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.workflow == rhs.workflow && lhs.ownerID == rhs.ownerID && lhs.rowID == rhs.rowID
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(workflow)
+        hasher.combine(ownerID)
+        hasher.combine(rowID)
+    }
+}
+
+struct LocalPhotoAttachment: Codable, Equatable, Identifiable, Sendable {
+    let localAttachmentID: String
+    let capturedAt: Date
+
+    var id: String { localAttachmentID }
+}
+
+struct PhotoCollectionDraftPayload: Codable, Equatable, Sendable {
+    let scope: LocalPhotoScope
+    var attachments: [LocalPhotoAttachment]
 }
 
 enum DefectPriority: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -122,6 +194,22 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
         let id: String
         let title: String
         let information: String
+        let resultElementID: String?
+        let commentElementID: String?
+
+        init(
+            id: String,
+            title: String,
+            information: String,
+            resultElementID: String? = nil,
+            commentElementID: String? = nil
+        ) {
+            self.id = id
+            self.title = title
+            self.information = information
+            self.resultElementID = resultElementID
+            self.commentElementID = commentElementID
+        }
     }
 
     let title: String
@@ -136,14 +224,92 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
     let inspectionItems: [InspectionItem]
 }
 
+struct NotificationPhotoAttachment: Codable, Equatable, Identifiable, Sendable {
+    let localAttachmentID: String
+    let checklistItemID: String
+    let sapElementID: String
+    let capturedAt: Date
+    let sapDocumentID: String
+
+    var id: String { sapDocumentID }
+}
+
 struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     var notificationID: String
     var performedOn: Date
     var results: [String: NotificationReviewResult]
     var comments: [String: String]
-    var photoItemIDs: [String]
+    var photoAttachments: [NotificationPhotoAttachment]
     var isClosedLocally: Bool
     var notificationSnapshot: OfflineNotificationSnapshot? = nil
+    var outgoingProcessID: String? = nil
+
+    init(
+        notificationID: String,
+        performedOn: Date,
+        results: [String: NotificationReviewResult],
+        comments: [String: String],
+        photoAttachments: [NotificationPhotoAttachment],
+        isClosedLocally: Bool,
+        notificationSnapshot: OfflineNotificationSnapshot? = nil,
+        outgoingProcessID: String? = nil
+    ) {
+        self.notificationID = notificationID
+        self.performedOn = performedOn
+        self.results = results
+        self.comments = comments
+        self.photoAttachments = photoAttachments
+        self.isClosedLocally = isClosedLocally
+        self.notificationSnapshot = notificationSnapshot
+        self.outgoingProcessID = outgoingProcessID
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case notificationID
+        case performedOn
+        case results
+        case comments
+        case photoAttachments
+        case photoItemIDs
+        case isClosedLocally
+        case notificationSnapshot
+        case outgoingProcessID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        notificationID = try container.decode(String.self, forKey: .notificationID)
+        performedOn = try container.decode(Date.self, forKey: .performedOn)
+        results = try container.decode([String: NotificationReviewResult].self, forKey: .results)
+        comments = try container.decode([String: String].self, forKey: .comments)
+        photoAttachments = try container.decodeIfPresent(
+            [NotificationPhotoAttachment].self,
+            forKey: .photoAttachments
+        ) ?? []
+        isClosedLocally = try container.decode(Bool.self, forKey: .isClosedLocally)
+        notificationSnapshot = try container.decodeIfPresent(
+            OfflineNotificationSnapshot.self,
+            forKey: .notificationSnapshot
+        )
+        outgoingProcessID = try container.decodeIfPresent(String.self, forKey: .outgoingProcessID)
+        // Older versions stored only checklist IDs in `photoItemIDs`; those
+        // values represented a colored icon and never referred to image data.
+        // Decode the key for compatibility, but deliberately do not turn it
+        // into an uploadable attachment.
+        _ = try container.decodeIfPresent([String].self, forKey: .photoItemIDs)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(notificationID, forKey: .notificationID)
+        try container.encode(performedOn, forKey: .performedOn)
+        try container.encode(results, forKey: .results)
+        try container.encode(comments, forKey: .comments)
+        try container.encode(photoAttachments, forKey: .photoAttachments)
+        try container.encode(isClosedLocally, forKey: .isClosedLocally)
+        try container.encodeIfPresent(notificationSnapshot, forKey: .notificationSnapshot)
+        try container.encodeIfPresent(outgoingProcessID, forKey: .outgoingProcessID)
+    }
 }
 
 /// Worker-scoped, locally retained briefing data. It preserves SAP answer
@@ -215,6 +381,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case electricalSafety(ElectricalSafetyDraftPayload)
     case technicalObjectEdit(TechnicalObjectEditPayload)
     case proofOfQualification(ProofOfQualificationDraftPayload)
+    case photoCollection(PhotoCollectionDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -253,6 +420,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var proofOfQualification: ProofOfQualificationDraftPayload? {
         guard case let .proofOfQualification(payload) = self else { return nil }
+        return payload
+    }
+
+    var photoCollection: PhotoCollectionDraftPayload? {
+        guard case let .photoCollection(payload) = self else { return nil }
         return payload
     }
 }

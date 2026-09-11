@@ -2,37 +2,59 @@ import SwiftUI
 
 struct NotificationDetailView: View {
     let detail: SAPNotificationDetail
-    let offlineWorkStore: OfflineWorkStore
     let backDestination: AppDestination
     let dismiss: () -> Void
-    @State private var performedOn = Date.now
-    @State private var comments: [String: String] = [:]
-    @State private var results: [String: NotificationReviewResult] = [:]
-    @State private var photoItemIDs: Set<String> = []
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var model: NotificationReviewViewModel
     @State private var editingCommentID: String?
-    @State private var isSavingDraft = false
-    @State private var isLoadingStoredReview = true
-    @State private var isClosedLocally = false
     @State private var isCloseConfirmationPresented = false
-    @State private var feedback: DetailActionFeedback?
+    @State private var photoWorkspaceItemID: String?
+
+    init(
+        detail: SAPNotificationDetail,
+        offlineWorkStore: OfflineWorkStore,
+        photoAttachmentStore: any PhotoAttachmentStore,
+        backDestination: AppDestination,
+        dismiss: @escaping () -> Void
+    ) {
+        self.detail = detail
+        self.backDestination = backDestination
+        self.dismiss = dismiss
+        _model = State(initialValue: NotificationReviewViewModel(
+            detail: detail,
+            offlineWorkStore: offlineWorkStore,
+            photoStore: photoAttachmentStore
+        ))
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
+        ZStack {
+            if let item = photoWorkspaceItem {
+                photoWorkspace(for: item)
+                    .transition(PhotoWorkspaceMotion.destination)
+                    .zIndex(1)
+            } else {
+                VStack(spacing: 0) {
+                    header
 
-            ScrollView {
-                VStack(spacing: 18) {
-                    metadataCard
-                    inspectionCard
+                    ScrollView {
+                        VStack(spacing: 18) {
+                            metadataCard
+                            inspectionCard
+                        }
+                        .padding(28)
+                        .frame(maxWidth: 1280, alignment: .leading)
+                    }
                 }
-                .padding(28)
-                .frame(maxWidth: 1280, alignment: .leading)
+                .background(FacilityTheme.canvas.ignoresSafeArea())
+                .safeAreaInset(edge: .bottom) { actionBar }
+                .transition(PhotoWorkspaceMotion.source)
             }
         }
-        .background(FacilityTheme.canvas.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) {
-            actionBar
-        }
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: photoWorkspaceItemID
+        )
         .overlay {
             if let editingCommentID {
                 CommentEditorOverlay(
@@ -41,20 +63,10 @@ struct NotificationDetailView: View {
                 )
             }
         }
-        .task(id: detail.summary.id) {
-            isLoadingStoredReview = true
-            defer { isLoadingStoredReview = false }
-            await offlineWorkStore.load()
-            guard let draft = offlineWorkStore.notificationReview(notificationID: detail.summary.id) else { return }
-            performedOn = draft.performedOn
-            results = draft.results
-            comments = draft.comments
-            photoItemIDs = Set(draft.photoItemIDs)
-            isClosedLocally = draft.isClosedLocally
-        }
-        .alert(item: $feedback) { feedback in
+        .task(id: detail.summary.id) { await model.load() }
+        .alert(item: $model.feedback) { feedback in
             Alert(
-                title: Text(feedback.titleKey),
+                title: Text("notifications.detail.action.title"),
                 message: Text(feedback.messageKey),
                 dismissButton: .default(Text("notifications.detail.commentEditor.done")) {
                     if case .closedLocally = feedback {
@@ -68,7 +80,7 @@ struct NotificationDetailView: View {
             isPresented: $isCloseConfirmationPresented
         ) {
             Button("notifications.detail.closeConfirmation.confirm", role: .destructive) {
-                saveReview(isClosedLocally: true)
+                Task { await model.save(closed: true) }
             }
             Button("common.cancel", role: .cancel) { }
         } message: {
@@ -76,10 +88,47 @@ struct NotificationDetailView: View {
         }
     }
 
+    private var photoWorkspaceItem: SAPNotificationDetail.InspectionItem? {
+        detail.inspectionItems.first { $0.id == photoWorkspaceItemID }
+    }
+
+    private func photoWorkspace(for item: SAPNotificationDetail.InspectionItem) -> some View {
+        let attachments = model.attachments(for: item.id)
+        return PhotoWorkspace(
+            title: String(localized: "photos.workspace.title"),
+            subtitle: item.title,
+            entries: attachments.map {
+                PhotoWorkspaceEntry(
+                    id: $0.id,
+                    localAttachmentID: $0.localAttachmentID,
+                    capturedAt: $0.capturedAt
+                )
+            },
+            photoData: model.photoData,
+            isLoading: model.isLoading,
+            isSaving: model.isSaving,
+            isReadOnly: isReadOnly,
+            close: { photoWorkspaceItemID = nil },
+            addPhoto: { data in Task { await model.addPhoto(jpegData: data, to: item) } },
+            removePhoto: { id in
+                guard let attachment = attachments.first(where: { $0.id == id }) else { return }
+                Task { await model.removePhoto(attachment) }
+            },
+            reportImportFailure: { model.feedback = .photoFailed },
+            reportCameraUnavailable: { model.feedback = .cameraUnavailable },
+            reportCameraPermissionDenied: { model.feedback = .cameraPermissionDenied }
+        )
+    }
+
     private var header: some View {
         HStack(alignment: .top, spacing: 20) {
             VStack(alignment: .leading, spacing: 7) {
-                Button(action: dismiss) {
+                Button {
+                    Task {
+                        await model.cancel()
+                        dismiss()
+                    }
+                } label: {
                     Label(LocalizedStringKey(backDestination.titleKey), systemImage: "chevron.left")
                         .font(.subheadline.weight(.semibold))
                 }
@@ -158,7 +207,10 @@ struct NotificationDetailView: View {
 
                 DatePicker(
                     "notifications.detail.performedOn",
-                    selection: $performedOn,
+                    selection: Binding(
+                        get: { model.performedOn },
+                        set: { model.performedOn = $0 }
+                    ),
                     displayedComponents: .date
                 )
                 .labelsHidden()
@@ -232,16 +284,16 @@ struct NotificationDetailView: View {
                     InspectionItemRow(
                         item: item,
                         number: index + 1,
-                        result: results[item.id],
-                        isResultMissing: results[item.id] == nil,
+                        result: model.results[item.id],
+                        isResultMissing: model.results[item.id] == nil,
                         isReadOnly: isEditingDisabled,
                         selectResult: {
                             guard !isEditingDisabled else { return }
-                            results[item.id] = $0
+                            model.results[item.id] = $0
                         },
-                        hasPhoto: photoItemIDs.contains(item.id),
-                        togglePhoto: { togglePhoto(for: item.id) },
-                        comment: comments[item.id, default: ""],
+                        attachments: model.attachments(for: item.id),
+                        openPhotos: { photoWorkspaceItemID = item.id },
+                        comment: model.comments[item.id, default: ""],
                         editComment: {
                             guard !isEditingDisabled else { return }
                             editingCommentID = item.id
@@ -265,13 +317,13 @@ struct NotificationDetailView: View {
 
     private func commentBinding(for itemID: String) -> Binding<String> {
         Binding(
-            get: { comments[itemID, default: ""] },
+            get: { model.comments[itemID, default: ""] },
             set: { newValue in
                 guard !isEditingDisabled else { return }
                 if newValue.isEmpty {
-                    comments.removeValue(forKey: itemID)
+                    model.comments.removeValue(forKey: itemID)
                 } else {
-                    comments[itemID] = newValue
+                    model.comments[itemID] = newValue
                 }
             }
         )
@@ -283,26 +335,26 @@ struct NotificationDetailView: View {
 
             Button("notifications.detail.allGood") {
                 for item in detail.inspectionItems {
-                    results[item.id] = .no
+                    model.results[item.id] = .no
                 }
             }
             .buttonStyle(.plain)
             .foregroundStyle(FacilityTheme.blue)
-            .disabled(isEditingDisabled || detail.inspectionItems.isEmpty || isSavingDraft)
+            .disabled(isEditingDisabled || detail.inspectionItems.isEmpty || model.isSaving)
 
             Button("notifications.detail.saveTemporary") {
-                saveReview(isClosedLocally: false)
+                Task { await model.save(closed: false) }
             }
             .buttonStyle(.bordered)
             .tint(FacilityTheme.ink)
-            .disabled(isEditingDisabled || isSavingDraft)
+            .disabled(isEditingDisabled || model.isSaving)
 
             Button("notifications.detail.closeNotification") {
                 isCloseConfirmationPresented = true
             }
             .buttonStyle(.borderedProminent)
             .tint(FacilityTheme.accent)
-            .disabled(isEditingDisabled || isSavingDraft || !canCloseNotification)
+            .disabled(isEditingDisabled || model.isSaving || !canCloseNotification)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
@@ -311,72 +363,30 @@ struct NotificationDetailView: View {
     }
 
     private var canCloseNotification: Bool {
-        detail.inspectionItems.allSatisfy { results[$0.id] != nil }
+        model.canClose
     }
 
     private var isReadOnly: Bool {
-        isClosedLocally
+        model.isClosedLocally
     }
 
     private var isEditingDisabled: Bool {
-        isLoadingStoredReview || isReadOnly
+        model.isEditingDisabled
     }
 
-    private func togglePhoto(for itemID: String) {
-        guard !isEditingDisabled else { return }
-        if photoItemIDs.contains(itemID) {
-            photoItemIDs.remove(itemID)
-        } else {
-            photoItemIDs.insert(itemID)
-        }
-    }
-
-    private func saveReview(isClosedLocally: Bool) {
-        guard !isSavingDraft, !isEditingDisabled else { return }
-        guard !isClosedLocally || canCloseNotification else {
-            feedback = .incomplete
-            return
-        }
-
-        isSavingDraft = true
-        let draft = NotificationReviewDraftPayload(
-            notificationID: detail.summary.id,
-            performedOn: performedOn,
-            results: results,
-            comments: comments,
-            photoItemIDs: Array(photoItemIDs),
-            isClosedLocally: isClosedLocally,
-            notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
-        )
-        Task {
-            defer { isSavingDraft = false }
-            do {
-                _ = try await offlineWorkStore.saveNotificationReview(draft)
-                self.isClosedLocally = isClosedLocally
-                feedback = isClosedLocally ? .closedLocally : .savedLocally
-            } catch {
-                feedback = .saveFailed
-            }
-        }
-    }
 }
 
-private enum DetailActionFeedback: Identifiable {
-    case savedLocally
-    case closedLocally
-    case incomplete
-    case saveFailed
-
-    var id: Self { self }
-
-    var titleKey: LocalizedStringKey { "notifications.detail.action.title" }
-
+private extension NotificationReviewViewModel.Feedback {
     var messageKey: LocalizedStringKey {
         switch self {
         case .savedLocally: "notifications.detail.action.saved"
         case .closedLocally: "notifications.detail.action.closed"
         case .incomplete: "notifications.detail.action.incomplete"
         case .saveFailed: "notifications.detail.action.failed"
+        case .photoFailed: "notifications.detail.photo.failed"
+        case .photoLimitReached: "notifications.detail.photo.limit"
+        case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
+        case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
         }
     }
 }
@@ -441,83 +451,96 @@ private struct InspectionItemRow: View {
     let isResultMissing: Bool
     let isReadOnly: Bool
     let selectResult: (NotificationReviewResult) -> Void
-    let hasPhoto: Bool
-    let togglePhoto: () -> Void
+    let attachments: [NotificationPhotoAttachment]
+    let openPhotos: () -> Void
     let comment: String
     let editComment: () -> Void
     @State private var isShowingInformation = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(number, format: .number)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .leading)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Text(number, format: .number)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 42, alignment: .leading)
 
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(FacilityTheme.red)
-                .frame(width: 28, height: 52)
-                .opacity(isResultMissing ? 1 : 0)
-                .accessibilityLabel(Text("notifications.detail.validation.incompleteItem"))
-                .accessibilityHidden(!isResultMissing)
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(FacilityTheme.red)
+                    .frame(width: 28, height: 52)
+                    .opacity(isResultMissing ? 1 : 0)
+                    .accessibilityLabel(Text("notifications.detail.validation.incompleteItem"))
+                    .accessibilityHidden(!isResultMissing)
 
-            HStack(spacing: 10) {
-                if item.information.isEmpty {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 28, height: 28)
-                } else {
-                    Button {
-                        isShowingInformation = true
-                    } label: {
-                        Image(systemName: "info.circle.fill")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(FacilityTheme.blue)
-                            .frame(width: 52, height: 52)
+                HStack(spacing: 10) {
+                    if item.information.isEmpty {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 28, height: 28)
+                    } else {
+                        Button {
+                            isShowingInformation = true
+                        } label: {
+                            Image(systemName: "info.circle.fill")
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(FacilityTheme.blue)
+                                .frame(width: 52, height: 52)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text("notifications.detail.showInformation"))
+                        .popover(isPresented: $isShowingInformation) {
+                            Text(item.information)
+                                .font(.body)
+                                .padding(20)
+                                .frame(width: 360, alignment: .leading)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("notifications.detail.showInformation"))
-                    .popover(isPresented: $isShowingInformation) {
-                        Text(item.information)
-                            .font(.body)
-                            .padding(20)
-                            .frame(width: 360, alignment: .leading)
-                    }
+
+                    Text(item.title)
+                        .font(.body)
+                        .foregroundStyle(FacilityTheme.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Text(item.title)
-                    .font(.body)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                resultControl
+                    .frame(width: 130)
+
+                Button(action: openPhotos) {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: attachments.isEmpty ? "camera" : "camera.fill")
+                            .foregroundStyle(attachments.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
+                            .frame(width: 44, height: 44)
+                            .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
+                        if !attachments.isEmpty {
+                            Text(attachments.count, format: .number)
+                                .font(.caption2.bold())
+                                .foregroundStyle(.white)
+                                .frame(minWidth: 18, minHeight: 18)
+                                .background(FacilityTheme.blue, in: Circle())
+                                .offset(x: 5, y: -5)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("notifications.detail.photo"))
+                .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), attachments.count)))
+                .frame(width: 52)
+
+                Button(action: editComment) {
+                    Image(systemName: comment.isEmpty ? "pencil" : "note.text")
+                        .foregroundStyle(comment.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
+                        .frame(width: 44, height: 44)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
+                }
+                .buttonStyle(.plain)
+                .disabled(isReadOnly)
+                .accessibilityLabel(Text("notifications.detail.comment"))
+                .frame(width: 58)
             }
 
-            resultControl
-                .frame(width: 130)
-
-            Button(action: togglePhoto) {
-                Image(systemName: hasPhoto ? "camera.fill" : "camera")
-                    .foregroundStyle(hasPhoto ? FacilityTheme.blue : FacilityTheme.ink)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly)
-            .accessibilityLabel(Text("notifications.detail.photo"))
-            .frame(width: 52)
-
-            Button(action: editComment) {
-                Image(systemName: comment.isEmpty ? "pencil" : "note.text")
-                    .foregroundStyle(comment.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly)
-            .accessibilityLabel(Text("notifications.detail.comment"))
-            .frame(width: 58)
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 10)

@@ -74,6 +74,7 @@ struct NotificationsView: View {
                 SAPNotificationDetailScreen(
                     summary: selectedSAPNotification,
                     offlineWorkStore: demo.offlineWorkStore,
+                    photoAttachmentStore: demo.photoAttachmentStore,
                     dismiss: { demo.selectedNotificationID = nil }
                 )
                 .id(selectedSAPNotification.id)
@@ -781,15 +782,18 @@ private struct StructuralFilterControlAnchorKey: PreferenceKey {
 private struct SAPNotificationDetailScreen: View {
     @State private var detail: SAPNotificationDetail
     let offlineWorkStore: OfflineWorkStore
+    let photoAttachmentStore: any PhotoAttachmentStore
     let dismiss: () -> Void
 
     init(
         summary: SAPNotificationSummary,
         offlineWorkStore: OfflineWorkStore,
+        photoAttachmentStore: any PhotoAttachmentStore,
         dismiss: @escaping () -> Void
     ) {
         _detail = State(initialValue: SAPNotificationDetail(summary: summary))
         self.offlineWorkStore = offlineWorkStore
+        self.photoAttachmentStore = photoAttachmentStore
         self.dismiss = dismiss
     }
 
@@ -797,6 +801,7 @@ private struct SAPNotificationDetailScreen: View {
         NotificationDetailView(
             detail: detail,
             offlineWorkStore: offlineWorkStore,
+            photoAttachmentStore: photoAttachmentStore,
             backDestination: .notifications,
             dismiss: dismiss
         )

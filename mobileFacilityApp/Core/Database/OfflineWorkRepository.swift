@@ -4,6 +4,13 @@ protocol OfflineWorkRepository: Sendable {
     func loadWork(for workerID: String) async throws -> [OfflineWorkItem]
     func save(_ item: OfflineWorkItem) async throws
     func resetWork(for workerID: String) async throws
+    func delete(ids: [UUID]) async throws
+}
+
+extension OfflineWorkRepository {
+    func delete(ids: [UUID]) async throws {
+        throw OfflineWorkRepositoryError.unavailable
+    }
 }
 
 actor InMemoryOfflineWorkRepository: OfflineWorkRepository {
@@ -23,6 +30,10 @@ actor InMemoryOfflineWorkRepository: OfflineWorkRepository {
         items = items.filter { $0.value.workerID != workerID }
     }
 
+    func delete(ids: [UUID]) async throws {
+        for id in ids { items[id] = nil }
+    }
+
     func reset() {
         items = [:]
     }
@@ -38,6 +49,10 @@ struct UnavailableOfflineWorkRepository: OfflineWorkRepository {
     }
 
     func resetWork(for workerID: String) async throws {
+        throw OfflineWorkRepositoryError.unavailable
+    }
+
+    func delete(ids: [UUID]) async throws {
         throw OfflineWorkRepositoryError.unavailable
     }
 }

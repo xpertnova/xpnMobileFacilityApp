@@ -152,7 +152,15 @@ struct AppRootView: View {
                 synchronizationUserID: synchronizationUserID,
                 tokenStore: tokenStore,
                 tokenStoreAccountID: tokenStoreAccountID,
-                synchronizationStore: repository
+                synchronizationStore: repository,
+                notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator(
+                    workerID: session.workerID,
+                    syncUserID: synchronizationUserID,
+                    offlineRepository: productionOfflineWorkRepository,
+                    cacheRepository: repository,
+                    outgoingStore: repository,
+                    photoStore: productionPhotoAttachmentStore
+                )
             )
             return SAPDataStore(
                 repository: repository,

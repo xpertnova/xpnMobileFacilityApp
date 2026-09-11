@@ -2,11 +2,24 @@ import SwiftUI
 
 struct DraftsView: View {
     let demo: FacilityDemoViewModel
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var showsUnavailableNotificationAlert = false
+    @State private var photoWorkspaceScope: LocalPhotoScope?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+        ZStack {
+            if let photoWorkspaceScope {
+                LocalPhotoWorkspace(
+                    scope: photoWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    photoStore: demo.photoAttachmentStore,
+                    close: { self.photoWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                 PageHeader(
                     "drafts.title",
                     subtitle: "drafts.subtitle",
@@ -38,7 +51,8 @@ struct DraftsView: View {
                         && demo.offlineWorkStore.defectItems.isEmpty
                         && demo.offlineWorkStore.meterReadingItems.isEmpty
                         && demo.offlineWorkStore.technicalObjectEditItems.isEmpty
-                        && demo.offlineWorkStore.proofOfQualificationItems.isEmpty {
+                        && demo.offlineWorkStore.proofOfQualificationItems.isEmpty
+                        && demo.offlineWorkStore.photoCollectionItems.isEmpty {
                         emptyState
                     } else {
                         savedWorkList
@@ -50,10 +64,17 @@ struct DraftsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                    }
+                    .padding(28)
+                    .frame(maxWidth: 1280, alignment: .leading)
+                }
+                .transition(PhotoWorkspaceMotion.source)
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
         }
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: photoWorkspaceScope
+        )
         .task {
             await demo.offlineWorkStore.load()
         }
@@ -93,8 +114,34 @@ struct DraftsView: View {
             savedElectricalSafetyRows
             savedTechnicalObjectEditList
             savedProofOfQualificationList
+            savedPhotoCollections
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var savedPhotoCollections: some View {
+        ForEach(demo.offlineWorkStore.photoCollectionItems) { item in
+            if let collection = item.payload.photoCollection, !collection.attachments.isEmpty {
+                LocalWorkTemplateRow(
+                    icon: "📷",
+                    title: Text(collection.scope.displayTitle.isEmpty
+                        ? String(localized: "photos.workspace.title")
+                        : collection.scope.displayTitle),
+                    subtitle: Text(photoCollectionSubtitle(collection)),
+                    status: demo.isDemoMode ? .demoLocal : .offline(.draft),
+                    syncError: nil,
+                    action: { photoWorkspaceScope = collection.scope }
+                )
+            }
+        }
+    }
+
+    private func photoCollectionSubtitle(_ collection: PhotoCollectionDraftPayload) -> String {
+        let count = String(format: String(localized: "photos.workspace.count"), collection.attachments.count)
+        return [collection.scope.displaySubtitle, count]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     @ViewBuilder

@@ -347,19 +347,22 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     private let synchronizationStore: any SAPLegacySynchronizationStore
     private let tokenStore: (any SAPSyncTokenStore)?
     private let tokenStoreAccountID: String
+    private let notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator?
 
     init(
         connection: SAPReadConnection,
         synchronizationUserID: String,
         tokenStore: (any SAPSyncTokenStore)? = nil,
         tokenStoreAccountID: String? = nil,
-        synchronizationStore: any SAPLegacySynchronizationStore
+        synchronizationStore: any SAPLegacySynchronizationStore,
+        notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator? = nil
     ) {
         self.connection = connection
         self.synchronizationUserID = synchronizationUserID
         self.synchronizationStore = synchronizationStore
         self.tokenStore = tokenStore
         self.tokenStoreAccountID = tokenStoreAccountID ?? synchronizationUserID
+        self.notificationOutgoingCoordinator = notificationOutgoingCoordinator
     }
 
     private var sapWorkerID: String {
@@ -460,6 +463,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         // sends it even when there are no pending supported records.
         let fromRequestID = Self.makeRequestID(prefix: "MTFMSYNCFROM")
         let toRequestID = Self.makeRequestID(prefix: "MTFMSYNCTO")
+        let notificationBatch = try await notificationOutgoingCoordinator?.prepare() ?? .empty
         SAPSynchronizationDiagnostics.logSynchronizationStage(1, "Uploading TO metadata")
         await progress(.uploadingOutgoingMetadata)
         let outgoingPayload = try await synchronizationStore.stageOutgoing(requestID: toRequestID)
@@ -470,6 +474,18 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 connection: synchronizationConnection
             )
             SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO rows staged with request ID")
+
+            for (index, document) in notificationBatch.documents.enumerated() {
+                await progress(.uploadingOutgoingDocuments(
+                    current: index + 1,
+                    total: notificationBatch.documents.count
+                ))
+                try await submitOutgoingDocument(
+                    requestID: toRequestID,
+                    document: document,
+                    connection: synchronizationConnection
+                )
+            }
 
             SAPSynchronizationDiagnostics.logSynchronizationStage(3, "Triggering TO post")
             await progress(.postingOutgoingData)
@@ -482,8 +498,10 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 connection: synchronizationConnection
             )
             try await synchronizationStore.confirmOutgoing(requestID: toRequestID)
+            try await notificationOutgoingCoordinator?.complete(notificationBatch)
         } catch {
             await synchronizationStore.abortOutgoing(requestID: toRequestID)
+            await notificationOutgoingCoordinator?.fail(notificationBatch, error: error)
             throw error
         }
         
@@ -620,6 +638,31 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             // an M0002001 request whose gateway response timed out.
             guard Self.isRecoverableLifecyclePollingError(error) else { throw error }
         }
+    }
+
+    private func submitOutgoingDocument(
+        requestID: String,
+        document: SAPNotificationOutgoingDocument,
+        connection: SAPReadConnection
+    ) async throws {
+        var row = document.metadata
+        row["REQID"] = requestID
+        row["FELDWERT"] = document.jpegData.base64EncodedString()
+        guard !row["FELDWERT", default: ""].hasPrefix("data:image") else {
+            throw SAPReadError.malformedPayload
+        }
+        let response = try await call(
+            method: "M0002031",
+            parameters: Self.parameters([
+                "PARAMETER1": sapWorkerID,
+                "PARAMETER2": requestID,
+                "PARAMETER3": "I1"
+            ]),
+            document: row,
+            connection: connection,
+            responseMayBeEmpty: true
+        )
+        if let response { try SAPLegacyDataExchangeCodec.validateNoBackendError(response) }
     }
 
     private func triggerOutgoingPost(requestID: String, connection: SAPReadConnection) throws {
@@ -774,6 +817,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         parameters: SAPReadParameters,
         usesLegacyAuthenticationEnvelope: Bool = false,
         synchronizationData: LegacySAPOutgoingPayload? = nil,
+        document: [String: String]? = nil,
         connection: SAPReadConnection,
         responseMayBeEmpty: Bool = false
     ) async throws -> String? {
@@ -784,7 +828,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         }
         
         let ivData: String
-        if let synchronizationData {
+        if let document {
+            ivData = try SAPLegacyDataExchangeCodec.packDocument(
+                method: method, parameters: parameters, document: document
+            )
+        } else if let synchronizationData {
             ivData = try SAPLegacyDataExchangeCodec.pack(
                 method: method,
                 parameters: parameters,
@@ -939,6 +987,7 @@ private enum SAPOutgoingPostAcknowledgement {
 enum SAPLegacyDataExchangeCodec {
     private static let parameterStructureName = "/EZO/MTFMS_PARAMETER"
     private static let synchronizationStructureName = "/EZO/MTFMS_IP4SYNCH"
+    private static let notificationDocumentStructureName = "/EZO/MTFMT_0282"
 
     static func cachedNotificationPayload(fromFeldwert feldwert: String) -> [String: Any]? {
         notificationData(fromFeldwert: feldwert)
@@ -982,6 +1031,28 @@ enum SAPLegacyDataExchangeCodec {
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
 
+    static func packDocument(
+        method: String,
+        parameters: Encodable,
+        document: Encodable
+    ) throws -> String {
+        let envelope = [
+            LegacyEnvelope(KEY: "METHODNAME", PAR: "", VALUE: method),
+            LegacyEnvelope(KEY: "STRUCTURE", PAR: parameterStructureName, VALUE: try jsonString(parameters)),
+            LegacyEnvelope(
+                KEY: "STRUCTURE", PAR: notificationDocumentStructureName,
+                VALUE: try jsonString(document)
+            )
+        ]
+        let data = try JSONEncoder().encode(envelope)
+        return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
+    }
+
+    static func packedFeldwert(_ object: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
+    }
+
     private static func packed(method: String, parameters: Encodable) throws -> String {
         let envelope = [
             LegacyEnvelope(KEY: "METHODNAME", PAR: "", VALUE: method),
@@ -991,7 +1062,7 @@ enum SAPLegacyDataExchangeCodec {
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
 
-    fileprivate static func authorization(from response: String) throws -> SAPReadAuthorization {
+    static func authorization(from response: String) throws -> SAPReadAuthorization {
         let envelopes = try decodeEnvelopes(response)
         try throwBackendMessage(in: envelopes)
         for envelope in envelopes {

@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore {
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -471,6 +471,37 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let schema = try Self.schema(named: tableName.uppercased())
         for row in rows {
             try Self.insert(row: row, into: schema, on: database)
+        }
+    }
+
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow]
+    ) async throws {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let headerSchema = try Self.schema(named: "TO_T0281")
+        let valueSchema = try Self.schema(named: "TO_T0283")
+        let documentSchema = try Self.schema(named: "TO_T0282")
+        try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
+        do {
+            for processID in Set(processIDs) where !processID.isEmpty {
+                for table in [headerSchema.name, valueSchema.name, documentSchema.name] {
+                    try Self.execute(
+                        on: database,
+                        "DELETE FROM \(table) WHERE VORGANGSNR = ?",
+                        bindings: [processID]
+                    )
+                }
+            }
+            for row in headers { try Self.insert(row: row, into: headerSchema, on: database) }
+            for row in values { try Self.insert(row: row, into: valueSchema, on: database) }
+            for row in documents { try Self.insert(row: row, into: documentSchema, on: database) }
+            try Self.execute(on: database, "COMMIT")
+        } catch {
+            try? Self.execute(on: database, "ROLLBACK")
+            throw error
         }
     }
 
