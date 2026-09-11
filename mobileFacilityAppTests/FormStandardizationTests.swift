@@ -349,6 +349,169 @@ final class FormStandardizationTests: XCTestCase {
         XCTAssertEqual(briefing.endDate, later)
     }
 
+    @MainActor
+    func testBriefingPDFMatchesFivePageTemplateStructure() throws {
+        let briefing = BriefingWorkflowViewModel(
+            source: .demo(
+                OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "test"),
+                workerName: "Sudhir Kancherla"
+            )
+        )
+        briefing.selectedBusinessEntityID = "DE-ANR-17705-01"
+        briefing.selectedBuildingCode = "GB01"
+        briefing.selectedTemplateID = "TFMINSTRUC|I3|A|TFMB_001"
+        briefing.coordinator = "Sdfsdfsdfsdf"
+        briefing.instructedPerson = "sdfsdfsdfsdf"
+        briefing.selectedPartnerID = "1000001"
+        briefing.taskDescription = "sdfsdfsdfsdfsdfsdf"
+
+        let dummySignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        briefing.instructorSignature = dummySignature
+        briefing.instructedPersonSignature = dummySignature
+
+        let payload = try XCTUnwrap(briefing.makePDFPayload())
+        let artifact = try LegacyBriefingPDFRenderer().render(payload)
+
+        XCTAssertEqual(artifact.fileName, "Einweisung.pdf")
+        let doc = try XCTUnwrap(PDFDocument(data: artifact.data))
+        XCTAssertEqual(doc.pageCount, 5)
+
+        // Page 1: Header, Disclaimer, Signatures, 3-column legal footer
+        let p1 = try XCTUnwrap(doc.page(at: 0)?.string)
+        XCTAssertTrue(p1.contains("Einweisung von Partnerfirmen"))
+        XCTAssertTrue(p1.contains("Einweiser/Abnehmer(E.ON"))
+        XCTAssertTrue(p1.contains("Sudhir Kancherla"))
+        XCTAssertTrue(p1.contains("e.on"))
+        XCTAssertTrue(p1.contains("Benannter Koordinator ggf. SiGeKo gemäß BauStellV:"))
+        XCTAssertTrue(p1.contains("Sdfsdfsdfsdf"))
+        XCTAssertTrue(p1.contains("Partnerfirma/Auftragnehmer:"))
+        XCTAssertTrue(p1.contains("Test Adresse für IT Zwecke"))
+        XCTAssertTrue(p1.contains("Eingewiesener:"))
+        XCTAssertTrue(p1.contains("sdfsdfsdfsdf"))
+        XCTAssertTrue(p1.contains("Leistungs-/Arbeitsort:"))
+        XCTAssertTrue(p1.contains("Durchzuführende Arbeiten:"))
+        XCTAssertTrue(p1.contains("Ausführung von ... bis... :"))
+        XCTAssertTrue(p1.contains("Mit dieser Einweisung werden z. B. die standort- und betriebsspezifischen Gegebenheiten"))
+        XCTAssertTrue(p1.contains("Datum, Uhrzeit:"))
+        XCTAssertTrue(p1.contains("Einweiser/Abnehmer"))
+        XCTAssertTrue(p1.contains("Eingewiesener"))
+        XCTAssertTrue(p1.contains("[ X ]Kopie an Eingewiesenen übergeben."))
+        XCTAssertTrue(p1.contains("Geschäftsführer/Managing Directors"))
+        XCTAssertTrue(p1.contains("E.ON Service GmbH Sitz/Head Office: Essen"))
+        XCTAssertTrue(p1.contains("HRB 16297"))
+        XCTAssertTrue(p1.contains("Seite 1 von 5"))
+
+        // Page 2: Overview table + Section 1 + Section 2
+        let p2 = try XCTUnwrap(doc.page(at: 1)?.string)
+        XCTAssertTrue(p2.contains("Nr Aufgaben"))
+        XCTAssertTrue(p2.contains("Fachliche und persönliche Eignung"))
+        XCTAssertTrue(p2.contains("Notfallmanagement"))
+        XCTAssertTrue(p2.contains("Flucht und Rettungswege/Sammelplatz"))
+        XCTAssertTrue(p2.contains("Sicherheitskennzeichnung"))
+        XCTAssertTrue(p2.contains("Arbeitsplatz/-einrichtung"))
+        XCTAssertTrue(p2.contains("Arbeitsaufgabe/-ablauf"))
+        XCTAssertTrue(p2.contains("Unfälle"))
+        XCTAssertFalse(p2.contains("Sicherheitscheckliste für Erdarbeiten\n"))
+        XCTAssertTrue(p2.contains("Nr Aufgaben Durchgeführt Bermerkung"))
+        XCTAssertTrue(p2.contains("1.01"))
+        XCTAssertTrue(p2.contains("1.02"))
+        XCTAssertTrue(p2.contains("Seite 2 von 5"))
+
+        // Page 3: PSA subpositions
+        let p3 = try XCTUnwrap(doc.page(at: 2)?.string)
+        XCTAssertTrue(p3.contains("Seite 3 von 5"))
+        XCTAssertTrue(p3.contains("Schutzbrille"))
+        XCTAssertTrue(p3.contains("Schutzhelm"))
+        XCTAssertTrue(p3.contains("Sicherheitsschuh"))
+        XCTAssertTrue(p3.contains("Gehörschutz"))
+
+        // Page 4: Arbeitsplatz
+        let p4 = try XCTUnwrap(doc.page(at: 3)?.string)
+        XCTAssertTrue(p4.contains("Seite 4 von 5"))
+        XCTAssertTrue(p4.contains("5.01"))
+
+        // Page 5: Erdarbeiten banner + Unfälle
+        let p5 = try XCTUnwrap(doc.page(at: 4)?.string)
+        XCTAssertTrue(p5.contains("Seite 5 von 5"))
+        XCTAssertTrue(p5.contains("Sicherheitscheckliste für Erdarbeiten"))
+        XCTAssertTrue(p5.contains("Die Sicherheitscheckliste Erdarbeiten in der Nähe erdverlegter Kabel und Rohrleitungen wurde ausgefüllt."))
+        XCTAssertTrue(p5.contains("8.01"))
+        XCTAssertTrue(p5.contains("8.02"))
+        XCTAssertTrue(p5.contains("8.03"))
+    }
+
+    func testBriefingPDFDynamicChecklistRows() throws {
+        let dummySignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let section = BriefingPDFPayload.Section(
+            id: "sec-dynamic",
+            title: "Dynamischer Abschnitt",
+            subtitle: "Wichtiger Hinweis zum dynamischen Abschnitt",
+            number: 1,
+            items: [
+                BriefingPDFPayload.Item(
+                    id: "it-1",
+                    number: "1.01",
+                    rowType: .position,
+                    title: "Erste dynamische Aufgabe",
+                    answer: .yes(key: "YES", title: "Ja"),
+                    comment: "Alles in Ordnung",
+                    warningSymbolID: "W001"
+                ),
+                BriefingPDFPayload.Item(
+                    id: "it-2",
+                    number: "",
+                    rowType: .subposition,
+                    title: "Spezifische PSA Unterposition",
+                    answer: .no(key: "NO", title: "Nein"),
+                    comment: "",
+                    warningSymbolID: nil
+                )
+            ]
+        )
+
+        let payload = BriefingPDFPayload(
+            planNumber: "TFMB_DYN",
+            instructorName: "Max Mustermann",
+            organizationUnit: "E.ON Test",
+            coordinator: "Anna Koordinator",
+            partnerName: "Partner AG",
+            partnerAddress: "Musterweg 1, 12345 Stadt",
+            instructedPerson: "Jan Arbeiter",
+            businessEntity: "DE-TEST-001",
+            workLocation: "Gebäude A · Technikraum",
+            taskDescription: "Wartung der Klimaanlage",
+            startDate: Date(timeIntervalSince1970: 1_700_000_000),
+            endDate: Date(timeIntervalSince1970: 1_700_000_000),
+            completedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            instructorSignature: dummySignature,
+            instructedPersonSignature: dummySignature,
+            sections: [section]
+        )
+
+        let artifact = try LegacyBriefingPDFRenderer().render(payload)
+        let doc = try XCTUnwrap(PDFDocument(data: artifact.data))
+        XCTAssertEqual(doc.pageCount, 2)
+
+        let p2 = try XCTUnwrap(doc.page(at: 1)?.string)
+        XCTAssertTrue(p2.contains("Dynamischer Abschnitt"))
+        XCTAssertTrue(p2.contains("Wichtiger Hinweis zum dynamischen Abschnitt"))
+        XCTAssertTrue(p2.contains("Erste dynamische Aufgabe"))
+        XCTAssertTrue(p2.contains("Spezifische PSA Unterposition"))
+        XCTAssertTrue(p2.contains("Alles in Ordnung"))
+        XCTAssertTrue(p2.contains("Seite 2 von 2"))
+    }
+
+    func testSAPBriefingTemplateSectionSubtitlePreservation() {
+        let section = SAPBriefingTemplateSection(
+            id: "0010",
+            title: "Fachliche Eignung",
+            subtitle: "Wichtige Erläuterung",
+            isOptional: false,
+            items: []
+        )
+        XCTAssertEqual(section.subtitle, "Wichtige Erläuterung")
+    }
+
     private var safetyFormContextFixture: SafetyFormContext {
         SafetyFormContext(
             businessEntityID: "BE-1",

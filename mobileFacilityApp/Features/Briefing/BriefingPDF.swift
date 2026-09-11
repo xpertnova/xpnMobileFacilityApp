@@ -9,8 +9,23 @@ struct BriefingPDFPayload: Sendable, Equatable {
     struct Section: Sendable, Equatable, Identifiable {
         let id: String
         let title: String
+        let subtitle: String?
         let number: Int
         let items: [Item]
+
+        init(
+            id: String,
+            title: String,
+            subtitle: String? = nil,
+            number: Int,
+            items: [Item]
+        ) {
+            self.id = id
+            self.title = title
+            self.subtitle = subtitle
+            self.number = number
+            self.items = items
+        }
     }
 
     struct Item: Sendable, Equatable, Identifiable {
@@ -97,23 +112,24 @@ enum BriefingPDFRenderingError: LocalizedError {
     }
 }
 
-/// Core Graphics port of the legacy Cordova pdfmake briefing document, using
-/// the same content order, A4 sizing, table proportions, and pagination.
+/// Core Graphics port of the legacy briefing document matching the official
+/// 5-page template, while dynamically laying out arbitrary checklist rows,
+/// sections, subpositions, warning symbols, and multi-page continuation breaks.
 struct LegacyBriefingPDFRenderer: Sendable {
     private enum Layout {
         static let pageSize = CGSize(width: 595.28, height: 841.89)
         static let leftMargin: CGFloat = 25
         static let topMargin: CGFloat = 25
         static let rightMargin: CGFloat = 25
-        static let bottomMargin: CGFloat = 50
-        static let headerFont = UIFont.boldSystemFont(ofSize: 22)
-        static let tableHeaderFont = UIFont.boldSystemFont(ofSize: 12)
-        static let bodyFont = UIFont.systemFont(ofSize: 10)
-        static let bodyBoldFont = UIFont.boldSystemFont(ofSize: 10)
-        static let subInfoFont = UIFont.systemFont(ofSize: 8)
-        static let footerFont = UIFont.italicSystemFont(ofSize: 10)
-        static let tableHeaderHeight: CGFloat = 30
-        static let sectionHeight: CGFloat = 24
+        static let bottomMargin: CGFloat = 52
+        static let headerFont = UIFont.boldSystemFont(ofSize: 18)
+        static let tableHeaderFont = UIFont.boldSystemFont(ofSize: 10.5)
+        static let bodyFont = UIFont.systemFont(ofSize: 9)
+        static let bodyBoldFont = UIFont.boldSystemFont(ofSize: 9)
+        static let subInfoFont = UIFont.systemFont(ofSize: 7.5)
+        static let footerFont = UIFont.italicSystemFont(ofSize: 9)
+        static let tableHeaderHeight: CGFloat = 24
+        static let sectionHeight: CGFloat = 20
         static let borderColor = UIColor.black.withAlphaComponent(0.75)
         static let sectionFill = UIColor(white: 0.93, alpha: 1)
     }
@@ -157,48 +173,111 @@ struct LegacyBriefingPDFRenderer: Sendable {
         pageNumber: Int,
         pageCount: Int
     ) {
-        var y = StandardFormPDFHeaderRenderer.draw(
-            StandardFormPDFHeaderData(
-                documentTitle: copy.title,
-                instructorName: payload.instructorName,
-                organizationUnit: payload.organizationUnit,
-                coordinator: payload.coordinator,
-                partnerName: payload.partnerName,
-                partnerAddress: payload.partnerAddress,
-                instructedPerson: payload.instructedPerson,
-                workLocation: [payload.businessEntity, payload.workLocation]
-                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                    .joined(separator: "\n"),
-                workDescription: payload.taskDescription,
-                dateFrom: payload.startDate,
-                dateTo: payload.endDate
-            ),
-            in: context,
-            pageWidth: Layout.pageSize.width,
-            margin: Layout.leftMargin,
+        var y = drawBriefingHeader(
+            context: context,
+            payload: payload,
+            copy: copy,
             startY: Layout.topMargin
-        ) + 9
+        ) + 12
 
         for declaration in copy.declarations {
             let height = max(
-                34,
-                textHeight(declaration, width: contentWidth, font: Layout.bodyBoldFont) + 8
+                30,
+                textHeight(declaration, width: contentWidth, font: Layout.bodyBoldFont) + 6
             )
             drawText(
                 declaration,
                 in: CGRect(x: Layout.leftMargin, y: y, width: contentWidth, height: height),
                 font: Layout.bodyBoldFont
             )
-            y += height + 2
+            y += height + 4
         }
 
         drawSignatureTable(
-            at: y + 6,
+            at: y + 8,
             context: context,
             payload: payload,
             copy: copy
         )
         drawFooter(context: context, pageNumber: pageNumber, pageCount: pageCount, copy: copy)
+    }
+
+    private func drawBriefingHeader(
+        context: CGContext,
+        payload: BriefingPDFPayload,
+        copy: BriefingPDFCopy,
+        startY: CGFloat
+    ) -> CGFloat {
+        var y = startY
+
+        // Title block
+        let titleHeight = max(44, textHeight(copy.title, width: contentWidth - 16, font: Layout.headerFont) + 14)
+        let titleRect = CGRect(x: Layout.leftMargin, y: y, width: contentWidth, height: titleHeight)
+        drawCell(titleRect, fill: .white, context: context)
+        drawText(copy.title, in: titleRect.insetBy(dx: 8, dy: 7), font: Layout.headerFont, alignment: .center)
+        y = titleRect.maxY
+
+        // Row 1: Einweiser/Abnehmer(E.ON Mitarbeiter) | Name | Orgunit
+        let r1Col1Width = contentWidth * 0.25
+        let r1Col2Width = contentWidth * 0.50
+        let r1Col3Width = contentWidth * 0.25
+        let r1Label = "Einweiser/Abnehmer(E.ON\nMitarbeiter)"
+        let orgText = payload.organizationUnit.isEmpty ? "e.on" : payload.organizationUnit
+        let r1Org = "\(orgText)\n(E.ON-Organisationseinheit)"
+        let r1Height = max(
+            38,
+            textHeight(r1Label, width: r1Col1Width - 10, font: Layout.bodyFont) + 10,
+            textHeight(payload.instructorName, width: r1Col2Width - 10, font: Layout.bodyFont) + 10,
+            textHeight(r1Org, width: r1Col3Width - 10, font: Layout.bodyFont) + 10
+        )
+        let r1Rect1 = CGRect(x: Layout.leftMargin, y: y, width: r1Col1Width, height: r1Height)
+        let r1Rect2 = CGRect(x: r1Rect1.maxX, y: y, width: r1Col2Width, height: r1Height)
+        let r1Rect3 = CGRect(x: r1Rect2.maxX, y: y, width: r1Col3Width, height: r1Height)
+        drawCell(r1Rect1, context: context)
+        drawCell(r1Rect2, context: context)
+        drawCell(r1Rect3, context: context)
+        drawText(r1Label, in: r1Rect1.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+        drawText(payload.instructorName, in: r1Rect2.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+        drawText(r1Org, in: r1Rect3.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+        y += r1Height
+
+        // Rows 2 through 7 (50% / 50% split)
+        let labelColWidth = contentWidth * 0.50
+        let valueColWidth = contentWidth * 0.50
+
+        let partner = [payload.partnerName, payload.partnerAddress]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+        let location = [payload.businessEntity, payload.workLocation]
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .joined(separator: "\n")
+        let dateRange = "\(fixedDateOnly(payload.startDate)) - \(fixedDateOnly(payload.endDate))"
+
+        let gridRows: [(String, String)] = [
+            ("Benannter Koordinator ggf. SiGeKo gemäß BauStellV:\n(Wird bei gegenseitiger Gefährdung durch den Einweiser/Abnehmer benannt)", payload.coordinator),
+            ("Partnerfirma/Auftragnehmer:\n(Name und Anschrift)", partner),
+            ("Eingewiesener:\n(Verantwortlicher der Partnerfirma für die durchzuführenden Arbeiten)", payload.instructedPerson),
+            ("Leistungs-/Arbeitsort:", location),
+            ("Durchzuführende Arbeiten:", payload.taskDescription),
+            ("Ausführung von ... bis... :\n(Datum)", dateRange)
+        ]
+
+        for (lbl, val) in gridRows {
+            let rowHeight = max(
+                34,
+                textHeight(lbl, width: labelColWidth - 10, font: Layout.bodyFont) + 10,
+                textHeight(val, width: valueColWidth - 10, font: Layout.bodyFont) + 10
+            )
+            let lblRect = CGRect(x: Layout.leftMargin, y: y, width: labelColWidth, height: rowHeight)
+            let valRect = CGRect(x: lblRect.maxX, y: y, width: valueColWidth, height: rowHeight)
+            drawCell(lblRect, context: context)
+            drawCell(valRect, context: context)
+            drawText(lbl, in: lblRect.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+            drawText(val, in: valRect.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+            y += rowHeight
+        }
+
+        return y
     }
 
     private func drawSignatureTable(
@@ -208,37 +287,33 @@ struct LegacyBriefingPDFRenderer: Sendable {
         copy: BriefingPDFCopy
     ) {
         let columnWidth = contentWidth / 2
-        let timestamp = fixedDateTime(payload.completedAt)
-        let leftDate = CGRect(x: Layout.leftMargin, y: originY, width: columnWidth, height: 30)
-        let rightDate = CGRect(x: leftDate.maxX, y: originY, width: columnWidth, height: 30)
+        let timestamp = fixedDateTimeWithSeconds(payload.completedAt)
+
+        let leftDate = CGRect(x: Layout.leftMargin, y: originY, width: columnWidth, height: 26)
+        let rightDate = CGRect(x: leftDate.maxX, y: originY, width: columnWidth, height: 26)
         drawCell(leftDate, context: context)
         drawCell(rightDate, context: context)
         drawText("\(copy.dateTime): \(timestamp)", in: leftDate.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
         drawText("\(copy.dateTime): \(timestamp)", in: rightDate.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
 
-        let leftLabel = CGRect(x: leftDate.minX, y: leftDate.maxY, width: columnWidth, height: 24)
-        let rightLabel = CGRect(x: rightDate.minX, y: rightDate.maxY, width: columnWidth, height: 24)
-        drawCell(leftLabel, context: context)
-        drawCell(rightLabel, context: context)
-        drawText(copy.signatureInstructor, in: leftLabel.insetBy(dx: 4, dy: 3), font: Layout.bodyFont, alignment: .center)
-        drawText(copy.signatureInstructedPerson, in: rightLabel.insetBy(dx: 4, dy: 3), font: Layout.bodyFont, alignment: .center)
+        let boxHeight: CGFloat = 110
+        let leftBox = CGRect(x: Layout.leftMargin, y: leftDate.maxY, width: columnWidth, height: boxHeight)
+        let rightBox = CGRect(x: leftBox.maxX, y: rightDate.maxY, width: columnWidth, height: boxHeight)
+        drawCell(leftBox, context: context)
+        drawCell(rightBox, context: context)
 
-        let leftImage = CGRect(x: leftDate.minX, y: leftLabel.maxY, width: columnWidth, height: 84)
-        let rightImage = CGRect(x: rightDate.minX, y: rightLabel.maxY, width: columnWidth, height: 84)
-        drawCell(leftImage, context: context)
-        drawCell(rightImage, context: context)
-        drawSignature(payload.instructorSignature, in: leftImage.insetBy(dx: 10, dy: 5))
-        drawSignature(payload.instructedPersonSignature, in: rightImage.insetBy(dx: 10, dy: 5))
+        drawText(copy.signatureInstructor, in: CGRect(x: leftBox.minX, y: leftBox.minY + 4, width: columnWidth, height: 16), font: Layout.bodyFont, alignment: .center)
+        drawText(copy.signatureInstructedPerson, in: CGRect(x: rightBox.minX, y: rightBox.minY + 4, width: columnWidth, height: 16), font: Layout.bodyFont, alignment: .center)
 
-        let leftCaption = CGRect(x: leftDate.minX, y: leftImage.maxY, width: columnWidth, height: 22)
-        let rightCaption = CGRect(x: rightDate.minX, y: rightImage.maxY, width: columnWidth, height: 22)
-        drawCell(leftCaption, context: context)
-        drawCell(rightCaption, context: context)
-        drawText(copy.signature, in: leftCaption.insetBy(dx: 4, dy: 3), font: Layout.bodyFont, alignment: .center)
-        drawText(copy.signature, in: rightCaption.insetBy(dx: 4, dy: 3), font: Layout.bodyFont, alignment: .center)
+        drawSignature(payload.instructorSignature, in: CGRect(x: leftBox.minX + 15, y: leftBox.minY + 22, width: columnWidth - 30, height: 64))
+        drawSignature(payload.instructedPersonSignature, in: CGRect(x: rightBox.minX + 15, y: rightBox.minY + 22, width: columnWidth - 30, height: 64))
+
+        drawText(copy.signature, in: CGRect(x: leftBox.minX, y: leftBox.maxY - 18, width: columnWidth, height: 14), font: Layout.bodyFont, alignment: .center)
+        drawText(copy.signature, in: CGRect(x: rightBox.minX, y: rightBox.maxY - 18, width: columnWidth, height: 14), font: Layout.bodyFont, alignment: .center)
+
         drawText(
-            "[ X ] \(copy.copyDelivered)",
-            in: CGRect(x: Layout.leftMargin, y: leftCaption.maxY + 5, width: contentWidth, height: 18),
+            "[ X ]\(copy.copyDelivered)",
+            in: CGRect(x: Layout.leftMargin, y: leftBox.maxY + 5, width: contentWidth, height: 18),
             font: Layout.bodyFont
         )
     }
@@ -274,8 +349,9 @@ struct LegacyBriefingPDFRenderer: Sendable {
         y = drawChecklistHeader(at: y, context: graphicsContext, copy: copy)
 
         for section in payload.sections {
-            let firstItemHeight = section.items.first.map(checklistItemHeight) ?? 0
-            if y + Layout.sectionHeight + firstItemHeight > contentBottom {
+            let headerH = sectionHeaderHeight(section)
+            let firstItemH = section.items.first.map(checklistItemHeight) ?? 0
+            if y + headerH + firstItemH > contentBottom {
                 drawFooter(context: graphicsContext, pageNumber: pageNumber, pageCount: pageCount, copy: copy)
                 pageNumber += 1
                 context.beginPage()
@@ -283,19 +359,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
                 y = drawChecklistHeader(at: Layout.topMargin, context: graphicsContext, copy: copy)
             }
 
-            let sectionRect = CGRect(
-                x: Layout.leftMargin,
-                y: y,
-                width: contentWidth,
-                height: Layout.sectionHeight
-            )
-            drawCell(sectionRect, fill: Layout.sectionFill, context: graphicsContext)
-            drawText(
-                "\(section.number). \(section.title)",
-                in: sectionRect.insetBy(dx: 5, dy: 4),
-                font: Layout.bodyBoldFont
-            )
-            y = sectionRect.maxY
+            y = drawSection(section, at: y, context: graphicsContext)
 
             for item in section.items {
                 let height = checklistItemHeight(item)
@@ -313,17 +377,79 @@ struct LegacyBriefingPDFRenderer: Sendable {
         drawFooter(context: graphicsContext, pageNumber: pageNumber, pageCount: pageCount, copy: copy)
     }
 
+    private func sectionHeaderHeight(_ section: BriefingPDFPayload.Section) -> CGFloat {
+        if section.items.isEmpty {
+            let combined = [section.title, section.subtitle]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            return max(28, ceil(textHeight(combined, width: contentWidth - 12, font: Layout.bodyFont)) + 10)
+        }
+        var total = Layout.sectionHeight
+        if let subtitle = section.subtitle, !subtitle.isEmpty {
+            total += max(22, ceil(textHeight(subtitle, width: contentWidth - 12, font: Layout.bodyFont)) + 8)
+        }
+        return total
+    }
+
+    private func drawSection(
+        _ section: BriefingPDFPayload.Section,
+        at y: CGFloat,
+        context: CGContext
+    ) -> CGFloat {
+        if section.items.isEmpty {
+            let combined = [section.title, section.subtitle]
+                .compactMap { $0 }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            let bannerHeight = max(28, ceil(textHeight(combined, width: contentWidth - 12, font: Layout.bodyFont)) + 10)
+            let rect = CGRect(x: Layout.leftMargin, y: y, width: contentWidth, height: bannerHeight)
+            drawCell(rect, fill: Layout.sectionFill, context: context)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineBreakMode = .byWordWrapping
+            let attrString = NSMutableAttributedString()
+            attrString.append(NSAttributedString(
+                string: section.title + "\n",
+                attributes: [.font: Layout.bodyBoldFont, .foregroundColor: UIColor.black, .paragraphStyle: paragraph]
+            ))
+            if let subtitle = section.subtitle, !subtitle.isEmpty {
+                attrString.append(NSAttributedString(
+                    string: subtitle,
+                    attributes: [.font: Layout.bodyFont, .foregroundColor: UIColor.black, .paragraphStyle: paragraph]
+                ))
+            }
+            attrString.draw(with: rect.insetBy(dx: 6, dy: 5), options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            return rect.maxY
+        }
+
+        let sectionRect = CGRect(x: Layout.leftMargin, y: y, width: contentWidth, height: Layout.sectionHeight)
+        drawCell(sectionRect, fill: Layout.sectionFill, context: context)
+        drawText(section.title, in: sectionRect.insetBy(dx: 5, dy: 3), font: Layout.bodyBoldFont)
+        var nextY = sectionRect.maxY
+
+        if let subtitle = section.subtitle, !subtitle.isEmpty {
+            let subHeight = max(22, ceil(textHeight(subtitle, width: contentWidth - 12, font: Layout.bodyFont)) + 8)
+            let subRect = CGRect(x: Layout.leftMargin, y: nextY, width: contentWidth, height: subHeight)
+            drawCell(subRect, fill: .white, context: context)
+            drawText(subtitle, in: subRect.insetBy(dx: 6, dy: 4), font: Layout.bodyFont)
+            nextY = subRect.maxY
+        }
+
+        return nextY
+    }
+
     private func checklistPageCount(for payload: BriefingPDFPayload) -> Int {
         var pages = 1
         var y = Layout.topMargin + sectionOverviewHeight(for: payload.sections) + 8
             + Layout.tableHeaderHeight
         for section in payload.sections {
-            let firstItemHeight = section.items.first.map(checklistItemHeight) ?? 0
-            if y + Layout.sectionHeight + firstItemHeight > contentBottom {
+            let headerH = sectionHeaderHeight(section)
+            let firstItemH = section.items.first.map(checklistItemHeight) ?? 0
+            if y + headerH + firstItemH > contentBottom {
                 pages += 1
                 y = Layout.topMargin + Layout.tableHeaderHeight
             }
-            y += Layout.sectionHeight
+            y += headerH
             for item in section.items {
                 let height = checklistItemHeight(item)
                 if y + height > contentBottom {
@@ -343,8 +469,8 @@ struct LegacyBriefingPDFRenderer: Sendable {
         copy: BriefingPDFCopy
     ) -> CGFloat {
         let numberWidth: CGFloat = 36
-        let headerHeight: CGFloat = 26
-        let rowHeight: CGFloat = 24
+        let headerHeight: CGFloat = 20
+        let rowHeight: CGFloat = 20
         let numberHeader = CGRect(x: Layout.leftMargin, y: y, width: numberWidth, height: headerHeight)
         let taskHeader = CGRect(
             x: numberHeader.maxX,
@@ -354,11 +480,12 @@ struct LegacyBriefingPDFRenderer: Sendable {
         )
         drawCell(numberHeader, fill: .white, context: context)
         drawCell(taskHeader, fill: .white, context: context)
-        drawText(copy.number, in: numberHeader.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
-        drawText(copy.tasks, in: taskHeader.insetBy(dx: 5, dy: 5), font: Layout.bodyFont)
+        drawText(copy.number, in: numberHeader.insetBy(dx: 5, dy: 3), font: Layout.bodyFont)
+        drawText(copy.tasks, in: taskHeader.insetBy(dx: 5, dy: 3), font: Layout.bodyFont)
 
         var rowY = y + headerHeight
         for section in sections {
+            guard section.number > 0, !section.items.isEmpty else { continue }
             let numberRect = CGRect(x: Layout.leftMargin, y: rowY, width: numberWidth, height: rowHeight)
             let titleRect = CGRect(
                 x: numberRect.maxX,
@@ -368,15 +495,16 @@ struct LegacyBriefingPDFRenderer: Sendable {
             )
             drawCell(numberRect, fill: Layout.sectionFill, context: context)
             drawCell(titleRect, fill: Layout.sectionFill, context: context)
-            drawText("\(section.number)", in: numberRect.insetBy(dx: 5, dy: 5), font: Layout.bodyBoldFont)
-            drawText(section.title, in: titleRect.insetBy(dx: 5, dy: 5), font: Layout.bodyBoldFont)
+            drawText("\(section.number)", in: numberRect.insetBy(dx: 5, dy: 3), font: Layout.bodyBoldFont)
+            drawText(section.title, in: titleRect.insetBy(dx: 5, dy: 3), font: Layout.bodyBoldFont)
             rowY += rowHeight
         }
         return rowY
     }
 
     private func sectionOverviewHeight(for sections: [BriefingPDFPayload.Section]) -> CGFloat {
-        26 + CGFloat(sections.count) * 24
+        let validSections = sections.filter { $0.number > 0 && !$0.items.isEmpty }
+        return 20 + CGFloat(validSections.count) * 20
     }
 
     private func drawChecklistHeader(
@@ -391,7 +519,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
             drawCell(rect, fill: Layout.sectionFill, context: context)
             drawText(
                 labels[index],
-                in: rect.insetBy(dx: 4, dy: 5),
+                in: rect.insetBy(dx: 4, dy: 4),
                 font: Layout.tableHeaderFont,
                 alignment: index == 2 ? .center : .left
             )
@@ -413,12 +541,14 @@ struct LegacyBriefingPDFRenderer: Sendable {
             return CGRect(x: x, y: y, width: width, height: height)
         }
         rects.forEach { drawCell($0, context: context) }
-        drawChecklistNumber(item.number, in: rects[0].insetBy(dx: 3, dy: 4))
+        if item.rowType != .subposition {
+            drawChecklistNumber(item.number, in: rects[0].insetBy(dx: 3, dy: 4))
+        }
         drawText(item.title, in: rects[1].insetBy(dx: 4, dy: 4), font: Layout.bodyFont)
         drawAnswer(
             item.answer,
             warningSymbolID: item.warningSymbolID,
-            in: rects[2].insetBy(dx: 3, dy: 3),
+            in: rects[2].insetBy(dx: 4, dy: 4),
             context: context,
             copy: copy
         )
@@ -446,28 +576,55 @@ struct LegacyBriefingPDFRenderer: Sendable {
             isNo = false
         }
 
-        let iconWidth: CGFloat = 28
-        let answerWidth = max(44, (rect.width - iconWidth) / 2)
-        drawCheckbox(
-            label: copy.yes,
-            isSelected: isYes,
-            in: CGRect(x: rect.minX, y: rect.minY, width: answerWidth, height: rect.height),
-            context: context
-        )
-        drawCheckbox(
-            label: copy.no,
-            isSelected: isNo,
-            in: CGRect(x: rect.minX + answerWidth, y: rect.minY, width: answerWidth, height: rect.height),
-            context: context
-        )
+        let boxSize: CGFloat = 10.5
+        let boxY = rect.minY + 1.0
+        let textY = rect.minY + 0.5
+
+        // Checkbox 1: Ja
+        let jaBox = CGRect(x: rect.minX + 3.0, y: boxY, width: boxSize, height: boxSize)
+        drawCheckboxBox(isSelected: isYes, in: jaBox, context: context)
+
+        let jaLabelRect = CGRect(x: jaBox.maxX + 4.0, y: textY, width: 22, height: boxSize + 4)
+        drawText(copy.yes, in: jaLabelRect, font: Layout.bodyFont)
+
+        // Checkbox 2: Nein
+        let neinBox = CGRect(x: jaBox.minX + 42.0, y: boxY, width: boxSize, height: boxSize)
+        drawCheckboxBox(isSelected: isNo, in: neinBox, context: context)
+
+        let neinLabelRect = CGRect(x: neinBox.maxX + 4.0, y: textY, width: 28, height: boxSize + 4)
+        drawText(copy.no, in: neinLabelRect, font: Layout.bodyFont)
 
         guard let symbol = warningImage(for: warningSymbolID) else { return }
+        let iconWidth: CGFloat = 20
         symbol.draw(in: CGRect(
-            x: rect.maxX - iconWidth + 3,
-            y: rect.midY - 9,
-            width: 18,
-            height: 18
+            x: rect.maxX - iconWidth + 2,
+            y: rect.minY + 1.0,
+            width: 16,
+            height: 16
         ))
+    }
+
+    private func drawCheckboxBox(
+        isSelected: Bool,
+        in box: CGRect,
+        context: CGContext
+    ) {
+        context.saveGState()
+        context.setStrokeColor(UIColor.black.cgColor)
+        context.setLineWidth(0.8)
+        context.stroke(box)
+        if isSelected {
+            context.setStrokeColor(UIColor.black.cgColor)
+            context.setLineWidth(1.3)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            context.beginPath()
+            context.move(to: CGPoint(x: box.minX + 2.2, y: box.minY + 5.5))
+            context.addLine(to: CGPoint(x: box.minX + 4.5, y: box.minY + 8.5))
+            context.addLine(to: CGPoint(x: box.maxX - 2.0, y: box.minY + 2.5))
+            context.strokePath()
+        }
+        context.restoreGState()
     }
 
     private func warningImage(for identifier: String?) -> UIImage? {
@@ -478,7 +635,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
         case "P002": assetName = "BriefingSafety_P002"
         case "W001": assetName = "BriefingSafety_W001"
         case "W002": assetName = "BriefingSafety_W002"
-        case "ig": assetName = "BriefingSafety_W003"
+        case "W003", "IG": assetName = "BriefingSafety_W003"
         case "X001": assetName = "BriefingSafety_X001"
         default: assetName = nil
         }
@@ -491,60 +648,26 @@ struct LegacyBriefingPDFRenderer: Sendable {
         return UIImage(systemName: "exclamationmark.triangle.fill")
     }
 
-    private func drawCheckbox(
-        label: String,
-        isSelected: Bool,
-        in rect: CGRect,
-        context: CGContext
-    ) {
-        let box = CGRect(x: rect.minX + 2, y: rect.midY - 6, width: 12, height: 12)
-        context.setStrokeColor(Layout.borderColor.cgColor)
-        context.setLineWidth(0.8)
-        context.stroke(box)
-        if isSelected {
-            context.setStrokeColor(UIColor.black.cgColor)
-            context.setLineWidth(1.5)
-            context.move(to: CGPoint(x: box.minX + 2, y: box.midY))
-            context.addLine(to: CGPoint(x: box.midX - 0.5, y: box.maxY - 2))
-            context.addLine(to: CGPoint(x: box.maxX - 2, y: box.minY + 2))
-            context.strokePath()
-        }
-        drawText(
-            label,
-            in: CGRect(
-                x: box.maxX + 3,
-                y: rect.minY,
-                width: max(0, rect.maxX - box.maxX - 3),
-                height: rect.height
-            ),
-            font: Layout.bodyFont
-        )
-    }
-
     private func checklistItemHeight(_ item: BriefingPDFPayload.Item) -> CGFloat {
         let height = max(
             textHeight(item.title, width: checklistColumnWidths[1] - 8, font: Layout.bodyFont),
             textHeight(item.comment, width: checklistColumnWidths[3] - 8, font: Layout.bodyFont)
         )
-        return max(32, ceil(height) + 8)
+        return max(28, ceil(height) + 8)
     }
 
     private var checklistColumnWidths: [CGFloat] {
-        // Section/item identifiers can be multi-digit (for example, 12.08).
-        // Keep their column wide enough to preserve a single-line identifier.
-        [contentWidth * 0.08, contentWidth * 0.47, contentWidth * 0.30, contentWidth * 0.15]
+        [contentWidth * 0.08, contentWidth * 0.48, contentWidth * 0.28, contentWidth * 0.16]
     }
 
     private func drawChecklistNumber(_ number: String, in rect: CGRect) {
-        let baseFont = UIFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+        let baseFont = UIFont.monospacedDigitSystemFont(ofSize: 8.5, weight: .regular)
         let naturalWidth = (number as NSString).size(withAttributes: [.font: baseFont]).width
         let fittedSize = naturalWidth > rect.width
             ? max(7, baseFont.pointSize * rect.width / naturalWidth)
             : baseFont.pointSize
         let font = UIFont.monospacedDigitSystemFont(ofSize: fittedSize, weight: .regular)
 
-        // `draw(in:withAttributes:)` is intentionally single-line. A checklist
-        // identifier must never break between its section and item components.
         (number as NSString).draw(
             in: rect,
             withAttributes: [
@@ -582,19 +705,30 @@ struct LegacyBriefingPDFRenderer: Sendable {
         pageCount: Int,
         copy: BriefingPDFCopy
     ) {
-        let text = String(
-            format: copy.pageNumberFormat,
-            Int64(pageNumber),
-            Int64(pageCount)
+        let y = Layout.pageSize.height - 44
+        context.setStrokeColor(Layout.borderColor.cgColor)
+        context.setLineWidth(0.6)
+        context.move(to: CGPoint(x: Layout.leftMargin, y: y))
+        context.addLine(to: CGPoint(x: Layout.pageSize.width - Layout.rightMargin, y: y))
+        context.strokePath()
+
+        let leftText = "Geschäftsführer/Managing Directors: André Schrödel,\nDr. Marc Stienemann, Peter Olschewski, Zsolt Szabo"
+        let centerText = "E.ON Service GmbH Sitz/Head Office: Essen\nRegistergericht/Registry Court: Essen\nHandelsregisternummer/Commercial Register No.: HRB 16297"
+        let rightText = String(format: copy.pageNumberFormat, Int64(pageNumber), Int64(pageCount))
+
+        drawText(
+            leftText,
+            in: CGRect(x: Layout.leftMargin, y: y + 3, width: contentWidth * 0.39, height: 32),
+            font: UIFont.systemFont(ofSize: 6.4)
         )
         drawText(
-            text,
-            in: CGRect(
-                x: Layout.leftMargin,
-                y: Layout.pageSize.height - Layout.bottomMargin + 14,
-                width: contentWidth,
-                height: 18
-            ),
+            centerText,
+            in: CGRect(x: Layout.leftMargin + contentWidth * 0.40, y: y + 3, width: contentWidth * 0.39, height: 32),
+            font: UIFont.systemFont(ofSize: 6.4)
+        )
+        drawText(
+            rightText,
+            in: CGRect(x: Layout.pageSize.width - Layout.rightMargin - 100, y: y + 5, width: 95, height: 16),
             font: Layout.footerFont,
             alignment: .right
         )
@@ -633,11 +767,19 @@ struct LegacyBriefingPDFRenderer: Sendable {
         ).height)
     }
 
-    private func fixedDateTime(_ date: Date) -> String {
+    private func fixedDateTimeWithSeconds(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "de_DE")
         formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "dd.MM.yyyy HH:mm"
+        formatter.dateFormat = "dd.MM.yyyy HH:mm:ss"
+        return formatter.string(from: date)
+    }
+
+    private func fixedDateOnly(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "de_DE")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "dd.MM.yyyy"
         return formatter.string(from: date)
     }
 
@@ -660,7 +802,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
 private struct BriefingPDFCopy {
     let title = "Einweisung von Partnerfirmen\n(Standort- und Projektmanagement: CHG, ESE, Westnetz)"
     let declarations = [
-        "Mit dieser Einweisung werden z. B. die standort- und betriebsspezifischen Gegebenheiten/Regelungen und Hinweise zu konkreten Arbeitsbedingungen, die zum Zeitpunkt der Auftragsdurchführung bestehen, \"Betriebsfremden\" vermittelt.",
+        "Mit dieser Einweisung werden z. B. die standort- und betriebsspezifischen Gegebenheiten/Regelungen und Hinweise zu konkreten Arbeitsbedingungen, die zum Zeitpunkt der Auftragsdurchführung bestehen, „Betriebsfremden“ vermittelt.",
         "Der Eingewiesene hat die Pflicht, die zum Einsatz kommenden Mitarbeiter/innen der Partnerfirma, oder ggf. eingesetzter Subunternehmer, über die Inhalte der Einweisung vor Beginn der Arbeiten zu unterweisen.",
         "Gemäß der allgemeinen Einkaufs- und Zahlungsbedingungen hat sich die Partnerfirma verpflichtet, während der durchzuführenden Arbeiten die maßgeblichen Vorschriften und Regeln zum Arbeits- und Gesundheitsschutz einzuhalten."
     ]
@@ -669,10 +811,10 @@ private struct BriefingPDFCopy {
     let signatureInstructedPerson = "Eingewiesener"
     let signature = "Unterschrift"
     let copyDelivered = "Kopie an Eingewiesenen übergeben."
-    let number = "Nr."
+    let number = "Nr"
     let tasks = "Aufgaben"
     let completed = "Durchgeführt"
-    let comment = "Bemerkung"
+    let comment = "Bermerkung"
     let yes = "Ja"
     let no = "Nein"
     let pageNumberFormat = "Seite %lld von %lld"

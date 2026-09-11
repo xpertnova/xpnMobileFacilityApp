@@ -991,7 +991,7 @@ enum SAPLegacyDataExchangeCodec {
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
 
-    fileprivate static func authorization(from response: String) throws -> SAPReadAuthorization {
+    static func authorization(from response: String) throws -> SAPReadAuthorization {
         let envelopes = try decodeEnvelopes(response)
         try throwBackendMessage(in: envelopes)
         for envelope in envelopes {
@@ -1338,9 +1338,14 @@ enum SAPLegacyDataExchangeCodec {
 
             if rowTypeValue == "HEADER" {
                 let sectionID = identifier.isEmpty ? "section-\(index)" : identifier
+                let rawTitle = stringValue(value(named: "LTXA1", in: position))
+                let rawSubtitle = stringValue(value(named: "LTXA2", in: position))
+                let sectionTitle = rawTitle.isEmpty ? title : rawTitle
+                let sectionSubtitle = rawSubtitle.isEmpty ? nil : rawSubtitle
                 sections.append(SAPBriefingTemplateSection(
                     id: sectionID,
-                    title: title,
+                    title: sectionTitle,
+                    subtitle: sectionSubtitle,
                     isOptional: stringValue(value(named: "USR10", in: position)).uppercased() == "X",
                     items: []
                 ))
@@ -1372,6 +1377,7 @@ enum SAPLegacyDataExchangeCodec {
             sections[sectionIndex] = SAPBriefingTemplateSection(
                 id: section.id,
                 title: section.title,
+                subtitle: section.subtitle,
                 isOptional: section.isOptional,
                 items: section.items + [item]
             )
