@@ -108,6 +108,7 @@ struct NotificationDetailView: View {
             isLoading: model.isLoading,
             isSaving: model.isSaving,
             isReadOnly: isReadOnly,
+            maxAttachments: nil,
             close: { photoWorkspaceItemID = nil },
             addPhoto: { data in Task { await model.addPhoto(jpegData: data, to: item) } },
             removePhoto: { id in

@@ -77,6 +77,9 @@ private struct BriefingFormScreen: View {
                     }
                     .padding(28)
                     .frame(maxWidth: 1280, alignment: .leading)
+                    // Do not disable ScrollView: completed forms must remain
+                    // fully reviewable from Local work.
+                    .disabled(viewModel.isReadOnly)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: viewModel.validationMessage) { _, message in
@@ -489,10 +492,16 @@ private struct BriefingFormScreen: View {
         HStack(spacing: 14) {
             Spacer(minLength: 12)
 
-            Button("briefing.closeBriefing") { viewModel.requestCompletion() }
-                .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.accent)
-                .disabled(!viewModel.canComplete || viewModel.isRenderingPDF)
+            if viewModel.isReadOnly {
+                Button("common.back", action: onClose)
+                    .buttonStyle(.bordered)
+                    .tint(FacilityTheme.ink)
+            } else {
+                Button("briefing.closeBriefing") { viewModel.requestCompletion() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(FacilityTheme.accent)
+                    .disabled(!viewModel.canComplete || viewModel.isRenderingPDF)
+            }
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
@@ -1165,6 +1174,7 @@ final class BriefingWorkflowViewModel {
     var partners: [SAPBriefingPartner]
     var temporaryPartner: BriefingTemporaryPartner?
     var partnerSearchTerm2 = ""
+    private(set) var itemStatus: OfflineWorkStatus?
     private var savedWorkID: UUID?
 
     init(source: Source, existingDraft: OfflineWorkItem? = nil, draftID: UUID? = nil) {
@@ -1172,6 +1182,7 @@ final class BriefingWorkflowViewModel {
         partners = source.partners
         selectedTemplateID = source.templates.first(where: \.isStandardBriefing)?.id ?? source.templates.first?.id ?? ""
         savedWorkID = existingDraft?.id ?? draftID
+        itemStatus = existingDraft?.status
         guard let existingDraft, let draft = existingDraft.payload.briefing else { return }
         selectedBusinessEntityID = draft.businessEntityID
         if !draft.businessEntityID.isEmpty {
@@ -1228,6 +1239,10 @@ final class BriefingWorkflowViewModel {
     var hasRequiredMasterData: Bool { !source.contexts.isEmpty && template != nil }
     var canSaveDraft: Bool { selectedContext != nil && template != nil }
     var canComplete: Bool { selectedContext != nil && template != nil }
+    var isReadOnly: Bool {
+        guard let itemStatus else { return false }
+        return itemStatus != .draft
+    }
     var activeSections: [SAPBriefingTemplateSection] { (template?.sections ?? []).filter { !$0.isOptional || selectedOptionalSectionIDs.contains($0.id) } }
 
     func selectBusinessEntity(_ value: String) {
@@ -1273,7 +1288,7 @@ final class BriefingWorkflowViewModel {
         }
     }
     func requestCompletion() {
-        guard !isRenderingPDF else { return }
+        guard !isReadOnly, !isRenderingPDF else { return }
         finishCompletionRequest()
     }
 
@@ -1295,6 +1310,7 @@ final class BriefingWorkflowViewModel {
         }
     }
     func saveDraft(using store: OfflineWorkStore) async {
+        guard !isReadOnly else { return }
         guard let payload = draftPayload() else {
             validationMessage = String(localized: "briefing.draft.contextRequired")
             return
@@ -1302,13 +1318,14 @@ final class BriefingWorkflowViewModel {
         do {
             let item = try await store.saveBriefing(id: savedWorkID, payload: payload, status: .draft)
             savedWorkID = item.id
+            itemStatus = item.status
             validationMessage = String(localized: "briefing.draft.saved")
         } catch {
             validationMessage = String(localized: "briefing.draft.saveFailed")
         }
     }
     func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
-        guard var payload = draftPayload() else { return false }
+        guard !isReadOnly, var payload = draftPayload() else { return false }
         payload.completedAt = pdfArtifact?.createdAt ?? .now
         do {
             let item = try await store.saveBriefing(
@@ -1317,6 +1334,7 @@ final class BriefingWorkflowViewModel {
                 status: .pendingSynchronization
             )
             savedWorkID = item.id
+            itemStatus = item.status
             return true
         } catch {
             validationMessage = String(localized: "briefing.completed.saveFailed")

@@ -23,7 +23,7 @@ struct DraftsView: View {
                 PageHeader(
                     "drafts.title",
                     subtitle: "drafts.subtitle",
-                    trailing: demo.isDemoMode ? nil : AnyView(syncUnavailableControl)
+                    trailing: demo.isDemoMode ? nil : AnyView(syncControl)
                 )
 
                 switch demo.offlineWorkStore.state {
@@ -52,6 +52,7 @@ struct DraftsView: View {
                         && demo.offlineWorkStore.meterReadingItems.isEmpty
                         && demo.offlineWorkStore.technicalObjectEditItems.isEmpty
                         && demo.offlineWorkStore.proofOfQualificationItems.isEmpty
+                        && demo.offlineWorkStore.mobileLadderItems.isEmpty
                         && demo.offlineWorkStore.photoCollectionItems.isEmpty {
                         emptyState
                     } else {
@@ -85,16 +86,15 @@ struct DraftsView: View {
         }
     }
 
-    private var syncUnavailableControl: some View {
+    private var syncControl: some View {
         Button {
-            // SAP writes for offline work have not been verified yet.
+            demo.requestSAPRefresh()
         } label: {
             Label("drafts.sync.action", systemImage: "arrow.triangle.2.circlepath")
         }
         .buttonStyle(.borderedProminent)
         .tint(FacilityTheme.navy)
-        .disabled(true)
-        .accessibilityHint(Text("offline.sync.unavailable"))
+        .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
     }
 
     private var emptyState: some View {
@@ -108,6 +108,7 @@ struct DraftsView: View {
     private var savedWorkList: some View {
         LazyVStack(spacing: 12) {
             savedNotificationRows
+            savedMobileLadderRows
             savedDefectRows
             savedMeterReadingRows
             savedBriefingRows
@@ -120,8 +121,26 @@ struct DraftsView: View {
     }
 
     @ViewBuilder
+    private var savedMobileLadderRows: some View {
+        ForEach(demo.offlineWorkStore.mobileLadderItems) { item in
+            if let ladder = item.payload.mobileLadder {
+                LocalWorkTemplateRow(
+                    icon: "🪜",
+                    title: Text(ladder.designation.isEmpty ? String(localized: "mobileLadder.title") : ladder.designation),
+                    subtitle: Text(ladder.context?.legacyContext.functionalLocation ?? String(localized: "mobileLadder.address.notSelected")),
+                    status: demo.isDemoMode ? .demoLocal : .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openMobileLadder(item.id) }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
     private var savedPhotoCollections: some View {
-        ForEach(demo.offlineWorkStore.photoCollectionItems) { item in
+        ForEach(demo.offlineWorkStore.photoCollectionItems.filter {
+            $0.payload.photoCollection?.scope.workflow != .mobileLadder
+        }) { item in
             if let collection = item.payload.photoCollection, !collection.attachments.isEmpty {
                 LocalWorkTemplateRow(
                     icon: "📷",

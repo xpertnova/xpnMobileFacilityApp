@@ -40,6 +40,28 @@ final class ManualCaptureTests: XCTestCase {
     }
 
     @MainActor
+    func testPendingMeterReadingReopensReadOnly() async throws {
+        let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "worker")
+        let editable = MeterReadingViewModel(provider: DemoMeterReferenceProvider(), offlineWorkStore: store)
+
+        await editable.load(itemID: nil)
+        editable.valueText = "123,4"
+        let didSave = await editable.save(status: .pendingSynchronization)
+        XCTAssertTrue(didSave)
+        let savedID = try XCTUnwrap(store.meterReadingItems.first?.id)
+
+        let reopened = MeterReadingViewModel(provider: DemoMeterReferenceProvider(), offlineWorkStore: store)
+        await reopened.load(itemID: savedID)
+
+        XCTAssertTrue(reopened.isReadOnly)
+        XCTAssertFalse(reopened.canSave)
+        reopened.valueText = "999"
+        let didAttemptSave = await reopened.save(status: .draft)
+        XCTAssertFalse(didAttemptSave)
+        XCTAssertEqual(store.meterReadingItems.first?.payload.meterReading?.value, Decimal(string: "123.4"))
+    }
+
+    @MainActor
     func testChangingMeterKindLoadsMatchingReferenceAndClearsInput() async {
         let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "worker")
         let model = MeterReadingViewModel(provider: DemoMeterReferenceProvider(), offlineWorkStore: store)

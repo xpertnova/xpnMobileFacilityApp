@@ -715,6 +715,7 @@ struct NotificationStructuralFilterOverlay: View {
         let name: String? = switch code {
         case "TFM1": String(localized: "notifications.structuralFilter.form.tfm1")
         case "TFM3": String(localized: "notifications.structuralFilter.form.tfm3")
+        case "TFM5": String(localized: "mobileLadder.title")
         case "TFM7": String(localized: "notifications.structuralFilter.form.tfm7")
         default: nil
         }

@@ -343,7 +343,7 @@ struct SAPReadConnection: @unchecked Sendable {
 struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     private static let downloadSchemaVersion = "1.3.8-58-358"
     private let connection: SAPReadConnection
-    private let synchronizationUserID: String
+    private  let synchronizationUserID: String
     private let synchronizationStore: any SAPLegacySynchronizationStore
     private let tokenStore: (any SAPSyncTokenStore)?
     private let tokenStoreAccountID: String
@@ -993,6 +993,10 @@ enum SAPLegacyDataExchangeCodec {
         notificationData(fromFeldwert: feldwert)
     }
 
+    static func decodedFeldwertObject(_ feldwert: String) -> [String: Any]? {
+        feldwertValue(from: feldwert) as? [String: Any]
+    }
+
     private struct Envelope: Codable {
         let KEY: String
         let PAR: String?
@@ -1051,6 +1055,94 @@ enum SAPLegacyDataExchangeCodec {
     static func packedFeldwert(_ object: [String: Any]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
+    }
+
+    static func mobileLadderTemplates(
+        planRows: [[String: Any]],
+        classRows: [[String: Any]],
+        equipmentRows: [[String: Any]]
+    ) -> [MobileLadderLegacyTemplate] {
+        let classRow = classRows.first {
+            firstSAPString(["CLASS", "KLASSE"], from: $0).uppercased() == "TFMMOBLEITER"
+        }
+        let classPayload = classRow.flatMap {
+            feldwertValue(from: stringValue(value(named: "FELDWERT", in: $0))) as? [String: Any]
+        } ?? [:]
+        let classJSON = jsonStringValue(classPayload) ?? "{}"
+        let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
+        let characteristicValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
+        let characteristics = characteristicRows.enumerated().compactMap { index, row -> MobileLadderLegacyCharacteristic? in
+            let name = firstSAPString(["ATNAM", "CHARACTERISTIC"], from: row)
+            guard !name.isEmpty else { return nil }
+            let values = characteristicValues.compactMap { value -> MobileLadderLegacyValue? in
+                guard firstSAPString(["ATNAM", "CHARACTERISTIC"], from: value) == name else { return nil }
+                let code = firstSAPString(["ATWRT", "VALUE"], from: value)
+                guard !code.isEmpty else { return nil }
+                let title = firstSAPString(["ATWTB", "VALUE_TEXT"], from: value)
+                return MobileLadderLegacyValue(value: code, title: title.isEmpty ? code : title)
+            }
+            return MobileLadderLegacyCharacteristic(
+                position: Int(firstSAPString(["ATINN", "POSNR"], from: row)) ?? index,
+                name: name, title: firstSAPString(["ATBEZ", "TITLE"], from: row),
+                unit: firstSAPString(["MSEHI", "UNIT"], from: row),
+                required: firstSAPString(["PFLICHT", "REQUIRED"], from: row).uppercased() == "X",
+                values: values
+            )
+        }
+
+        let equipmentPayload = equipmentRows.compactMap { row -> [String: Any]? in
+            guard let decoded = feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ) as? [String: Any] else { return nil }
+            let type = firstSAPString(["EQART", "EQART_TO"], from: row, fallback: decoded)
+            return type.uppercased() == "TFMLEITERN" ? decoded : nil
+        }.first ?? [:]
+        let equipmentJSON = jsonStringValue(equipmentPayload) ?? "{}"
+
+        return planRows.compactMap { row in
+            guard let decoded = feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ) else { return nil }
+            let payload = decoded as? [String: Any] ?? [:]
+            let rawPositions = (value(named: "T_PLPOD", in: payload) as? [Any]) ?? (decoded as? [Any]) ?? []
+            let equipmentType = firstSAPString(["EQART"], from: row, fallback: payload)
+            guard equipmentType.uppercased() == "TFMLEITERN" else { return nil }
+            let positions = rawPositions.compactMap { raw -> MobileLadderLegacyInspectionDefinition? in
+                guard let position = raw as? [String: Any] else { return nil }
+                let rowType = firstSAPString(["USR00", "DNAME"], from: position).uppercased()
+                guard rowType.isEmpty || rowType == "POSITION" else { return nil }
+                let form = firstSAPString(["STEUS"], from: position)
+                let operation = firstSAPString(["VORNR"], from: position)
+                guard !form.isEmpty, !operation.isEmpty else { return nil }
+                return MobileLadderLegacyInspectionDefinition(
+                    operation: operation,
+                    title: firstSAPString(["LTXA1", "KTEX1"], from: position),
+                    information: firstSAPString(["LTXA2"], from: position),
+                    resultElementID: "\(form)-\(operation)-1",
+                    actionElementID: "\(form)-\(operation)-2",
+                    commentElementID: "\(form)-\(operation)-9B"
+                )
+            }
+            guard let first = positions.first else { return nil }
+            let formCode = first.resultElementID.split(separator: "-", maxSplits: 1).first.map(String.init) ?? ""
+            let planType = firstSAPString(["PLNTY"], from: row, fallback: payload)
+            let planNumber = firstSAPString(["PLNNR"], from: row, fallback: payload)
+            let planVersion = firstSAPString(["PLNAL", "ZAEHL"], from: row, fallback: payload)
+            return MobileLadderLegacyTemplate(
+                id: [equipmentType, planType, planNumber, planVersion].joined(separator: "|"),
+                equipmentType: equipmentType, formCode: formCode, planType: planType,
+                planNumber: planNumber, planVersion: planVersion,
+                title: firstSAPString(["KTEXT", "PLANTEXT", "LTXA1"], from: row, fallback: payload),
+                plant: firstSAPString(["IWERK"], from: row, fallback: payload),
+                plannerGroup: firstSAPString(["INGRP"], from: row, fallback: payload),
+                workCenter: firstSAPString(["GEWRK", "ARBPL"], from: row, fallback: payload),
+                className: firstSAPString(["CLASS", "KLASSE"], from: classRow ?? [:], fallback: classPayload).ifEmpty("TFMMOBLEITER"),
+                classType: firstSAPString(["KLART"], from: classRow ?? [:], fallback: classPayload).ifEmpty("002"),
+                classGroup: firstSAPString(["KLAGR"], from: classPayload).ifEmpty("TFM"),
+                classDataJSON: classJSON, equipmentDataJSON: equipmentJSON,
+                characteristics: characteristics, inspectionItems: positions
+            )
+        }
     }
 
     private static func packed(method: String, parameters: Encodable) throws -> String {

@@ -9,12 +9,15 @@ struct SAPNotificationOutgoingBatch: Sendable {
     let workItemIDs: [UUID]
     let attachmentIDs: [String]
     let processIDs: [String]
+    let equipmentIDs: [String]
     let headers: [LegacySAPRow]
     let values: [LegacySAPRow]
     let documents: [SAPNotificationOutgoingDocument]
+    let equipment: [LegacySAPRow]
 
     static let empty = SAPNotificationOutgoingBatch(
-        workItemIDs: [], attachmentIDs: [], processIDs: [], headers: [], values: [], documents: []
+        workItemIDs: [], attachmentIDs: [], processIDs: [], equipmentIDs: [],
+        headers: [], values: [], documents: [], equipment: []
     )
 }
 
@@ -170,9 +173,11 @@ enum SAPNotificationReviewUploadBuilder {
             workItemIDs: [workItem.id],
             attachmentIDs: review.photoAttachments.map(\.localAttachmentID),
             processIDs: [processID],
+            equipmentIDs: [],
             headers: [header],
             values: values,
-            documents: documents
+            documents: documents,
+            equipment: []
         )
     }
 
@@ -249,52 +254,73 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
     func prepare() async throws -> SAPNotificationOutgoingBatch {
         let allWork = try await offlineRepository.loadWork(for: workerID)
         let pending = allWork.filter { item in
-            guard item.type == .notificationReview,
-                  let review = item.payload.notificationReview,
-                  review.isClosedLocally else { return false }
-            return [.pendingSynchronization, .failed, .synchronizing].contains(item.status)
+            guard [.pendingSynchronization, .failed, .synchronizing].contains(item.status) else {
+                return false
+            }
+            if let review = item.payload.notificationReview { return review.isClosedLocally }
+            return item.payload.mobileLadder != nil
         }
         guard !pending.isEmpty else { return .empty }
 
         do {
             var batches: [SAPNotificationOutgoingBatch] = []
             for item in pending {
-                guard let review = item.payload.notificationReview else { continue }
-                let page = try await cacheRepository.loadNotifications(
-                    for: workerID, matching: review.notificationID,
-                    structuralFilter: .empty, limit: 20, offset: 0
-                )
-                guard let source = page.notifications.first(where: { $0.id == review.notificationID }) else {
-                    throw SAPNotificationReviewUploadError.missingSourceNotification(review.notificationID)
-                }
-                var photos: [String: Data] = [:]
-                for attachment in review.photoAttachments {
-                    do {
-                        photos[attachment.localAttachmentID] = try await photoStore.loadJPEG(id: attachment.localAttachmentID)
-                    } catch {
-                        throw SAPNotificationReviewUploadError.missingPhoto(attachment.localAttachmentID)
+                switch item.payload {
+                case let .notificationReview(review):
+                    let page = try await cacheRepository.loadNotifications(
+                        for: workerID, matching: review.notificationID,
+                        structuralFilter: .empty, limit: 20, offset: 0
+                    )
+                    guard let source = page.notifications.first(where: { $0.id == review.notificationID }) else {
+                        throw SAPNotificationReviewUploadError.missingSourceNotification(review.notificationID)
                     }
+                    var photos: [String: Data] = [:]
+                    for attachment in review.photoAttachments {
+                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+                    }
+                    batches.append(try SAPNotificationReviewUploadBuilder.build(
+                        workItem: item, source: source, syncUserID: syncUserID, photoData: photos
+                    ))
+                case let .mobileLadder(draft):
+                    var photos: [String: Data] = [:]
+                    for attachment in draft.photoAttachments {
+                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+                    }
+                    var batch = try SAPMobileLadderUploadBuilder.build(
+                        workItem: item, draft: draft, syncUserID: syncUserID, photoData: photos
+                    )
+                    let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
+                        guard let collection = candidate.payload.photoCollection,
+                              collection.scope.workflow == .mobileLadder,
+                              collection.scope.ownerID == draft.localDraftID else { return nil }
+                        return candidate.id
+                    }
+                    batch = batch.addingCleanupWorkItemIDs(photoWorkIDs)
+                    batches.append(batch)
+                default:
+                    continue
                 }
-                batches.append(try SAPNotificationReviewUploadBuilder.build(
-                    workItem: item, source: source, syncUserID: syncUserID, photoData: photos
-                ))
             }
             let merged = SAPNotificationOutgoingBatch(
                 workItemIDs: batches.flatMap(\.workItemIDs),
                 attachmentIDs: batches.flatMap(\.attachmentIDs),
                 processIDs: batches.flatMap(\.processIDs),
+                equipmentIDs: batches.flatMap(\.equipmentIDs),
                 headers: batches.flatMap(\.headers),
                 values: batches.flatMap(\.values),
-                documents: batches.flatMap(\.documents)
+                documents: batches.flatMap(\.documents),
+                equipment: batches.flatMap(\.equipment)
             )
             try await outgoingStore.replaceNotificationOutgoingRows(
-                processIDs: merged.processIDs, headers: merged.headers,
+                processIDs: merged.processIDs, equipmentIDs: merged.equipmentIDs,
+                headers: merged.headers,
                 values: merged.values,
                 documents: merged.documents.map { document in
                     document.metadata.reduce(into: LegacySAPRow()) { row, entry in
                         row[entry.key] = entry.value
                     }
-                }
+                },
+                equipment: merged.equipment
             )
             for item in pending {
                 try await offlineRepository.save(copy(item, status: .synchronizing, error: nil))
@@ -326,5 +352,213 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
             id: item.id, workerID: item.workerID, type: item.type, status: status,
             payload: item.payload, createdAt: item.createdAt, updatedAt: .now, syncError: error
         )
+    }
+
+    private func loadPhoto(_ id: String) async throws -> Data {
+        do { return try await photoStore.loadJPEG(id: id) }
+        catch { throw SAPNotificationReviewUploadError.missingPhoto(id) }
+    }
+}
+
+private extension SAPNotificationOutgoingBatch {
+    func addingCleanupWorkItemIDs(_ ids: [UUID]) -> Self {
+        Self(
+            workItemIDs: workItemIDs + ids, attachmentIDs: attachmentIDs,
+            processIDs: processIDs, equipmentIDs: equipmentIDs, headers: headers,
+            values: values, documents: documents, equipment: equipment
+        )
+    }
+}
+
+enum SAPMobileLadderUploadBuilder {
+    static func build(
+        workItem: OfflineWorkItem,
+        draft: MobileLadderDraftPayload,
+        syncUserID: String,
+        photoData: [String: Data],
+        now: Date = .now
+    ) throws -> SAPNotificationOutgoingBatch {
+        guard let identifiers = draft.legacyIdentifiers,
+              let context = draft.context?.legacyContext,
+              !draft.inspectionItems.isEmpty,
+              (draft.isDisassembled || draft.inspectionItems.allSatisfy({ $0.result != nil })),
+              draft.photoAttachments.count <= 20,
+              let sourceData = context.sourceNotificationJSON.data(using: .utf8),
+              var notificationData = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any]
+        else { throw SAPNotificationReviewUploadError.invalidReview(draft.localDraftID) }
+
+        let createdDate = date(now), createdTime = time(now), performedDate = date(draft.performedOn)
+        let user = syncUserID.uppercased()
+        let template = context.template
+        notificationData.merge([
+            "MANDT": context.client, "QMNUM": identifiers.notificationNumber, "QMART": "I1",
+            "QMTXT": draft.designation, "STTXT": "MMAB", "USTXT": draft.isDisassembled ? "dem" : "iBet",
+            "EQUNR": identifiers.equipmentNumber, "EQKTX": draft.designation,
+            "STRNO": context.functionalLocation, "TPLND": context.country, "TPORT": context.location,
+            "TPWEH": context.businessEntity, "TPGEB": context.building, "TPGSG": context.trade,
+            "IWERK": template.plant.isEmpty ? context.plant : template.plant,
+            "INGRP": template.plannerGroup.isEmpty ? context.plannerGroup : template.plannerGroup,
+            "GEWRK": template.workCenter.isEmpty ? context.workCenter : template.workCenter,
+            "PLNTY": template.planType, "PLNNR": template.planNumber, "PLNAL": template.planVersion,
+            "FORMNR": template.formCode, "AEDAT": performedDate, "AENAM": user,
+            "T_PLPOD": planRows(draft, formCode: template.formCode)
+        ]) { _, new in new }
+        notificationData["FELDWERT"] = ""
+
+        let allowed = Set(LegacySQLiteSchema.byName["TO_T0281"]?.columns.map(\.name) ?? [])
+        var header: LegacySAPRow = notificationData.reduce(into: [:]) { result, entry in
+            let key = entry.key.uppercased()
+            if allowed.contains(key), let value = string(entry.value) { result[key] = value }
+        }
+        header.merge([
+            "REQID": "", "VORGANGSNR": identifiers.processNumber,
+            "QMNUM": identifiers.notificationNumber, "CREATEDBY": user,
+            "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
+            "MODIFIEDBY": user, "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime,
+            "FORMNR": template.formCode, "STATUSNR": "1", "STTXT": "MMAB",
+            "FELDWERT": try SAPLegacyDataExchangeCodec.packedFeldwert(notificationData)
+        ]) { _, new in new }
+
+        var values: [LegacySAPRow] = []
+        for item in draft.inspectionItems {
+            values.append(valueRow(context.client, identifiers, item.resultElementID, item.result?.rawValue ?? "", user, createdDate, createdTime))
+            if let action = item.action {
+                values.append(valueRow(context.client, identifiers, item.actionElementID, action.rawValue, user, createdDate, createdTime))
+            }
+            values.append(valueRow(context.client, identifiers, item.commentElementID, item.comment, user, createdDate, createdTime))
+        }
+        values.append(valueRow(
+            context.client, identifiers, "\(template.formCode)-0000-1",
+            draft.isDisassembled ? "dem" : "iBet", user, createdDate, createdTime
+        ))
+        values.append(valueRow(
+            context.client, identifiers, "\(template.formCode)-0000-9B",
+            draft.disassembledComment ?? "", user, createdDate, createdTime
+        ))
+
+        let documents = try draft.photoAttachments.map { attachment -> SAPNotificationOutgoingDocument in
+            let belongsToInspection = draft.inspectionItems.contains(where: {
+                $0.id == attachment.inspectionItemID && $0.commentElementID == attachment.sapElementID
+            })
+            let belongsToDisassembledStatus = attachment.inspectionItemID == MobileLadderDraftPayload.disassembledStatusRowID
+                && attachment.sapElementID == "\(template.formCode)-0000-9B"
+            guard (belongsToInspection || belongsToDisassembledStatus),
+                  let jpeg = photoData[attachment.localAttachmentID], !jpeg.isEmpty else {
+                throw SAPNotificationReviewUploadError.missingPhoto(attachment.localAttachmentID)
+            }
+            let captureDate = date(attachment.capturedAt), captureTime = time(attachment.capturedAt)
+            var metadata = Dictionary(uniqueKeysWithValues:
+                (LegacySQLiteSchema.byName["TO_T0282"]?.columns ?? []).map { ($0.name, "") }
+            )
+            metadata.merge([
+                "MANDT": context.client, "REQID": "", "VORGANGSNR": identifiers.processNumber,
+                "DOCID": attachment.sapDocumentID, "ELEMENTNR": attachment.sapElementID,
+                "QMNUM": identifiers.notificationNumber, "CREATEDBY": user,
+                "CREATEDDATE": captureDate, "CREATEDTIME": captureTime,
+                "MODIFIEDBY": user, "MODIFIEDDATE": captureDate, "MODIFIEDTIME": captureTime,
+                "DOC_TYPE": "JPG", "DOC_MIMETYPE": "image/jpeg",
+                "NAME": photoName(attachment.capturedAt), "DOKAR": "FMD", "DOKOB": "SMQMEL",
+                "OBJKY": identifiers.notificationNumber,
+                "DMS_CONTENTTYPE": "D_TFM_Dokumentation", "DMS_DOCID": "TFM001"
+            ]) { _, new in new }
+            return SAPNotificationOutgoingDocument(metadata: metadata, jpegData: jpeg)
+        }
+
+        return SAPNotificationOutgoingBatch(
+            workItemIDs: [workItem.id], attachmentIDs: draft.photoAttachments.map(\.localAttachmentID),
+            processIDs: [identifiers.processNumber], equipmentIDs: [identifiers.equipmentNumber],
+            headers: [header], values: values, documents: documents,
+            equipment: [try equipmentRow(draft, context, identifiers)]
+        )
+    }
+
+    private static func planRows(_ draft: MobileLadderDraftPayload, formCode: String) -> [[String: Any]] {
+        draft.inspectionItems.map { item in
+            let operation = item.resultElementID.split(separator: "-").dropFirst().first.map(String.init) ?? ""
+            return [
+                "USR00": "POSITION", "STEUS": formCode, "VORNR": operation,
+                "LTXA1": item.title, "LTXA2": item.information,
+                "T_PROPS": [["POSNR": "1", "DFVAL": "1;2;3;4;5;"], ["POSNR": "2", "DFVAL": "7;8;9;"]]
+            ]
+        }
+    }
+
+    private static func equipmentRow(
+        _ draft: MobileLadderDraftPayload,
+        _ context: MobileLadderLegacyContext,
+        _ identifiers: MobileLadderLegacyIdentifiers
+    ) throws -> LegacySAPRow {
+        var equipment = jsonObject(context.template.equipmentDataJSON)
+        equipment.merge([
+            "EQUNR": identifiers.equipmentNumber, "EQTYP_TO": "I",
+            "EQART_TO": context.template.equipmentType, "EQKTX": draft.designation,
+            "SHTXT_TO": draft.designation, "TPLNR_TO": context.functionalLocation,
+            "SWERK_TO": context.template.plant.isEmpty ? context.plant : context.template.plant,
+            "ANW_STATUS": draft.isDisassembled ? "dem" : "iBet", "SYS_STATUS": "",
+            "T_CLASS_EQ": classData(draft, context)
+        ]) { _, new in new }
+        return [
+            "MANDT": context.client, "REQID": "", "STRNO": context.functionalLocation,
+            "EQUNR": identifiers.equipmentNumber,
+            "FELDWERT": try SAPLegacyDataExchangeCodec.packedFeldwert(equipment)
+        ]
+    }
+
+    private static func classData(_ draft: MobileLadderDraftPayload, _ context: MobileLadderLegacyContext) -> [String: Any] {
+        var data = jsonObject(context.template.classDataJSON)
+        let values = [
+            "TFMMOBLEITER_WERKSTOFF": draft.material,
+            "TFMMOBLEITER_BAUART": draft.constructionType,
+            "TFMMOBLEITER_ARTIKELNR": draft.factoryNumber,
+            "TFMMOBLEITER_HERSTELLER": draft.manufacturer,
+            "TFMMOBLEITER_ANZAHLSPROSSEN": draft.rungCount,
+            "TFMMOBLEITER_GESELLSCHAFT": draft.clientCompany,
+            "TFMMOBLEITER_RAUM": draft.room,
+            "TFMMOBLEITER_INVENTNR": draft.inventoryNumber,
+            "TFMMOBLEITER_BEZ": draft.designation
+        ]
+        data["KLART"] = context.template.classType
+        data["KLASSE"] = context.template.className
+        data["KLAGR"] = context.template.classGroup
+        data["T_CLOBJDAT"] = context.template.characteristics.map {
+            ["ATNAM": $0.name, "ATWRT": values[$0.name] ?? "", "MSEHI": $0.unit]
+        }
+        return data
+    }
+
+    private static func valueRow(
+        _ client: String, _ identifiers: MobileLadderLegacyIdentifiers,
+        _ element: String, _ value: String, _ user: String, _ date: String, _ time: String
+    ) -> LegacySAPRow {
+        [
+            "MANDT": client, "REQID": "", "VORGANGSNR": identifiers.processNumber,
+            "ELEMENTNR": element, "QMNUM": identifiers.notificationNumber,
+            "CREATEDBY": user, "CREATEDDATE": date, "CREATEDTIME": time,
+            "MODIFIEDBY": user, "MODIFIEDDATE": date, "MODIFIEDTIME": time,
+            "FELDBEZEICHNUNG": "", "FELDWERT": value
+        ]
+    }
+
+    private static func jsonObject(_ value: String) -> [String: Any] {
+        guard let data = value.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    private static func string(_ value: Any) -> String? {
+        if let value = value as? String { return value }
+        if let value = value as? NSNumber { return value.stringValue }
+        return nil
+    }
+
+    private static func date(_ value: Date) -> String { format(value, "yyyyMMdd") }
+    private static func time(_ value: Date) -> String { format(value, "HHmmss") }
+    private static func photoName(_ value: Date) -> String { "Foto_\(format(value, "dd_MM_yyyy_HH_mm_ss_SSS"))" }
+    private static func format(_ value: Date, _ pattern: String) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = pattern
+        return formatter.string(from: value)
     }
 }

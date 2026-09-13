@@ -56,6 +56,9 @@ struct ElectricalSafetyWorkflowView: View {
                 }
                 .padding(28)
                 .frame(maxWidth: 1280, alignment: .leading)
+                // Keep the parent ScrollView interactive so a closed form can
+                // still be reviewed from Local work.
+                .disabled(viewModel.isReadOnly)
             }
             .scrollDismissesKeyboard(.interactively)
             .alert(viewModel.alertTitle, isPresented: Binding(
@@ -83,7 +86,9 @@ struct ElectricalSafetyWorkflowView: View {
                 },
                 complete: {
                     Task { await viewModel.complete() }
-                }
+                },
+                isReadOnly: viewModel.isReadOnly,
+                back: onClose
             )
         }
         .overlay {

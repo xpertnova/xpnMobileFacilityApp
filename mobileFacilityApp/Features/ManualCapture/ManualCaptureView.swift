@@ -36,7 +36,8 @@ struct ManualCaptureView: View {
                     offlineWorkStore: demo.offlineWorkStore,
                     photoStore: demo.photoAttachmentStore,
                     legacyAttachmentIDs: photoWorkspaceScope.workflow == .defect ? defectModel.attachmentIDs : [],
-                    isReadOnly: photoWorkspaceScope.workflow == .defect && defectModel.isReadOnly,
+                    isReadOnly: (photoWorkspaceScope.workflow == .defect && defectModel.isReadOnly)
+                        || (photoWorkspaceScope.workflow == .meterReading && meterModel.isReadOnly),
                     close: { self.photoWorkspaceScope = nil }
                 )
                 .transition(PhotoWorkspaceMotion.destination)
@@ -340,9 +341,15 @@ struct ManualCaptureView: View {
 
     private var meterForm: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("manual.meter.form.title")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(FacilityTheme.ink)
+            HStack(spacing: 12) {
+                Text("manual.meter.form.title")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(FacilityTheme.ink)
+                Spacer()
+                if meterModel.isReadOnly {
+                    FacilityTemplateBadge(localized: .init("offline.status.pending"), style: .open)
+                }
+            }
 
             switch meterModel.state {
             case .idle:
@@ -368,34 +375,37 @@ struct ManualCaptureView: View {
 
     private var meterFields: some View {
         VStack(alignment: .leading, spacing: 18) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 20) {
-                    meterKindField
-                    meterPointField
+            Group {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 20) {
+                        meterKindField
+                        meterPointField
+                    }
+                    VStack(alignment: .leading, spacing: 18) {
+                        meterKindField
+                        meterPointField
+                    }
                 }
-                VStack(alignment: .leading, spacing: 18) {
-                    meterKindField
-                    meterPointField
+
+                HStack(alignment: .top, spacing: 16) {
+                    meterValueField
+                    meterUnitField
                 }
-            }
 
-            HStack(alignment: .top, spacing: 16) {
-                meterValueField
-                meterUnitField
-            }
+                meterNoteField
 
-            meterNoteField
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("photos.workspace.title")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                PhotoWorkspaceButton(count: photoCount(for: meterPhotoScope)) {
-                    photoWorkspaceScope = meterPhotoScope
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("photos.workspace.title")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    PhotoWorkspaceButton(count: photoCount(for: meterPhotoScope)) {
+                        photoWorkspaceScope = meterPhotoScope
+                    }
                 }
-            }
 
-            if meterModel.saveFailed { formError("offline.save.error.message") }
+                if meterModel.saveFailed { formError("offline.save.error.message") }
+            }
+            .disabled(meterModel.isReadOnly)
 
             Divider()
                 .padding(.top, 4)
@@ -403,48 +413,57 @@ struct ManualCaptureView: View {
             HStack(spacing: 12) {
                 Spacer()
 
-                Button {
-                    withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
-                        demo.manualCaptureRoute = .landing
-                    }
-                } label: {
-                    Text("common.cancel")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(FacilityTheme.ink)
+                meterFormActionButton(
+                    meterModel.isReadOnly ? "common.back" : "common.cancel",
+                    action: { demo.manualCaptureRoute = .landing }
+                )
+
+                if !meterModel.isReadOnly {
+                    Button {
+                        saveMeter(.pendingSynchronization)
+                    } label: {
+                        HStack(spacing: 8) {
+                            if meterModel.isSaving {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("manual.meter.book")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
                         .padding(.horizontal, 28)
                         .frame(minHeight: 44)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(ScalePressButtonStyle())
-
-                Button {
-                    saveMeter(.pendingSynchronization)
-                } label: {
-                    HStack(spacing: 8) {
-                        if meterModel.isSaving {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("manual.meter.book")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.white)
-                        }
+                        .background(
+                            (meterModel.canSave && !meterModel.isSaving) ? FacilityTheme.accent : FacilityTheme.accent.opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
                     }
-                    .padding(.horizontal, 28)
-                    .frame(minHeight: 44)
-                    .background(
-                        (meterModel.canSave && !meterModel.isSaving) ? FacilityTheme.accent : FacilityTheme.accent.opacity(0.35),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
+                    .buttonStyle(ScalePressButtonStyle())
+                    .disabled(!meterModel.canSave || meterModel.isSaving)
+                    .animation(.easeInOut(duration: 0.2), value: meterModel.canSave)
                 }
-                .buttonStyle(ScalePressButtonStyle())
-                .disabled(!meterModel.canSave || meterModel.isSaving)
-                .animation(.easeInOut(duration: 0.2), value: meterModel.canSave)
             }
         }
+    }
+
+    private func meterFormActionButton(_ key: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
+                action()
+            }
+        } label: {
+            Text(key)
+                .font(.body.weight(.medium))
+                .foregroundStyle(FacilityTheme.ink)
+                .padding(.horizontal, 28)
+                .frame(minHeight: 44)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
+                }
+        }
+        .buttonStyle(ScalePressButtonStyle())
     }
 
     private var defectPhotoScope: LocalPhotoScope {

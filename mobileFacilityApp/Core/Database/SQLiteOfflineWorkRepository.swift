@@ -110,6 +110,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 payload = .proofOfQualification(try decoder.decode(ProofOfQualificationDraftPayload.self, from: data))
             case .photoCollection:
                 payload = .photoCollection(try decoder.decode(PhotoCollectionDraftPayload.self, from: data))
+            case .mobileLadder:
+                payload = .mobileLadder(try decoder.decode(MobileLadderDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -137,6 +139,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         case let (.proofOfQualification, .proofOfQualification(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         case let (.photoCollection, .photoCollection(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.mobileLadder, .mobileLadder(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil
