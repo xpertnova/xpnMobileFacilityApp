@@ -131,6 +131,7 @@ final class LocalPhotoCollectionViewModel {
 
 struct LocalPhotoWorkspace: View {
     let isReadOnly: Bool
+    let maxAttachments: Int?
     let close: () -> Void
     @State private var model: LocalPhotoCollectionViewModel
 
@@ -140,9 +141,11 @@ struct LocalPhotoWorkspace: View {
         photoStore: any PhotoAttachmentStore,
         legacyAttachmentIDs: [String] = [],
         isReadOnly: Bool = false,
+        maxAttachments: Int? = nil,
         close: @escaping () -> Void
     ) {
         self.isReadOnly = isReadOnly
+        self.maxAttachments = maxAttachments
         self.close = close
         _model = State(initialValue: LocalPhotoCollectionViewModel(
             scope: scope,
@@ -161,6 +164,7 @@ struct LocalPhotoWorkspace: View {
             isLoading: model.isLoading,
             isSaving: model.isSaving,
             isReadOnly: isReadOnly,
+            maxAttachments: maxAttachments,
             close: close,
             addPhoto: { data in Task { await model.addPhoto(jpegData: data) } },
             removePhoto: { id in Task { await model.removePhoto(id: id) } },
@@ -198,6 +202,7 @@ struct PhotoWorkspace: View {
     let isLoading: Bool
     let isSaving: Bool
     let isReadOnly: Bool
+    let maxAttachments: Int?
     let close: () -> Void
     let addPhoto: (Data) -> Void
     let removePhoto: (String) -> Void
@@ -301,7 +306,7 @@ struct PhotoWorkspace: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(FacilityTheme.accent)
-                .disabled(isSaving)
+                .disabled(isSaving || maxAttachments.map { entries.count >= $0 } == true)
             }
         }
         .padding(.horizontal, 24)

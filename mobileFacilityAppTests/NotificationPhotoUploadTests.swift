@@ -211,10 +211,10 @@ final class NotificationPhotoUploadTests: XCTestCase {
         let document: LegacySAPRow = ["VORGANGSNR": "PROCESS", "QMNUM": "100", "DOCID": "DOC"]
 
         try await repository.replaceNotificationOutgoingRows(
-            processIDs: ["PROCESS"], headers: [header], values: [value], documents: [document]
+            processIDs: ["PROCESS"], equipmentIDs: [], headers: [header], values: [value], documents: [document], equipment: []
         )
         try await repository.replaceNotificationOutgoingRows(
-            processIDs: ["PROCESS"], headers: [header], values: [value], documents: [document]
+            processIDs: ["PROCESS"], equipmentIDs: [], headers: [header], values: [value], documents: [document], equipment: []
         )
 
         let headerCount = try await repository.legacyRowCount(in: "TO_T0281")

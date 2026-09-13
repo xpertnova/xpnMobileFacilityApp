@@ -10,6 +10,7 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case technicalObjectEdit
     case proofOfQualification
     case photoCollection
+    case mobileLadder
 }
 
 enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
@@ -21,6 +22,7 @@ enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
     case firePermit
     case proofOfQualification
     case technicalObject
+    case mobileLadder
 
     var titleKey: String {
         switch self {
@@ -32,6 +34,7 @@ enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
         case .firePermit: "forms.fire.title"
         case .proofOfQualification: "forms.qualification.title"
         case .technicalObject: "places.title"
+        case .mobileLadder: "mobileLadder.title"
         }
     }
 }
@@ -382,6 +385,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case technicalObjectEdit(TechnicalObjectEditPayload)
     case proofOfQualification(ProofOfQualificationDraftPayload)
     case photoCollection(PhotoCollectionDraftPayload)
+    case mobileLadder(MobileLadderDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -425,6 +429,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var photoCollection: PhotoCollectionDraftPayload? {
         guard case let .photoCollection(payload) = self else { return nil }
+        return payload
+    }
+
+    var mobileLadder: MobileLadderDraftPayload? {
+        guard case let .mobileLadder(payload) = self else { return nil }
         return payload
     }
 }

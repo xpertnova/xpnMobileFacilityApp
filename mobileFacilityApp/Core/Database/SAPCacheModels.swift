@@ -538,9 +538,11 @@ protocol SAPLegacySynchronizationStore: Sendable {
 protocol SAPNotificationOutgoingStore: Sendable {
     func replaceNotificationOutgoingRows(
         processIDs: [String],
+        equipmentIDs: [String],
         headers: [LegacySAPRow],
         values: [LegacySAPRow],
-        documents: [LegacySAPRow]
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow]
     ) async throws
 }
 

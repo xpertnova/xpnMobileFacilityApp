@@ -1,22 +1,70 @@
 import SwiftUI
 
+struct BriefingBusinessEntityItem: Identifiable, Hashable, Sendable {
+    let id: String
+    let title: String
+    let code: String?
+    let buildingCount: Int
+
+    init(id: String, title: String, code: String? = nil, buildingCount: Int = 0) {
+        self.id = id
+        self.title = title
+        self.code = code
+        self.buildingCount = buildingCount
+    }
+}
+
 /// SAP-backed business-entity value help. It intentionally reuses the same
 /// frame and overlay as partner-company selection so briefing value helps have
 /// one consistent iPad interaction.
 struct BriefingBusinessEntitySelectionEditor: View {
-    let viewModel: BriefingWorkflowViewModel
-    let onDismiss: () -> Void
+    let entities: [BriefingBusinessEntityItem]
+    let initialBusinessEntityID: String?
+    let onCancel: () -> Void
+    let onSelect: (String) -> Void
 
     @State private var selectedBusinessEntityID: String?
     @State private var searchText = ""
 
     init(
+        entities: [BriefingBusinessEntityItem],
+        selectedBusinessEntityID: String?,
+        onCancel: @escaping () -> Void,
+        onSelect: @escaping (String) -> Void
+    ) {
+        self.entities = entities
+        self.initialBusinessEntityID = selectedBusinessEntityID
+        self.onCancel = onCancel
+        self.onSelect = onSelect
+        _selectedBusinessEntityID = State(initialValue: selectedBusinessEntityID)
+    }
+
+    init(
         viewModel: BriefingWorkflowViewModel,
         onDismiss: @escaping () -> Void
     ) {
-        self.viewModel = viewModel
-        self.onDismiss = onDismiss
-        _selectedBusinessEntityID = State(initialValue: viewModel.selectedBusinessEntityID)
+        let items = viewModel.businessEntities.map { entity in
+            let count = Set(
+                viewModel.source.contexts
+                    .filter { $0.businessEntityID == entity.businessEntityID }
+                    .map(\.buildingCode)
+            ).count
+            return BriefingBusinessEntityItem(
+                id: entity.businessEntityID,
+                title: entity.businessEntityTitle,
+                code: entity.businessEntityTitle != entity.businessEntityID ? entity.businessEntityID : nil,
+                buildingCount: count
+            )
+        }
+        self.init(
+            entities: items,
+            selectedBusinessEntityID: viewModel.selectedBusinessEntityID,
+            onCancel: onDismiss,
+            onSelect: { selectedID in
+                viewModel.selectBusinessEntity(selectedID)
+                onDismiss()
+            }
+        )
     }
 
     var body: some View {
@@ -24,7 +72,7 @@ struct BriefingBusinessEntitySelectionEditor: View {
             title: "briefing.businessEntity.dialog.title",
             confirmationTitle: "safetyInstrucForm.addPartnerCompany.dialog.title.add",
             isConfirmationDisabled: selectedBusinessEntityID == nil,
-            onCancel: onDismiss,
+            onCancel: onCancel,
             onConfirm: confirmSelection
         ) {
             VStack(alignment: .leading, spacing: 16) {
@@ -34,6 +82,10 @@ struct BriefingBusinessEntitySelectionEditor: View {
             .padding(.horizontal, 40)
             .padding(.vertical, 24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        }
+        .onAppear {
+            selectedBusinessEntityID = initialBusinessEntityID
+            searchText = ""
         }
     }
 
@@ -82,35 +134,35 @@ struct BriefingBusinessEntitySelectionEditor: View {
                     LazyVStack(spacing: 0) {
                         ForEach(filteredEntities) { entity in
                             Button {
-                                selectedBusinessEntityID = entity.businessEntityID
+                                selectedBusinessEntityID = entity.id
                             } label: {
                                 HStack(spacing: 16) {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(entity.businessEntityTitle)
+                                        Text(entity.title)
                                             .font(.body.weight(.medium))
                                             .foregroundStyle(FacilityTheme.ink)
-                                        if entity.businessEntityTitle != entity.businessEntityID {
-                                            Text(entity.businessEntityID)
+                                        if let code = entity.code, !code.isEmpty, code != entity.title {
+                                            Text(code)
                                                 .font(.caption.monospaced())
                                                 .foregroundStyle(.secondary)
                                         }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                                    Text("\(buildingCount(for: entity.businessEntityID))")
+                                    Text("\(entity.buildingCount)")
                                         .font(.body.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                         .frame(width: 150, alignment: .leading)
 
-                                    Image(systemName: selectedBusinessEntityID == entity.businessEntityID ? "checkmark.circle.fill" : "circle")
+                                    Image(systemName: selectedBusinessEntityID == entity.id ? "checkmark.circle.fill" : "circle")
                                         .font(.title3)
-                                        .foregroundStyle(selectedBusinessEntityID == entity.businessEntityID ? FacilityTheme.accent : .secondary)
+                                        .foregroundStyle(selectedBusinessEntityID == entity.id ? FacilityTheme.accent : .secondary)
                                         .frame(width: 32)
                                 }
                                 .padding(.horizontal, 18)
                                 .frame(minHeight: 62)
                                 .background(
-                                    selectedBusinessEntityID == entity.businessEntityID
+                                    selectedBusinessEntityID == entity.id
                                         ? FacilityTheme.accent.opacity(0.09)
                                         : FacilityTheme.surface
                                 )
@@ -131,26 +183,18 @@ struct BriefingBusinessEntitySelectionEditor: View {
         }
     }
 
-    private var filteredEntities: [BriefingWorkflowViewModel.Context] {
+    private var filteredEntities: [BriefingBusinessEntityItem] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return viewModel.businessEntities }
-        return viewModel.businessEntities.filter {
-            $0.businessEntityTitle.localizedCaseInsensitiveContains(query)
-                || $0.businessEntityID.localizedCaseInsensitiveContains(query)
+        guard !query.isEmpty else { return entities }
+        return entities.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || ($0.code?.localizedCaseInsensitiveContains(query) ?? false)
+                || $0.id.localizedCaseInsensitiveContains(query)
         }
-    }
-
-    private func buildingCount(for businessEntityID: String) -> Int {
-        Set(
-            viewModel.source.contexts
-                .filter { $0.businessEntityID == businessEntityID }
-                .map(\.buildingCode)
-        ).count
     }
 
     private func confirmSelection() {
         guard let selectedBusinessEntityID else { return }
-        viewModel.selectBusinessEntity(selectedBusinessEntityID)
-        onDismiss()
+        onSelect(selectedBusinessEntityID)
     }
 }

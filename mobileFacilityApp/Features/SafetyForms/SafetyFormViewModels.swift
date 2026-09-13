@@ -194,11 +194,13 @@ final class ElectricalSafetyViewModel {
     var pdfArtifact: BriefingPDFArtifact?
     var selectedBusinessEntityID: String?
     var selectedBuildingCode: String?
+    private(set) var itemStatus: OfflineWorkStatus?
     private var savedWorkID: UUID?
 
     init(source: SafetyFormSource, existingDraft: OfflineWorkItem?, draftID: UUID? = nil) {
         self.source = source
         savedWorkID = existingDraft?.id ?? draftID
+        itemStatus = existingDraft?.status
         if let existingDraft, let payload = existingDraft.payload.electricalSafety {
             draft = payload
             selectedBusinessEntityID = payload.context?.businessEntityID
@@ -206,6 +208,13 @@ final class ElectricalSafetyViewModel {
         } else {
             draft = ElectricalSafetyDraftPayload(source: source)
         }
+    }
+
+    /// A completed local form is pending a verified SAP contract, not editable
+    /// work. Drafts remain editable when reopened from Local work.
+    var isReadOnly: Bool {
+        guard let itemStatus else { return false }
+        return itemStatus != .draft
     }
 
     var businessEntities: [SafetyFormContext] {
@@ -324,10 +333,12 @@ final class ElectricalSafetyViewModel {
     }
 
     func saveDraft(using store: OfflineWorkStore) async -> Bool {
-        await save(using: store, status: .draft, isCompletion: false)
+        guard !isReadOnly else { return false }
+        return await save(using: store, status: .draft, isCompletion: false)
     }
 
     func complete() async {
+        guard !isReadOnly else { return }
         // Let a signature field persist the final PencilKit stroke before
         // checking the draft for missing fields.
         await Task.yield()
@@ -356,7 +367,8 @@ final class ElectricalSafetyViewModel {
     }
 
     func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
-        await save(using: store, status: .pendingSynchronization, isCompletion: true)
+        guard !isReadOnly else { return false }
+        return await save(using: store, status: .pendingSynchronization, isCompletion: true)
     }
 
     private func save(
@@ -364,7 +376,7 @@ final class ElectricalSafetyViewModel {
         status: OfflineWorkStatus,
         isCompletion: Bool
     ) async -> Bool {
-        guard !isSaving else { return false }
+        guard !isSaving, !isReadOnly else { return false }
         isSaving = true
         defer { isSaving = false }
         var payload = draft
@@ -376,6 +388,7 @@ final class ElectricalSafetyViewModel {
                 status: status
             )
             savedWorkID = item.id
+            itemStatus = item.status
             draft = payload
             if !isCompletion {
                 alertTitle = String(localized: "electricalSafety.temporarySaved.title")

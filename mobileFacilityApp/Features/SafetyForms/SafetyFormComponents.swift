@@ -340,6 +340,7 @@ struct SafetyFormContextCard: View {
 
             SafetyFormField("firePermit.building", required: true) {
                 Button {
+                    isFunctionalLocationPickerPresented = false
                     isBuildingPickerPresented = true
                 } label: {
                     valueHelpLabel(
@@ -366,6 +367,7 @@ struct SafetyFormContextCard: View {
 
             SafetyFormField("firePermit.functionalLocation", required: true) {
                 Button {
+                    isBuildingPickerPresented = false
                     isFunctionalLocationPickerPresented = true
                 } label: {
                     valueHelpLabel(
@@ -794,19 +796,27 @@ struct SafetyFormActionBar: View {
     let isBusy: Bool
     let saveDraft: (() -> Void)?
     let complete: () -> Void
+    var isReadOnly = false
+    var back: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 14) {
             Spacer(minLength: 12)
-            if let saveDraft {
-                Button("app.button.tempSave", action: saveDraft)
+            if isReadOnly {
+                Button("common.back", action: back ?? complete)
                     .buttonStyle(.bordered)
-                    .disabled(!canSaveDraft || isBusy)
+                    .tint(FacilityTheme.ink)
+            } else {
+                if let saveDraft {
+                    Button("app.button.tempSave", action: saveDraft)
+                        .buttonStyle(.bordered)
+                        .disabled(!canSaveDraft || isBusy)
+                }
+                Button("app.btn.instrucClose", action: complete)
+                    .buttonStyle(.borderedProminent)
+                    .tint(FacilityTheme.accent)
+                    .disabled(!canComplete || isBusy)
             }
-            Button("app.btn.instrucClose", action: complete)
-                .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.accent)
-                .disabled(!canComplete || isBusy)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)

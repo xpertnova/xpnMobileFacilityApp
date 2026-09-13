@@ -75,6 +75,8 @@ private struct ProofOfQualificationFormScreen: View {
           }
           .padding(28)
           .frame(maxWidth: 1280, alignment: .leading)
+          // Disable only controls. The ScrollView remains enabled for review.
+          .disabled(viewModel.isReadOnly)
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: viewModel.validationMessage) { _, message in
@@ -94,7 +96,9 @@ private struct ProofOfQualificationFormScreen: View {
         canComplete: viewModel.selectedContext != nil,
         isBusy: viewModel.isRenderingPDF || viewModel.isSaving,
         saveDraft: nil,
-        complete: viewModel.requestCompletion
+        complete: viewModel.requestCompletion,
+        isReadOnly: viewModel.isReadOnly,
+        back: onClose
       )
     }
     .overlay {

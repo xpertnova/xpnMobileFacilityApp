@@ -8,7 +8,13 @@ struct TechnicalPlacesView: View {
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
         ZStack {
-            if let photoWorkspaceScope {
+            if case .createMobileLadder = demo.technicalPlacesRoute {
+                MobileLadderCreationView(demo: demo, itemID: nil, close: demo.closeMobileLadder)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if case let .mobileLadderDraft(itemID) = demo.technicalPlacesRoute {
+                MobileLadderCreationView(demo: demo, itemID: itemID, close: demo.closeMobileLadder)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if let photoWorkspaceScope {
                 LocalPhotoWorkspace(
                     scope: photoWorkspaceScope,
                     offlineWorkStore: demo.offlineWorkStore,
@@ -70,8 +76,16 @@ struct TechnicalPlacesView: View {
                 HStack(alignment: .top, spacing: 18) {
                     PageHeader("places.title", subtitle: "places.subtitle")
                     Spacer()
-                    Button { model.performUnavailableAction("places.new.unavailable") } label: {
-                        Label("places.new", systemImage: "plus").font(.subheadline.weight(.bold)).frame(minWidth: 88, minHeight: 48)
+                    Menu {
+                        Button { demo.openMobileLadder() } label: {
+                            Label("places.new.mobileLadder", systemImage: "figure.climbing")
+                        }
+                        Button { model.performUnavailableAction("places.new.subdistribution.unavailable") } label: {
+                            Label("places.new.subdistribution", systemImage: "bolt.square")
+                        }
+                    } label: {
+                        Label("places.new", systemImage: "plus")
+                            .font(.subheadline.weight(.bold)).frame(minWidth: 88, minHeight: 48)
                     }.buttonStyle(.bordered)
                 }
                 HStack(spacing: 10) {

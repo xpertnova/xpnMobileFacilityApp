@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore {
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, MobileLadderCreationProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -104,6 +104,93 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             technicalObjects: try Self.technicalObjects(on: database),
             metadata: try Self.metadata(on: database)
         )
+    }
+
+    func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
+        try validateWorker(workerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let templates = SAPLegacyDataExchangeCodec.mobileLadderTemplates(
+            planRows: try Self.rows(in: "FROM_T0267", on: database),
+            classRows: try Self.rows(in: "FROM_T0263", on: database),
+            equipmentRows: try Self.rows(in: "FROM_T0268", on: database)
+        )
+        guard !templates.isEmpty else { return .empty }
+
+        let contexts = try Self.rows(in: "FROM_T0272", on: database).compactMap { row -> MobileLadderCreationContext? in
+            func string(_ key: String) -> String { row[key] as? String ?? "" }
+            let deletionFlag = string("LVORM").uppercased()
+            let userStatus = string("USTXT")
+            guard deletionFlag != "X", userStatus.isEmpty || userStatus.localizedCaseInsensitiveContains("iBet") else {
+                return nil
+            }
+            let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
+            let trade = string("TPGSG")
+            guard !functionalLocation.isEmpty, !trade.isEmpty else { return nil }
+            let template = templates.first {
+                ($0.plant.isEmpty || $0.plant == string("IWERK"))
+                    && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
+            } ?? templates.first
+            guard let template,
+                  let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
+                  let sourceJSON = String(data: sourceData, encoding: .utf8) else { return nil }
+
+            let cityLine = [string("POST_CODE1"), string("CITY1")].filter { !$0.isEmpty }.joined(separator: " ")
+            let businessCode = [string("TPLND"), string("TPORT"), string("TPWEH")]
+                .filter { !$0.isEmpty }.joined(separator: "-")
+            let businessTitle = [businessCode, cityLine, string("STREET")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let buildingTitle = [string("TPGEB"), string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let tradeTitle = [trade, functionalLocation].filter { !$0.isEmpty }.joined(separator: " · ")
+            return MobileLadderCreationContext(
+                businessEntity: businessTitle.isEmpty ? string("TPWEH") : businessTitle,
+                building: buildingTitle.isEmpty ? functionalLocation : buildingTitle,
+                trade: tradeTitle,
+                legacyContext: MobileLadderLegacyContext(
+                    client: string("MANDT"), functionalLocation: functionalLocation,
+                    country: string("TPLND"), location: string("TPORT"), businessEntity: string("TPWEH"),
+                    building: string("TPGEB"), trade: trade, plant: string("IWERK"),
+                    plannerGroup: string("INGRP"), workCenter: string("GEWRK").isEmpty ? string("ARBPL") : string("GEWRK"),
+                    addressNumber: string("ADRNR"), contactName: string("NAME_LIST"), city: string("CITY1"),
+                    postalCode: string("POST_CODE1"), street: string("STREET"),
+                    sourceNotificationJSON: sourceJSON, template: template
+                )
+            )
+        }
+        let uniqueContexts = Dictionary(grouping: contexts, by: \MobileLadderCreationContext.id)
+            .compactMap { $0.value.first }
+            .sorted { ($0.businessEntity, $0.building, $0.trade) < ($1.businessEntity, $1.building, $1.trade) }
+        let catalogPairs: [(MobileLadderCatalogField, String)] = [
+            (.material, "TFMMOBLEITER_WERKSTOFF"),
+            (.constructionType, "TFMMOBLEITER_BAUART"),
+            (.manufacturer, "TFMMOBLEITER_HERSTELLER"),
+            (.clientCompany, "TFMMOBLEITER_GESELLSCHAFT")
+        ]
+        var catalog: [MobileLadderCatalogField: [String]] = [:]
+        for (field, characteristicName) in catalogPairs {
+            var values = templates
+                .flatMap(\.characteristics)
+                .filter { $0.name.caseInsensitiveCompare(characteristicName) == .orderedSame }
+                .flatMap(\.values)
+                .map { $0.title.isEmpty ? $0.value : $0.title }
+                .uniquedAndSorted()
+
+            if field == .clientCompany {
+                if let userRows = try? Self.rows(in: "USER", on: database) {
+                    for row in userRows {
+                        if let company = (row["GESELLSCHAFT"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !company.isEmpty,
+                           !values.contains(where: { $0.caseInsensitiveCompare(company) == .orderedSame }) {
+                            values.append(company)
+                        }
+                    }
+                }
+                if !values.contains(where: { $0.caseInsensitiveCompare("Pflege durch Admin") == .orderedSame }) {
+                    values.insert("Pflege durch Admin", at: 0)
+                }
+            }
+
+            catalog[field] = values.isEmpty ? MobileLadderCatalog.legacyReference.options(for: field) : values
+        }
+        return MobileLadderCreationData(contexts: uniqueContexts, catalog: MobileLadderCatalog(options: catalog))
     }
 
     func loadNotifications(
@@ -476,14 +563,17 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
 
     func replaceNotificationOutgoingRows(
         processIDs: [String],
+        equipmentIDs: [String],
         headers: [LegacySAPRow],
         values: [LegacySAPRow],
-        documents: [LegacySAPRow]
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow]
     ) async throws {
         guard let database else { throw SAPReadError.serviceUnavailable }
         let headerSchema = try Self.schema(named: "TO_T0281")
         let valueSchema = try Self.schema(named: "TO_T0283")
         let documentSchema = try Self.schema(named: "TO_T0282")
+        let equipmentSchema = try Self.schema(named: "TO_T0266")
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for processID in Set(processIDs) where !processID.isEmpty {
@@ -495,9 +585,17 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                     )
                 }
             }
+            for equipmentID in Set(equipmentIDs) where !equipmentID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(equipmentSchema.name) WHERE EQUNR = ?",
+                    bindings: [equipmentID]
+                )
+            }
             for row in headers { try Self.insert(row: row, into: headerSchema, on: database) }
             for row in values { try Self.insert(row: row, into: valueSchema, on: database) }
             for row in documents { try Self.insert(row: row, into: documentSchema, on: database) }
+            for row in equipment { try Self.insert(row: row, into: equipmentSchema, on: database) }
             try Self.execute(on: database, "COMMIT")
         } catch {
             try? Self.execute(on: database, "ROLLBACK")

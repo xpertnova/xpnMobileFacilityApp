@@ -3,7 +3,7 @@ import Observation
 
 @MainActor
 @Observable
-final class SAPDataStore {
+final class SAPDataStore: MobileLadderCreationProviding {
     enum State: Equatable {
         case loadingCache
         case noData
@@ -104,6 +104,14 @@ final class SAPDataStore {
         let locations = try await repository.technicalObjectCount(for: localWorkerID, kind: .functionalLocation)
         let equipment = try await repository.technicalObjectCount(for: localWorkerID, kind: .equipment)
         return locations + equipment
+    }
+
+    func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
+        guard !workerID.isEmpty,
+              let provider = repository as? any MobileLadderCreationProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadMobileLadderCreationData(for: workerID)
     }
 
     func loadCachedData() async {

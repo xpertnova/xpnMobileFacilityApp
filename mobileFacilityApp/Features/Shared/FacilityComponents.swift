@@ -179,3 +179,59 @@ struct FacilityTemplateBadge: View {
             .background(style.background, in: Capsule())
     }
 }
+
+/// Shared comment editor used by inspection workflows. Keeping this surface
+/// consistent means a technician gets the same focused, keyboard-ready editor
+/// whether they are documenting a notification or a mobile ladder.
+struct FacilityCommentEditorOverlay: View {
+    @Binding var comment: String
+    let dismiss: () -> Void
+    @FocusState private var isEditorFocused: Bool
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.14)
+                .ignoresSafeArea()
+                .onTapGesture(perform: dismiss)
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("notifications.detail.commentEditor.title")
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+
+                ZStack(alignment: .topLeading) {
+                    if comment.isEmpty {
+                        Text("notifications.detail.commentEditor.placeholder")
+                            .font(.body)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 18)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextEditor(text: $comment)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(10)
+                        .focused($isEditorFocused)
+                        .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
+                }
+                .frame(height: 190)
+                .background(Color(white: 0.89), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                HStack {
+                    Spacer()
+                    Button("notifications.detail.commentEditor.done", action: dismiss)
+                        .buttonStyle(.borderedProminent)
+                        .tint(FacilityTheme.accent)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 460)
+            .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
+            .padding(28)
+        }
+        .onAppear { isEditorFocused = true }
+    }
+}

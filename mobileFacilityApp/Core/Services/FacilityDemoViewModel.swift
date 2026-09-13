@@ -10,6 +10,7 @@ final class FacilityDemoViewModel {
     let technicalPlacesStore: TechnicalPlacesViewModel
     let meterReferenceProvider: any MeterReferenceProviding
     let photoAttachmentStore: any PhotoAttachmentStore
+    let mobileLadderCreationProvider: any MobileLadderCreationProviding
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     private(set) var profileSettingsReturnDestination: AppDestination = .overview
@@ -22,6 +23,7 @@ final class FacilityDemoViewModel {
     }
     var isSidebarExpanded = true
     var manualCaptureRoute: ManualCaptureRoute = .landing
+    var technicalPlacesRoute: TechnicalPlacesRoute = .hierarchy
     var selectedBriefingDraftID: UUID?
     var selectedElectricalSafetyDraftID: UUID?
     var selectedProofOfQualificationDraftID: UUID?
@@ -45,6 +47,7 @@ final class FacilityDemoViewModel {
         sapDataStore: SAPDataStore,
         meterReferenceProvider: any MeterReferenceProviding,
         photoAttachmentStore: any PhotoAttachmentStore,
+        mobileLadderCreationProvider: (any MobileLadderCreationProviding)? = nil,
         workerDisplayName: String = "Alex Morgan",
         workerRole: FacilityUserRole = .technician
     ) {
@@ -53,6 +56,13 @@ final class FacilityDemoViewModel {
         self.sapDataStore = sapDataStore
         self.meterReferenceProvider = meterReferenceProvider
         self.photoAttachmentStore = photoAttachmentStore
+        if let mobileLadderCreationProvider {
+            self.mobileLadderCreationProvider = mobileLadderCreationProvider
+        } else if isDemoMode {
+            self.mobileLadderCreationProvider = DemoMobileLadderCreationProvider()
+        } else {
+            self.mobileLadderCreationProvider = sapDataStore
+        }
         self.technicalPlacesStore = TechnicalPlacesViewModel(
             sapDataStore: sapDataStore,
             offlineWorkStore: offlineWorkStore
@@ -178,6 +188,15 @@ final class FacilityDemoViewModel {
         selection = .manualCapture
     }
 
+    func openMobileLadder(_ itemID: UUID? = nil) {
+        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.mobileLadderDraft) ?? .createMobileLadder
+        selection = .technicalPlaces
+    }
+
+    func closeMobileLadder() {
+        technicalPlacesRoute = .hierarchy
+    }
+
     func openBriefingDraft(_ itemID: UUID) {
         selectedBriefingDraftID = itemID
         selection = .forms
@@ -287,6 +306,7 @@ final class FacilityDemoViewModel {
         notifications = MockFacilityData.notifications
         defects = MockFacilityData.defects
         manualCaptureRoute = .landing
+        technicalPlacesRoute = .hierarchy
         selectedBriefingDraftID = nil
         selectedElectricalSafetyDraftID = nil
         selectedProofOfQualificationDraftID = nil

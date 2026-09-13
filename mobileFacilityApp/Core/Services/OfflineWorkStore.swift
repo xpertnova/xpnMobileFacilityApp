@@ -51,7 +51,9 @@ final class OfflineWorkStore {
     var localWorkCount: Int {
         localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
             + technicalObjectEditItems.count + defectItems.count + meterReadingItems.count
-            + proofOfQualificationItems.count + photoCollectionItems.count
+            + proofOfQualificationItems.count
+            + photoCollectionItems.filter { $0.payload.photoCollection?.scope.workflow != .mobileLadder }.count
+            + mobileLadderItems.count
     }
 
     var defectItems: [OfflineWorkItem] {
@@ -80,6 +82,35 @@ final class OfflineWorkStore {
 
     var photoCollectionItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .photoCollection }
+    }
+
+    var mobileLadderItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .mobileLadder }
+    }
+
+    func mobileLadderItem(id: UUID?) -> OfflineWorkItem? {
+        guard let id else { return nil }
+        return mobileLadderItems.first { $0.id == id }
+    }
+
+    func saveMobileLadder(
+        id: UUID? = nil,
+        payload: MobileLadderDraftPayload,
+        status: OfflineWorkStatus
+    ) async throws -> OfflineWorkItem {
+        let existing = mobileLadderItem(id: id)
+        let now = Date()
+        let effectiveStatus: OfflineWorkStatus = payload.isClosedLocally == true
+            ? .pendingSynchronization
+            : status
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(), workerID: workerID, type: .mobileLadder,
+            status: effectiveStatus, payload: .mobileLadder(payload),
+            createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
     }
 
     func photoCollection(for scope: LocalPhotoScope) -> OfflineWorkItem? {
