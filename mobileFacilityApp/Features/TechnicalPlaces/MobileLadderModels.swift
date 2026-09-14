@@ -371,6 +371,8 @@ enum TechnicalPlacesRoute: Equatable {
     case hierarchy
     case createMobileLadder
     case mobileLadderDraft(UUID)
+    case createSubdistribution
+    case subdistributionDraft(UUID)
 }
 
 extension String {

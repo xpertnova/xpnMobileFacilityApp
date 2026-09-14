@@ -235,3 +235,40 @@ struct FacilityCommentEditorOverlay: View {
         .onAppear { isEditorFocused = true }
     }
 }
+
+/// One persistent action bar for every inspection workflow. The order,
+/// labels, spacing, and enabled-state treatment deliberately match the
+/// Mobile Ladder reference: Everything OK, Save draft, Close notification.
+struct FacilityInspectionActionBar: View {
+    let markEverythingOkay: () -> Void
+    let saveDraft: () -> Void
+    let closeNotification: () -> Void
+    let isMarkEverythingOkayEnabled: Bool
+    let isSaveDraftEnabled: Bool
+    let isCloseNotificationEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Spacer(minLength: 12)
+
+            Button("inspection.action.everythingOkay", action: markEverythingOkay)
+                .buttonStyle(.plain)
+                .foregroundStyle(FacilityTheme.blue)
+                .disabled(!isMarkEverythingOkayEnabled)
+
+            Button("inspection.action.saveDraft", action: saveDraft)
+                .buttonStyle(.bordered)
+                .tint(FacilityTheme.ink)
+                .disabled(!isSaveDraftEnabled)
+
+            Button("inspection.action.closeNotification", action: closeNotification)
+                .buttonStyle(.borderedProminent)
+                .tint(FacilityTheme.accent)
+                .disabled(!isCloseNotificationEnabled)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) { Divider() }
+    }
+}

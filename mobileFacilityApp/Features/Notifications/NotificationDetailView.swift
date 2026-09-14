@@ -331,36 +331,22 @@ struct NotificationDetailView: View {
     }
 
     private var actionBar: some View {
-        HStack(spacing: 14) {
-            Spacer(minLength: 12)
-
-            Button("notifications.detail.allGood") {
+        FacilityInspectionActionBar(
+            markEverythingOkay: {
                 for item in detail.inspectionItems {
                     model.results[item.id] = .no
                 }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(FacilityTheme.blue)
-            .disabled(isEditingDisabled || detail.inspectionItems.isEmpty || model.isSaving)
-
-            Button("notifications.detail.saveTemporary") {
+            },
+            saveDraft: {
                 Task { await model.save(closed: false) }
-            }
-            .buttonStyle(.bordered)
-            .tint(FacilityTheme.ink)
-            .disabled(isEditingDisabled || model.isSaving)
-
-            Button("notifications.detail.closeNotification") {
+            },
+            closeNotification: {
                 isCloseConfirmationPresented = true
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(FacilityTheme.accent)
-            .disabled(isEditingDisabled || model.isSaving || !canCloseNotification)
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider() }
+            },
+            isMarkEverythingOkayEnabled: !isEditingDisabled && !detail.inspectionItems.isEmpty && !model.isSaving,
+            isSaveDraftEnabled: !isEditingDisabled && !model.isSaving,
+            isCloseNotificationEnabled: !isEditingDisabled && !model.isSaving && canCloseNotification
+        )
     }
 
     private var canCloseNotification: Bool {
