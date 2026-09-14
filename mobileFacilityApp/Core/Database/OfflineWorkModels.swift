@@ -11,6 +11,7 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case proofOfQualification
     case photoCollection
     case mobileLadder
+    case subdistribution
 }
 
 enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
@@ -23,6 +24,7 @@ enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
     case proofOfQualification
     case technicalObject
     case mobileLadder
+    case subdistribution
 
     var titleKey: String {
         switch self {
@@ -35,6 +37,7 @@ enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
         case .proofOfQualification: "forms.qualification.title"
         case .technicalObject: "places.title"
         case .mobileLadder: "mobileLadder.title"
+        case .subdistribution: "subdistribution.title"
         }
     }
 }
@@ -386,6 +389,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case proofOfQualification(ProofOfQualificationDraftPayload)
     case photoCollection(PhotoCollectionDraftPayload)
     case mobileLadder(MobileLadderDraftPayload)
+    case subdistribution(SubdistributionDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -434,6 +438,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var mobileLadder: MobileLadderDraftPayload? {
         guard case let .mobileLadder(payload) = self else { return nil }
+        return payload
+    }
+
+    var subdistribution: SubdistributionDraftPayload? {
+        guard case let .subdistribution(payload) = self else { return nil }
         return payload
     }
 }

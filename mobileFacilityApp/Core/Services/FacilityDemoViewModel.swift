@@ -11,6 +11,7 @@ final class FacilityDemoViewModel {
     let meterReferenceProvider: any MeterReferenceProviding
     let photoAttachmentStore: any PhotoAttachmentStore
     let mobileLadderCreationProvider: any MobileLadderCreationProviding
+    let subdistributionCreationProvider: any SubdistributionCreationProviding
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     private(set) var profileSettingsReturnDestination: AppDestination = .overview
@@ -48,6 +49,7 @@ final class FacilityDemoViewModel {
         meterReferenceProvider: any MeterReferenceProviding,
         photoAttachmentStore: any PhotoAttachmentStore,
         mobileLadderCreationProvider: (any MobileLadderCreationProviding)? = nil,
+        subdistributionCreationProvider: (any SubdistributionCreationProviding)? = nil,
         workerDisplayName: String = "Alex Morgan",
         workerRole: FacilityUserRole = .technician
     ) {
@@ -62,6 +64,13 @@ final class FacilityDemoViewModel {
             self.mobileLadderCreationProvider = DemoMobileLadderCreationProvider()
         } else {
             self.mobileLadderCreationProvider = sapDataStore
+        }
+        if let subdistributionCreationProvider {
+            self.subdistributionCreationProvider = subdistributionCreationProvider
+        } else if isDemoMode {
+            self.subdistributionCreationProvider = DemoSubdistributionCreationProvider()
+        } else {
+            self.subdistributionCreationProvider = sapDataStore
         }
         self.technicalPlacesStore = TechnicalPlacesViewModel(
             sapDataStore: sapDataStore,
@@ -194,6 +203,15 @@ final class FacilityDemoViewModel {
     }
 
     func closeMobileLadder() {
+        technicalPlacesRoute = .hierarchy
+    }
+
+    func openSubdistribution(_ itemID: UUID? = nil) {
+        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.subdistributionDraft) ?? .createSubdistribution
+        selection = .technicalPlaces
+    }
+
+    func closeSubdistribution() {
         technicalPlacesRoute = .hierarchy
     }
 

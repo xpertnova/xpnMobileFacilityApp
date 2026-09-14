@@ -2,7 +2,9 @@ import Foundation
 
 struct SAPNotificationOutgoingDocument: Sendable {
     let metadata: [String: String]
-    let jpegData: Data
+    /// JPEG inspection evidence and the TFM7 PDF report use the exact same
+    /// metadata -> binary upload -> final post transport sequence.
+    let data: Data
 }
 
 struct SAPNotificationOutgoingBatch: Sendable {
@@ -166,7 +168,7 @@ enum SAPNotificationReviewUploadBuilder {
                 "OBJKY": review.notificationID, "DMS_CONTENTTYPE": mapping.documentClass,
                 "DMS_DOCID": mapping.valueList
             ]) { _, value in value }
-            return SAPNotificationOutgoingDocument(metadata: metadata, jpegData: data)
+            return SAPNotificationOutgoingDocument(metadata: metadata, data: data)
         }
 
         return SAPNotificationOutgoingBatch(
@@ -258,7 +260,9 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                 return false
             }
             if let review = item.payload.notificationReview { return review.isClosedLocally }
-            return item.payload.mobileLadder != nil
+            if let ladder = item.payload.mobileLadder { return ladder.isClosedLocally == true }
+            if let subdistribution = item.payload.subdistribution { return subdistribution.isClosedLocally }
+            return false
         }
         guard !pending.isEmpty else { return .empty }
 
@@ -292,6 +296,22 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                     let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
                         guard let collection = candidate.payload.photoCollection,
                               collection.scope.workflow == .mobileLadder,
+                              collection.scope.ownerID == draft.localDraftID else { return nil }
+                        return candidate.id
+                    }
+                    batch = batch.addingCleanupWorkItemIDs(photoWorkIDs)
+                    batches.append(batch)
+                case let .subdistribution(draft):
+                    var photos: [String: Data] = [:]
+                    for attachment in draft.photoAttachments {
+                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+                    }
+                    var batch = try SAPSubdistributionUploadBuilder.build(
+                        workItem: item, draft: draft, syncUserID: syncUserID, photoData: photos
+                    )
+                    let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
+                        guard let collection = candidate.payload.photoCollection,
+                              collection.scope.workflow == .subdistribution,
                               collection.scope.ownerID == draft.localDraftID else { return nil }
                         return candidate.id
                     }
@@ -461,7 +481,7 @@ enum SAPMobileLadderUploadBuilder {
                 "OBJKY": identifiers.notificationNumber,
                 "DMS_CONTENTTYPE": "D_TFM_Dokumentation", "DMS_DOCID": "TFM001"
             ]) { _, new in new }
-            return SAPNotificationOutgoingDocument(metadata: metadata, jpegData: jpeg)
+            return SAPNotificationOutgoingDocument(metadata: metadata, data: jpeg)
         }
 
         return SAPNotificationOutgoingBatch(
@@ -529,6 +549,255 @@ enum SAPMobileLadderUploadBuilder {
     private static func valueRow(
         _ client: String, _ identifiers: MobileLadderLegacyIdentifiers,
         _ element: String, _ value: String, _ user: String, _ date: String, _ time: String
+    ) -> LegacySAPRow {
+        [
+            "MANDT": client, "REQID": "", "VORGANGSNR": identifiers.processNumber,
+            "ELEMENTNR": element, "QMNUM": identifiers.notificationNumber,
+            "CREATEDBY": user, "CREATEDDATE": date, "CREATEDTIME": time,
+            "MODIFIEDBY": user, "MODIFIEDDATE": date, "MODIFIEDTIME": time,
+            "FELDBEZEICHNUNG": "", "FELDWERT": value
+        ]
+    }
+
+    private static func jsonObject(_ value: String) -> [String: Any] {
+        guard let data = value.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    private static func string(_ value: Any) -> String? {
+        if let value = value as? String { return value }
+        if let value = value as? NSNumber { return value.stringValue }
+        return nil
+    }
+
+    private static func date(_ value: Date) -> String { format(value, "yyyyMMdd") }
+    private static func time(_ value: Date) -> String { format(value, "HHmmss") }
+    private static func photoName(_ value: Date) -> String { "Foto_\(format(value, "dd_MM_yyyy_HH_mm_ss_SSS"))" }
+    private static func format(_ value: Date, _ pattern: String) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = pattern
+        return formatter.string(from: value)
+    }
+}
+
+/// Builds the native TFM7 outgoing rows.  Its data model is intentionally not
+/// shared with TFM5: all characteristic identifiers and inspection element
+/// IDs come from the SAP template snapshot carried by the draft.
+enum SAPSubdistributionUploadBuilder {
+    static func build(
+        workItem: OfflineWorkItem,
+        draft: SubdistributionDraftPayload,
+        syncUserID: String,
+        photoData: [String: Data],
+        now: Date = .now
+    ) throws -> SAPNotificationOutgoingBatch {
+        guard let identifiers = draft.legacyIdentifiers,
+              let context = draft.context?.legacyContext,
+              let reportPDF = draft.reportPDF, !reportPDF.isEmpty,
+              let pdfDocumentID = draft.pdfDocumentID, !pdfDocumentID.isEmpty,
+              draft.photoAttachments.count <= 20,
+              (draft.isOutOfOperation || inspectionRequirementsAreComplete(draft)),
+              let sourceData = context.sourceNotificationJSON.data(using: .utf8),
+              var notificationData = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any]
+        else { throw SAPNotificationReviewUploadError.invalidReview(draft.localDraftID) }
+
+        let createdDate = date(now), createdTime = time(now), performedDate = date(draft.performedOn)
+        let user = syncUserID.uppercased()
+        let template = context.template
+        let hasDefect = !draft.isOutOfOperation && draft.inspectionItems.contains(where: \.isDefective)
+        let closureStatus: String
+        if draft.isOutOfOperation { closureStatus = "MIAR" }
+        else if hasDefect { closureStatus = draft.defectCloseAction?.sapStatus ?? "MIAR" }
+        else { closureStatus = "MMAB" }
+        let applicationStatus = draft.isOutOfOperation ? "aBet" : "iBet"
+        let userStatus = [applicationStatus, (draft.isOutOfOperation || hasDefect) ? "Mnot" : ""]
+            .filter { !$0.isEmpty }.joined(separator: " ")
+        guard let designation = equipmentDesignation(draft: draft) else {
+            throw SAPNotificationReviewUploadError.invalidReview(draft.localDraftID)
+        }
+
+        notificationData.merge([
+            "MANDT": context.client, "QMNUM": identifiers.notificationNumber, "QMART": "I1",
+            "QMTXT": designation, "STTXT": closureStatus, "USTXT": userStatus,
+            "EQUNR": identifiers.equipmentNumber, "EQKTX": designation,
+            "STRNO": context.functionalLocation, "TPLND": context.country, "TPORT": context.location,
+            "TPWEH": context.businessEntity, "TPGEB": context.building, "TPGSG": context.segment,
+            "IWERK": template.plant.isEmpty ? context.plant : template.plant,
+            "INGRP": template.plannerGroup.isEmpty ? context.plannerGroup : template.plannerGroup,
+            "GEWRK": template.workCenter.isEmpty ? context.workCenter : template.workCenter,
+            "PLNTY": template.planType, "PLNNR": template.planNumber, "PLNAL": template.planVersion,
+            "FORMNR": "TFM7", "AEDAT": performedDate, "AENAM": user,
+            "T_PLPOD": planRows(draft)
+        ]) { _, value in value }
+        notificationData["FELDWERT"] = ""
+
+        let allowed = Set(LegacySQLiteSchema.byName["TO_T0281"]?.columns.map(\.name) ?? [])
+        var header: LegacySAPRow = notificationData.reduce(into: [:]) { result, entry in
+            let key = entry.key.uppercased()
+            if allowed.contains(key), let value = string(entry.value) { result[key] = value }
+        }
+        header.merge([
+            "REQID": "", "VORGANGSNR": identifiers.processNumber, "QMNUM": identifiers.notificationNumber,
+            "CREATEDBY": user, "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
+            "MODIFIEDBY": user, "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime,
+            "FORMNR": "TFM7", "STATUSNR": draft.isOutOfOperation || hasDefect ? "2" : "1",
+            "STTXT": closureStatus, "USTXT": userStatus, "AEDAT": performedDate, "AENAM": user,
+            "FELDWERT": try SAPLegacyDataExchangeCodec.packedFeldwert(notificationData)
+        ]) { _, value in value }
+
+        var values: [LegacySAPRow] = []
+        for characteristic in template.characteristics {
+            values.append(valueRow(
+                context.client, identifiers, characteristic.name,
+                draft.characteristicValues[characteristic.name, default: ""], user, createdDate, createdTime
+            ))
+        }
+        for item in draft.inspectionItems {
+            if !item.resultElementID.isEmpty {
+                values.append(valueRow(context.client, identifiers, item.resultElementID, item.result ?? "", user, createdDate, createdTime))
+            }
+            if !item.actionElementID.isEmpty {
+                values.append(valueRow(context.client, identifiers, item.actionElementID, item.action ?? "", user, createdDate, createdTime))
+            }
+            values.append(valueRow(context.client, identifiers, item.commentElementID, item.comment, user, createdDate, createdTime))
+        }
+        values.append(valueRow(context.client, identifiers, "TFM7-0000-1", applicationStatus, user, createdDate, createdTime))
+        values.append(valueRow(
+            context.client,
+            identifiers,
+            SubdistributionDraftPayload.outOfOperationCommentElementID,
+            draft.outOfOperationComment ?? "",
+            user,
+            createdDate,
+            createdTime
+        ))
+
+        var documents = try draft.photoAttachments.map { attachment -> SAPNotificationOutgoingDocument in
+            let belongsToInspection = draft.inspectionItems.contains(where: {
+                $0.id == attachment.inspectionItemID && $0.commentElementID == attachment.sapElementID
+            })
+            let belongsToOutOfOperationStatus = attachment.inspectionItemID == SubdistributionDraftPayload.statusRowID
+                && attachment.sapElementID == SubdistributionDraftPayload.outOfOperationCommentElementID
+            guard (belongsToInspection || belongsToOutOfOperationStatus),
+                  let jpeg = photoData[attachment.localAttachmentID], !jpeg.isEmpty else {
+                throw SAPNotificationReviewUploadError.missingPhoto(attachment.localAttachmentID)
+            }
+            return SAPNotificationOutgoingDocument(
+                metadata: documentMetadata(
+                    client: context.client, processID: identifiers.processNumber,
+                    notificationID: identifiers.notificationNumber, documentID: attachment.sapDocumentID,
+                    elementID: attachment.sapElementID, user: user, timestamp: attachment.capturedAt,
+                    type: "JPG", mimeType: "image/jpeg", name: photoName(attachment.capturedAt)
+                ), data: jpeg
+            )
+        }
+        documents.append(SAPNotificationOutgoingDocument(
+            metadata: documentMetadata(
+                client: context.client, processID: identifiers.processNumber,
+                notificationID: identifiers.notificationNumber, documentID: pdfDocumentID,
+                elementID: "TFM7-pdf", user: user, timestamp: now,
+                type: "PDF", mimeType: "application/pdf", name: "TFM7-pdf"
+            ), data: reportPDF
+        ))
+
+        return SAPNotificationOutgoingBatch(
+            workItemIDs: [workItem.id], attachmentIDs: draft.photoAttachments.map(\.localAttachmentID),
+            processIDs: [identifiers.processNumber], equipmentIDs: [identifiers.equipmentNumber],
+            headers: [header], values: values, documents: documents,
+            equipment: [try equipmentRow(draft: draft, context: context, identifiers: identifiers, designation: designation)]
+        )
+    }
+
+    /// Keep SAP upload validation equal to the creation screen: a draft that
+    /// bypasses the UI still cannot close TFM7 without the required photo and
+    /// comment for a documentation position.
+    private static func inspectionRequirementsAreComplete(_ draft: SubdistributionDraftPayload) -> Bool {
+        draft.inspectionItems.allSatisfy { item in
+            let hasResult = !item.requiresResult || item.result != nil
+            let hasDocumentation = !item.requiresDocumentation
+                || (!item.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && draft.photoAttachments.contains(where: { $0.inspectionItemID == item.id }))
+            return hasResult && hasDocumentation
+        }
+    }
+
+    private static func planRows(_ draft: SubdistributionDraftPayload) -> [[String: Any]] {
+        draft.inspectionItems.map { item in
+            [
+                "USR00": "POSITION", "STEUS": "TFM7", "VORNR": item.id,
+                "LTXA1": item.title, "LTXA2": item.information,
+                "T_PROPS": [
+                    ["POSNR": "1", "DFVAL": item.resultValues.map(\.value).joined(separator: ";") + ";"],
+                    ["POSNR": "2", "DFVAL": item.actionValues.map(\.value).joined(separator: ";") + ";"]
+                ]
+            ]
+        }
+    }
+
+    private static func equipmentDesignation(draft: SubdistributionDraftPayload) -> String? {
+        for name in ["TFMUNTERVERT_BEZUNTERVERT", "TFMSCHUTZSCH_UNTERVERTEILUNG"] {
+            let value = draft.characteristicValues[name, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { return value }
+        }
+        return nil
+    }
+
+    private static func equipmentRow(
+        draft: SubdistributionDraftPayload, context: SubdistributionLegacyContext,
+        identifiers: SubdistributionLegacyIdentifiers, designation: String
+    ) throws -> LegacySAPRow {
+        var equipment = jsonObject(context.template.equipmentDataJSON)
+        equipment.merge([
+            "EQUNR": identifiers.equipmentNumber, "EQTYP_TO": "I", "EQART_TO": "TFMNSPV",
+            "EQKTX": designation, "SHTXT_TO": designation, "TPLNR_TO": context.functionalLocation,
+            "SWERK_TO": context.template.plant.isEmpty ? context.plant : context.template.plant,
+            "ANW_STATUS": draft.isOutOfOperation ? "aBet" : "iBet",
+            "SYS_STATUS": draft.isOutOfOperation ? "INAK" : "",
+            "T_CLASS_EQ": classData(draft: draft, context: context)
+        ]) { _, value in value }
+        return [
+            "MANDT": context.client, "REQID": "", "STRNO": context.functionalLocation,
+            "EQUNR": identifiers.equipmentNumber,
+            "FELDWERT": try SAPLegacyDataExchangeCodec.packedFeldwert(equipment)
+        ]
+    }
+
+    private static func classData(draft: SubdistributionDraftPayload, context: SubdistributionLegacyContext) -> [String: Any] {
+        var data = jsonObject(context.template.classDataJSON)
+        data["KLART"] = context.template.classType
+        data["KLASSE"] = context.template.className
+        data["KLAGR"] = context.template.classGroup
+        data["T_CLOBJDAT"] = context.template.characteristics.map { characteristic in
+            ["ATNAM": characteristic.name, "ATWRT": draft.characteristicValues[characteristic.name, default: ""], "MSEHI": characteristic.unit]
+        }
+        return data
+    }
+
+    private static func documentMetadata(
+        client: String, processID: String, notificationID: String, documentID: String, elementID: String,
+        user: String, timestamp: Date, type: String, mimeType: String, name: String
+    ) -> [String: String] {
+        let day = date(timestamp), clock = time(timestamp)
+        var metadata = Dictionary(uniqueKeysWithValues:
+            (LegacySQLiteSchema.byName["TO_T0282"]?.columns ?? []).map { ($0.name, "") }
+        )
+        metadata.merge([
+            "MANDT": client, "REQID": "", "VORGANGSNR": processID, "DOCID": documentID,
+            "ELEMENTNR": elementID, "QMNUM": notificationID, "CREATEDBY": user,
+            "CREATEDDATE": day, "CREATEDTIME": clock, "MODIFIEDBY": user,
+            "MODIFIEDDATE": day, "MODIFIEDTIME": clock, "DOC_TYPE": type,
+            "DOC_MIMETYPE": mimeType, "NAME": name, "DOKAR": "FMD", "DOKOB": "SMQMEL",
+            "OBJKY": notificationID, "DMS_CONTENTTYPE": "D_TFM_Dokumentation", "DMS_DOCID": "TFM001"
+        ]) { _, value in value }
+        return metadata
+    }
+
+    private static func valueRow(
+        _ client: String, _ identifiers: SubdistributionLegacyIdentifiers, _ element: String,
+        _ value: String, _ user: String, _ date: String, _ time: String
     ) -> LegacySAPRow {
         [
             "MANDT": client, "REQID": "", "VORGANGSNR": identifiers.processNumber,

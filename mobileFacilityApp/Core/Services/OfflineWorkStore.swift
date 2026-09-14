@@ -52,8 +52,12 @@ final class OfflineWorkStore {
         localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
             + technicalObjectEditItems.count + defectItems.count + meterReadingItems.count
             + proofOfQualificationItems.count
-            + photoCollectionItems.filter { $0.payload.photoCollection?.scope.workflow != .mobileLadder }.count
+            + photoCollectionItems.filter {
+                let workflow = $0.payload.photoCollection?.scope.workflow
+                return workflow != .mobileLadder && workflow != .subdistribution
+            }.count
             + mobileLadderItems.count
+            + subdistributionItems.count
     }
 
     var defectItems: [OfflineWorkItem] {
@@ -88,6 +92,10 @@ final class OfflineWorkStore {
         activeQueueItems.filter { $0.type == .mobileLadder }
     }
 
+    var subdistributionItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .subdistribution }
+    }
+
     func mobileLadderItem(id: UUID?) -> OfflineWorkItem? {
         guard let id else { return nil }
         return mobileLadderItems.first { $0.id == id }
@@ -106,6 +114,31 @@ final class OfflineWorkStore {
         let item = OfflineWorkItem(
             id: existing?.id ?? UUID(), workerID: workerID, type: .mobileLadder,
             status: effectiveStatus, payload: .mobileLadder(payload),
+            createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func subdistributionItem(id: UUID?) -> OfflineWorkItem? {
+        guard let id else { return nil }
+        return subdistributionItems.first { $0.id == id }
+    }
+
+    func saveSubdistribution(
+        id: UUID? = nil,
+        payload: SubdistributionDraftPayload,
+        status: OfflineWorkStatus
+    ) async throws -> OfflineWorkItem {
+        let existing = subdistributionItem(id: id)
+        let now = Date()
+        let effectiveStatus: OfflineWorkStatus = payload.isClosedLocally
+            ? .pendingSynchronization
+            : status
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(), workerID: workerID, type: .subdistribution,
+            status: effectiveStatus, payload: .subdistribution(payload),
             createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
         )
         try await repository.save(item)

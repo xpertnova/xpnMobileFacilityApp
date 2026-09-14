@@ -3,7 +3,7 @@ import Observation
 
 @MainActor
 @Observable
-final class SAPDataStore: MobileLadderCreationProviding {
+final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreationProviding {
     enum State: Equatable {
         case loadingCache
         case noData
@@ -112,6 +112,14 @@ final class SAPDataStore: MobileLadderCreationProviding {
             throw SAPReadError.serviceUnavailable
         }
         return try await provider.loadMobileLadderCreationData(for: workerID)
+    }
+
+    func loadSubdistributionCreationData(for workerID: String) async throws -> SubdistributionCreationData {
+        guard !workerID.isEmpty,
+              let provider = repository as? any SubdistributionCreationProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadSubdistributionCreationData(for: workerID)
     }
 
     func loadCachedData() async {

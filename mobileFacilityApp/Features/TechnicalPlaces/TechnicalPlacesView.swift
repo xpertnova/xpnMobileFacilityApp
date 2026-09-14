@@ -14,6 +14,12 @@ struct TechnicalPlacesView: View {
             } else if case let .mobileLadderDraft(itemID) = demo.technicalPlacesRoute {
                 MobileLadderCreationView(demo: demo, itemID: itemID, close: demo.closeMobileLadder)
                     .transition(PhotoWorkspaceMotion.destination)
+            } else if case .createSubdistribution = demo.technicalPlacesRoute {
+                SubdistributionCreationView(demo: demo, itemID: nil, close: demo.closeSubdistribution)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if case let .subdistributionDraft(itemID) = demo.technicalPlacesRoute {
+                SubdistributionCreationView(demo: demo, itemID: itemID, close: demo.closeSubdistribution)
+                    .transition(PhotoWorkspaceMotion.destination)
             } else if let photoWorkspaceScope {
                 LocalPhotoWorkspace(
                     scope: photoWorkspaceScope,
@@ -80,7 +86,7 @@ struct TechnicalPlacesView: View {
                         Button { demo.openMobileLadder() } label: {
                             Label("places.new.mobileLadder", systemImage: "figure.climbing")
                         }
-                        Button { model.performUnavailableAction("places.new.subdistribution.unavailable") } label: {
+                        Button { demo.openSubdistribution() } label: {
                             Label("places.new.subdistribution", systemImage: "bolt.square")
                         }
                     } label: {
