@@ -339,7 +339,7 @@ final class SubdistributionTests: XCTestCase {
 
         XCTAssertThrowsError(
             try SAPSubdistributionUploadBuilder.build(
-                workItem: work, draft: draft, syncUserID: "S50828", photoData: []
+                workItem: work, draft: draft, syncUserID: "S50828", photoData: [:]
             )
         )
 
@@ -348,7 +348,7 @@ final class SubdistributionTests: XCTestCase {
 
         XCTAssertThrowsError(
             try SAPSubdistributionUploadBuilder.build(
-                workItem: work, draft: draft, syncUserID: "S50828", photoData: []
+                workItem: work, draft: draft, syncUserID: "S50828", photoData: [:]
             )
         )
     }

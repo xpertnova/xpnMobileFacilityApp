@@ -65,6 +65,16 @@
         }
       }
     },
+    "%@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@: %2$@"
+          }
+        }
+      }
+    },
     "%@. %@" : {
       "localizations" : {
         "en" : {
@@ -5851,6 +5861,9 @@
         }
       }
     },
+    "i" : {
+
+    },
     "inspection.action.closeNotification" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8696,6 +8709,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Comment"
+          }
+        }
+      }
+    },
+    "notifications.detail.address" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adresse"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Address"
           }
         }
       }
@@ -15245,6 +15275,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Proposal"
+          }
+        }
+      }
+    },
+    "wartungsplan.address" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adresse: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Address: %@"
+          }
+        }
+      }
+    },
+    "wartungsplan.column.reviewedAsset" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überprüfte Anlagentechnik"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reviewed asset"
+          }
+        }
+      }
+    },
+    "wartungsplan.validation.commentRequired" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für festgestellte Mängel muss eine Bemerkung eingegeben werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A comment is required for defective items."
+          }
+        }
+      }
+    },
+    "wartungsplan.validation.incomplete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte beantworten Sie alle Prüfpunkte."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please answer all inspection items."
           }
         }
       }
