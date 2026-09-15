@@ -194,11 +194,32 @@ private extension SAPReadRefreshStage {
 
 private extension SAPRefreshFailureContext {
     var operationText: String {
-        switch authenticationMethod {
-        case .password:
-            String(localized: "sap.refresh.details.passwordOperation")
-        case .savedToken:
-            String(localized: "sap.refresh.details.savedTokenOperation")
+        switch stage {
+        case .authenticating:
+            switch authenticationMethod {
+            case .password:
+                String(localized: "sap.refresh.details.passwordOperation")
+            case .savedToken:
+                String(localized: "sap.refresh.details.savedTokenOperation")
+            }
+        case .uploadingOutgoingMetadata:
+            String(localized: "sap.refresh.details.uploadMetadataOperation")
+        case .uploadingOutgoingDocuments:
+            String(localized: "sap.refresh.details.uploadDocumentOperation")
+        case .postingOutgoingData:
+            String(localized: "sap.refresh.details.postOperation")
+        case .waitingForOutgoingAcknowledgement:
+            String(localized: "sap.refresh.details.postAcknowledgementOperation")
+        case .checkingAppVersion:
+            String(localized: "sap.refresh.details.versionOperation")
+        case .preparingIncomingData:
+            String(localized: "sap.refresh.details.prepareIncomingOperation")
+        case .waitingForIncomingData:
+            String(localized: "sap.refresh.details.incomingAcknowledgementOperation")
+        case .receivingIncomingPackages:
+            String(localized: "sap.refresh.details.receivePackageOperation")
+        case .savingSnapshot:
+            String(localized: "sap.refresh.details.saveSnapshotOperation")
         }
     }
 

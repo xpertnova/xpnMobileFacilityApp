@@ -3,7 +3,7 @@ import Observation
 
 @MainActor
 @Observable
-final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreationProviding {
+final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     enum State: Equatable {
         case loadingCache
         case noData
@@ -33,6 +33,12 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
     private var notificationSearchText = ""
     private var notificationStructuralFilter = NotificationStructuralFilter.empty
     private var notificationLoadID = UUID()
+    /// Refresh calls share one set of legacy temporary SQLite tables. Keep an
+    /// explicit operation lease rather than deriving exclusivity from the
+    /// presentation state alone: a saved-token task can otherwise see
+    /// `.refreshing` and start a second transfer.
+    private var activeRefreshID: UUID?
+    private var preparedTokenRefreshID: UUID?
 
     init(
         repository: any SAPDataCacheRepository,
@@ -57,6 +63,9 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
     }
 
     var workerProfile: SAPWorkerProfile? { cachedData.workerProfile }
+    func loadUserProfile() async -> SAPUserProfile? {
+        try? await repository.loadUserProfile(for: localWorkerID)
+    }
     var lastSuccessfulRefreshAt: Date? { cachedData.metadata?.lastSuccessfulRefreshAt }
     var isRefreshAvailable: Bool { refreshService != nil }
     var isRefreshing: Bool { state == .refreshing }
@@ -112,6 +121,13 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
             throw SAPReadError.serviceUnavailable
         }
         return try await provider.loadMobileLadderCreationData(for: workerID)
+    }
+
+    func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
+        guard let provider = repository as? any ElevatorAssetDataProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadElevatorAssetData(for: notification)
     }
 
     func loadSubdistributionCreationData(for workerID: String) async throws -> SubdistributionCreationData {
@@ -195,17 +211,14 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
     }
 
     func refresh(sapPassword: String) async {
-        guard state != .refreshing else { return }
         guard let refreshService else {
             refreshFailureContext = nil
             refreshError = .authenticatedConnectionUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
             return
         }
-        state = .refreshing
-        refreshError = nil
-        refreshStage = .authenticating
-        refreshFailureContext = nil
+        guard let refreshID = beginRefreshOperation() else { return }
+        defer { finishRefreshOperation(refreshID) }
         do {
             cachedData = try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
                 self?.refreshStage = stage
@@ -236,11 +249,12 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
     /// immediately see `isRefreshing == true` and `refreshStage == .authenticating`.
     @discardableResult
     func beginTokenRefresh() -> Bool {
-        guard state != .refreshing, hasValidSavedToken, refreshService != nil else { return false }
-        state = .refreshing
-        refreshError = nil
-        refreshStage = .authenticating
-        refreshFailureContext = nil
+        guard hasValidSavedToken, refreshService != nil,
+              let refreshID = beginRefreshOperation()
+        else {
+            return false
+        }
+        preparedTokenRefreshID = refreshID
         return true
     }
 
@@ -249,7 +263,13 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
     /// Returns `false` if no token exists, connection is unavailable, or token was rejected by SAP (calling code can prompt for password).
     @discardableResult
     func refreshWithSavedToken() async -> Bool {
-        if state != .refreshing {
+        let refreshID: UUID
+        if let preparedID = preparedTokenRefreshID {
+            guard activeRefreshID == preparedID else { return false }
+            preparedTokenRefreshID = nil
+            refreshID = preparedID
+        } else {
+            guard activeRefreshID == nil else { return false }
             guard hasValidSavedToken else { return false }
             guard refreshService != nil else {
                 refreshFailureContext = nil
@@ -257,11 +277,10 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
                 state = cachedData.metadata == nil ? .failed : .ready
                 return false
             }
-            state = .refreshing
-            refreshError = nil
-            refreshStage = .authenticating
-            refreshFailureContext = nil
+            guard let startedRefreshID = beginRefreshOperation() else { return false }
+            refreshID = startedRefreshID
         }
+        defer { finishRefreshOperation(refreshID) }
         guard let tokenStore, let token = tokenStore.token(for: tokenStoreAccountID), !token.isEmpty else {
             refreshStage = nil
             state = cachedData.metadata == nil ? .noData : .ready
@@ -343,6 +362,23 @@ final class SAPDataStore: MobileLadderCreationProviding, SubdistributionCreation
             stage: refreshStage ?? .authenticating,
             error: error
         )
+    }
+
+    private func beginRefreshOperation() -> UUID? {
+        guard activeRefreshID == nil else { return nil }
+        let refreshID = UUID()
+        activeRefreshID = refreshID
+        state = .refreshing
+        refreshError = nil
+        refreshStage = .authenticating
+        refreshFailureContext = nil
+        return refreshID
+    }
+
+    private func finishRefreshOperation(_ refreshID: UUID) {
+        guard activeRefreshID == refreshID else { return }
+        activeRefreshID = nil
+        preparedTokenRefreshID = nil
     }
 
     private func loadFirstNotificationPage() async throws {

@@ -240,6 +240,28 @@ final class MobileLadderTests: XCTestCase {
         XCTAssertEqual(restored.payload.mobileLadder?.designation, "Warehouse ladder")
     }
 
+    func testOfflineRepositoryKeepsHistoricalSubdistributionJSONReadable() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("offline.sqlite")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let repository = try SQLiteOfflineWorkRepository(databaseURL: url)
+        let rawJSON = Data(#"{"version":1,"localDraftID":"legacy-tfm7","characteristicValues":{"TFMUNTERVERT_BEZUNTERVERT":"Distribution board"},"performedOn":"2026-09-15T08:00:00Z","isOutOfOperation":false,"isClosedLocally":true,"inspectionItems":[],"photoAttachments":[]}"#.utf8)
+        let item = OfflineWorkItem(
+            id: UUID(), workerID: "S50828", type: .subdistribution,
+            status: .pendingSynchronization,
+            payload: .subdistribution(.init(jsonData: rawJSON)),
+            createdAt: .now, updatedAt: .now, syncError: nil
+        )
+
+        try await repository.save(item)
+        let loadedItems = try await repository.loadWork(for: "S50828")
+        let restored = try XCTUnwrap(loadedItems.first)
+
+        XCTAssertEqual(restored.type, .subdistribution)
+        XCTAssertEqual(restored.payload.subdistribution?.jsonData, rawJSON)
+    }
+
     func testSAPBuilderCreatesTFM5HeaderValuesAndEquipmentMasterRow() async throws {
         let creationData = try await DemoMobileLadderCreationProvider()
             .loadMobileLadderCreationData(for: "S50828")

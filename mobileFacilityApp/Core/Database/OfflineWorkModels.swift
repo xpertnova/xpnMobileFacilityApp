@@ -12,6 +12,7 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case photoCollection
     case mobileLadder
     case subdistribution
+    case elevatorInspection
 }
 
 enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
@@ -436,6 +437,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case photoCollection(PhotoCollectionDraftPayload)
     case mobileLadder(MobileLadderDraftPayload)
     case subdistribution(SubdistributionDraftPayload)
+    case elevatorInspection(ElevatorInspectionDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -490,6 +492,37 @@ enum OfflineWorkPayload: Equatable, Sendable {
     var subdistribution: SubdistributionDraftPayload? {
         guard case let .subdistribution(payload) = self else { return nil }
         return payload
+    }
+
+    var elevatorInspection: ElevatorInspectionDraftPayload? {
+        guard case let .elevatorInspection(payload) = self else { return nil }
+        return payload
+    }
+}
+
+/// Worker-scoped user profile data cached from the `USER` table.
+struct SAPUserProfile: Codable, Equatable, Sendable {
+    let personalNumber: String
+    let name: String
+    let firstName: String
+    let company: String
+    let email: String
+    let canCreateI2: Bool
+
+    init(
+        personalNumber: String = "",
+        name: String = "",
+        firstName: String = "",
+        company: String = "",
+        email: String = "",
+        canCreateI2: Bool = false
+    ) {
+        self.personalNumber = personalNumber
+        self.name = name
+        self.firstName = firstName
+        self.company = company
+        self.email = email
+        self.canCreateI2 = canCreateI2
     }
 }
 

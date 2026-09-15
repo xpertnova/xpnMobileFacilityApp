@@ -113,7 +113,16 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             case .mobileLadder:
                 payload = .mobileLadder(try decoder.decode(MobileLadderDraftPayload.self, from: data))
             case .subdistribution:
-                payload = .subdistribution(try decoder.decode(SubdistributionDraftPayload.self, from: data))
+                if let draft = try? decoder.decode(SubdistributionDraftPayload.self, from: data) {
+                    payload = .subdistribution(draft)
+                } else {
+                    guard (try? JSONSerialization.jsonObject(with: data)) != nil else {
+                        throw OfflineWorkRepositoryError.invalidStoredItem
+                    }
+                    payload = .subdistribution(.init(jsonData: data))
+                }
+            case .elevatorInspection:
+                payload = .elevatorInspection(try decoder.decode(ElevatorInspectionDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -145,6 +154,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         case let (.mobileLadder, .mobileLadder(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         case let (.subdistribution, .subdistribution(payload)):
+            payloadData = payload.legacyJSONData ?? (try? JSONEncoder().encode(payload))
+        case let (.elevatorInspection, .elevatorInspection(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil

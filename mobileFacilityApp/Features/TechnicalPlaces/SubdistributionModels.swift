@@ -216,6 +216,14 @@ struct SubdistributionDraftPayload: Codable, Equatable, Sendable {
     /// attached at close time and sent with `TFM7-pdf`.
     var reportPDF: Data?
     var pdfDocumentID: String?
+    /// A pre-TFM7 draft may not conform to the structured payload introduced
+    /// here. Preserve that valid JSON unchanged so an old local record cannot
+    /// prevent the worker's complete offline queue from loading.
+    var legacyJSONData: Data?
+
+    var jsonData: Data {
+        legacyJSONData ?? (try? JSONEncoder().encode(self)) ?? Data()
+    }
 
     init(localDraftID: String = UUID().uuidString, now: Date = .now) {
         version = Self.currentVersion
@@ -232,6 +240,25 @@ struct SubdistributionDraftPayload: Codable, Equatable, Sendable {
         legacyIdentifiers = nil
         reportPDF = nil
         pdfDocumentID = nil
+        legacyJSONData = nil
+    }
+
+    init(jsonData: Data) {
+        version = Self.currentVersion
+        localDraftID = UUID().uuidString
+        context = nil
+        characteristicValues = [:]
+        performedOn = .now
+        isOutOfOperation = false
+        outOfOperationComment = nil
+        defectCloseAction = nil
+        isClosedLocally = false
+        inspectionItems = []
+        photoAttachments = []
+        legacyIdentifiers = nil
+        reportPDF = nil
+        pdfDocumentID = nil
+        legacyJSONData = jsonData
     }
 }
 

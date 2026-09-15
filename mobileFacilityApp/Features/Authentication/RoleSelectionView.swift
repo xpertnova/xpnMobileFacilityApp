@@ -48,64 +48,111 @@ struct RoleSelectionView: View {
     @State private var validationMessage: LocalizedStringKey?
     @FocusState private var focusedField: CredentialField?
 
+    @State private var maxScreenHeight: CGFloat = 0
+
     var body: some View {
         GeometryReader { proxy in
-            VStack {
-                VStack(spacing: 0) {
-                    XPNMark()
-                        .padding(.bottom, 25)
+            let effectiveHeight = max(maxScreenHeight, proxy.size.height)
+            let metrics = LoginCardMetrics.metrics(for: CGSize(width: proxy.size.width, height: effectiveHeight))
 
-                    Text("role.selection.title")
-                        .font(.system(size: 29, weight: .bold, design: .rounded))
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(FacilityTheme.ink)
-                    Text("role.selection.subtitle")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 6)
-                        .padding(.bottom, 28)
+            ScrollViewReader { scrollProxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        XPNMark(height: metrics.badgeHeight)
+                            .id("topBadge")
+                            .padding(.bottom, metrics.badgeBottomPadding)
 
-                    VStack(spacing: 13) {
-                        ForEach(FacilityUserRole.allCases) { role in
-                            RoleChoiceCard(
-                                role: role,
-                                isSelected: selectedRole == role,
-                                isEnabled: role == .technician
-                            ) {
-                                selectedRole = role
+                        Text("role.selection.title")
+                            .font(.system(size: metrics.titleSize, weight: .bold, design: .rounded))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(FacilityTheme.ink)
+
+                        Text("role.selection.subtitle")
+                            .font(metrics.subtitleSize)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
+                            .padding(.bottom, metrics.subtitleBottomPadding)
+
+                        VStack(spacing: metrics.roleSpacing) {
+                            ForEach(FacilityUserRole.allCases) { role in
+                                RoleChoiceCard(
+                                    role: role,
+                                    isSelected: selectedRole == role,
+                                    isEnabled: role == .technician,
+                                    metrics: metrics
+                                ) {
+                                    selectedRole = role
+                                }
+                            }
+                        }
+
+                        VStack(spacing: 0) {
+                            authenticationSectionPicker
+                                .padding(.top, metrics.pickerTopPadding)
+
+                            credentials(metrics: metrics)
+
+                            Button {
+                                focusedField = nil
+                                submit()
+                            } label: {
+                                Text(authenticationSection.actionKey)
+                                    .font(.headline.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: metrics.buttonMinHeight)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(FacilityTheme.accent)
+                            .padding(.top, metrics.buttonTopPadding)
+                        }
+                        .id("formSection")
+
+                        Text("role.selection.footer")
+                            .font(metrics.footerFont)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, metrics.footerTopPadding)
+                    }
+                    .padding(.horizontal, metrics.cardHorizontalPadding)
+                    .padding(.vertical, metrics.cardVerticalPadding)
+                    .frame(width: metrics.cardWidth)
+                    .background(.white, in: RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
+                    .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedField) { _, newField in
+                    if newField != nil {
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: 120_000_000)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                scrollProxy.scrollTo("formSection", anchor: .center)
+                            }
+                        }
+                    } else {
+                        Task { @MainActor in
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                scrollProxy.scrollTo("topBadge", anchor: .top)
                             }
                         }
                     }
-
-                    authenticationSectionPicker
-                    credentials
-
-                    Button {
-                        submit()
-                    } label: {
-                        Text(authenticationSection.actionKey)
-                            .font(.headline.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 58)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(FacilityTheme.accent)
-                    .padding(.top, 20)
-
-                    Text("role.selection.footer")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.top, 22)
                 }
-                .padding(.horizontal, 48)
-                .padding(.vertical, 32)
-                .frame(width: min(610, max(440, proxy.size.width - 48)))
-                .background(.white, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-                .shadow(color: .black.opacity(0.32), radius: 32, y: 18)
-                .padding(24)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                maxScreenHeight = max(maxScreenHeight, proxy.size.height)
+            }
+            .onChange(of: proxy.size.height) { _, newHeight in
+                if focusedField == nil {
+                    maxScreenHeight = max(maxScreenHeight, newHeight)
+                }
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            focusedField = nil
         }
     }
 
@@ -116,7 +163,6 @@ struct RoleSelectionView: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.top, 20)
         .onChange(of: authenticationSection) { _, _ in
             password = ""
             confirmedPassword = ""
@@ -124,8 +170,8 @@ struct RoleSelectionView: View {
         }
     }
 
-    private var credentials: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private func credentials(metrics: LoginCardMetrics) -> some View {
+        VStack(alignment: .leading, spacing: metrics.fieldSpacing) {
             TextField(
                 "role.selection.username",
                 text: $username,
@@ -139,7 +185,7 @@ struct RoleSelectionView: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .focused($focusedField, equals: .username)
-            .credentialFieldStyle()
+            .credentialFieldStyle(height: metrics.fieldHeight)
             .submitLabel(.next)
             .onSubmit { focusedField = .password }
 
@@ -150,10 +196,11 @@ struct RoleSelectionView: View {
             )
             .textContentType(.oneTimeCode)
             .focused($focusedField, equals: .password)
-            .credentialFieldStyle()
+            .credentialFieldStyle(height: metrics.fieldHeight)
             .submitLabel(authenticationSection == .signIn ? .go : .next)
             .onSubmit {
                 if authenticationSection == .signIn {
+                    focusedField = nil
                     submit()
                 } else {
                     focusedField = .confirmation
@@ -168,12 +215,15 @@ struct RoleSelectionView: View {
                 )
                 .textContentType(.oneTimeCode)
                 .focused($focusedField, equals: .confirmation)
-                .credentialFieldStyle()
+                .credentialFieldStyle(height: metrics.fieldHeight)
                 .submitLabel(.go)
-                .onSubmit(submit)
+                .onSubmit {
+                    focusedField = nil
+                    submit()
+                }
 
                 Text("role.selection.passwordRequirement")
-                    .font(.footnote)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
             }
 
@@ -183,12 +233,12 @@ struct RoleSelectionView: View {
                 } icon: {
                     Image(systemName: "exclamationmark.circle.fill")
                 }
-                .font(.footnote)
+                .font(.caption)
                 .foregroundStyle(.red)
                 .accessibilityElement(children: .combine)
             }
         }
-        .padding(.top, 14)
+        .padding(.top, metrics.credentialsTopPadding)
         .onChange(of: username) { _, _ in validationMessage = nil }
         .onChange(of: password) { _, _ in validationMessage = nil }
         .onChange(of: confirmedPassword) { _, _ in validationMessage = nil }
@@ -279,14 +329,133 @@ private extension LocalCredentialStoreError {
     }
 }
 
+private struct LoginCardMetrics {
+    let cardWidth: CGFloat
+    let cardCornerRadius: CGFloat
+    let cardHorizontalPadding: CGFloat
+    let cardVerticalPadding: CGFloat
+    let badgeHeight: CGFloat
+    let badgeBottomPadding: CGFloat
+    let titleSize: CGFloat
+    let subtitleSize: Font
+    let subtitleBottomPadding: CGFloat
+    let roleCardMinHeight: CGFloat
+    let roleIconSize: CGFloat
+    let roleSpacing: CGFloat
+    let rolePaddingH: CGFloat
+    let rolePaddingV: CGFloat
+    let roleTitleFont: Font
+    let roleSubtitleFont: Font
+    let pickerTopPadding: CGFloat
+    let credentialsTopPadding: CGFloat
+    let fieldHeight: CGFloat
+    let fieldSpacing: CGFloat
+    let buttonMinHeight: CGFloat
+    let buttonTopPadding: CGFloat
+    let footerTopPadding: CGFloat
+    let footerFont: Font
+
+    static func metrics(for size: CGSize) -> LoginCardMetrics {
+        // iPad Mini (landscape height ~744 pt) or narrow Multitasking Split View
+        if size.height < 780 || size.width < 900 {
+            return LoginCardMetrics(
+                cardWidth: min(500, max(360, size.width - 48)),
+                cardCornerRadius: 26,
+                cardHorizontalPadding: 32,
+                cardVerticalPadding: 22,
+                badgeHeight: 38,
+                badgeBottomPadding: 12,
+                titleSize: 22,
+                subtitleSize: .subheadline,
+                subtitleBottomPadding: 14,
+                roleCardMinHeight: 56,
+                roleIconSize: 40,
+                roleSpacing: 8,
+                rolePaddingH: 14,
+                rolePaddingV: 8,
+                roleTitleFont: .subheadline.weight(.bold),
+                roleSubtitleFont: .caption,
+                pickerTopPadding: 14,
+                credentialsTopPadding: 10,
+                fieldHeight: 44,
+                fieldSpacing: 8,
+                buttonMinHeight: 48,
+                buttonTopPadding: 16,
+                footerTopPadding: 12,
+                footerFont: .caption2
+            )
+        } else if size.height < 920 {
+            // Standard iPad (10.2", 10.9", 11" Pro — landscape height 810–834 pt)
+            let width = min(580, max(520, size.width * 0.48))
+            return LoginCardMetrics(
+                cardWidth: width,
+                cardCornerRadius: 30,
+                cardHorizontalPadding: 42,
+                cardVerticalPadding: 28,
+                badgeHeight: 46,
+                badgeBottomPadding: 16,
+                titleSize: 26,
+                subtitleSize: .callout,
+                subtitleBottomPadding: 18,
+                roleCardMinHeight: 68,
+                roleIconSize: 46,
+                roleSpacing: 10,
+                rolePaddingH: 16,
+                rolePaddingV: 11,
+                roleTitleFont: .headline.weight(.bold),
+                roleSubtitleFont: .subheadline,
+                pickerTopPadding: 18,
+                credentialsTopPadding: 14,
+                fieldHeight: 48,
+                fieldSpacing: 10,
+                buttonMinHeight: 52,
+                buttonTopPadding: 18,
+                footerTopPadding: 16,
+                footerFont: .footnote
+            )
+        } else {
+            // Large iPad Pro (12.9" / 13" — landscape height 1024 pt)
+            let width = min(630, max(560, size.width * 0.46))
+            return LoginCardMetrics(
+                cardWidth: width,
+                cardCornerRadius: 32,
+                cardHorizontalPadding: 46,
+                cardVerticalPadding: 32,
+                badgeHeight: 52,
+                badgeBottomPadding: 20,
+                titleSize: 28,
+                subtitleSize: .body,
+                subtitleBottomPadding: 20,
+                roleCardMinHeight: 74,
+                roleIconSize: 50,
+                roleSpacing: 12,
+                rolePaddingH: 18,
+                rolePaddingV: 13,
+                roleTitleFont: .headline.weight(.bold),
+                roleSubtitleFont: .subheadline,
+                pickerTopPadding: 20,
+                credentialsTopPadding: 14,
+                fieldHeight: 50,
+                fieldSpacing: 11,
+                buttonMinHeight: 56,
+                buttonTopPadding: 20,
+                footerTopPadding: 18,
+                footerFont: .subheadline
+            )
+        }
+    }
+}
+
 private struct XPNMark: View {
+    let height: CGFloat
+
     var body: some View {
         Text(".XPN")
-            .font(.title2.weight(.heavy))
+            .font(height > 44 ? .title3.weight(.heavy) : .headline.weight(.heavy))
             .foregroundStyle(.white)
-            .padding(.horizontal, 20)
-            .frame(height: 62)
-            .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .padding(.horizontal, height * 0.42)
+            .frame(height: height)
+            .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: height * 0.28, style: .continuous))
     }
 }
 
@@ -294,58 +463,62 @@ private struct RoleChoiceCard: View {
     let role: FacilityUserRole
     let isSelected: Bool
     let isEnabled: Bool
+    let metrics: LoginCardMetrics
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 17) {
+            HStack(spacing: 14) {
                 Image(systemName: role.symbol)
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: metrics.roleIconSize * 0.45, weight: .semibold))
                     .foregroundStyle(FacilityTheme.accent)
-                    .frame(width: 54, height: 54)
-                    .background(FacilityTheme.accentSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(width: metrics.roleIconSize, height: metrics.roleIconSize)
+                    .background(FacilityTheme.accentSoft, in: RoundedRectangle(cornerRadius: metrics.roleIconSize * 0.28, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(LocalizedStringKey(role.titleKey))
-                        .font(.headline.weight(.bold))
+                        .font(metrics.roleTitleFont)
                         .foregroundStyle(FacilityTheme.ink)
                     Text(LocalizedStringKey(role.subtitleKey))
-                        .font(.subheadline)
+                        .font(metrics.roleSubtitleFont)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
+                        .lineLimit(2)
                 }
 
                 Spacer(minLength: 0)
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(FacilityTheme.accent)
-                        .font(.title3)
+                        .font(.body)
                         .accessibilityHidden(true)
                 }
             }
-            .padding(15)
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-            .background(isSelected ? FacilityTheme.accentSoft : .white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, metrics.rolePaddingH)
+            .padding(.vertical, metrics.rolePaddingV)
+            .frame(maxWidth: .infinity, minHeight: metrics.roleCardMinHeight, alignment: .leading)
+            .background(isSelected ? FacilityTheme.accentSoft : .white, in: RoundedRectangle(cornerRadius: metrics.cardCornerRadius * 0.5, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: metrics.cardCornerRadius * 0.5, style: .continuous)
                     .stroke(isSelected ? FacilityTheme.accent : .black.opacity(0.12), lineWidth: isSelected ? 2 : 1)
             }
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
+        .opacity(isEnabled ? 1.0 : 0.6)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
 private extension View {
-    func credentialFieldStyle() -> some View {
+    func credentialFieldStyle(height: CGFloat = 44) -> some View {
         self
             .font(.body)
-            .padding(.horizontal, 16)
-            .frame(height: 48)
-            .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 14)
+            .frame(height: height)
+            .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(.black.opacity(0.12), lineWidth: 1)
             }
     }

@@ -260,6 +260,7 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                 return false
             }
             if let review = item.payload.notificationReview { return review.isClosedLocally }
+            if let inspection = item.payload.elevatorInspection { return inspection.isClosedLocally }
             if let ladder = item.payload.mobileLadder { return ladder.isClosedLocally == true }
             if let subdistribution = item.payload.subdistribution { return subdistribution.isClosedLocally }
             return false
@@ -284,6 +285,61 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                     }
                     batches.append(try SAPNotificationReviewUploadBuilder.build(
                         workItem: item, source: source, syncUserID: syncUserID, photoData: photos
+                    ))
+                case let .elevatorInspection(inspection):
+                    let page = try await cacheRepository.loadNotifications(
+                        for: workerID, matching: inspection.notificationID,
+                        structuralFilter: .empty, limit: 20, offset: 0
+                    )
+                    guard let source = page.notifications.first(where: { $0.id == inspection.notificationID }) else {
+                        throw SAPTFM2InspectionUploadError.missingSourceNotification(inspection.notificationID)
+                    }
+                    var photos: [String: Data] = [:]
+                    for attachment in inspection.photoAttachments {
+                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+                    }
+                    var pdfData = inspection.pdfBytes ?? Data()
+                    if pdfData.isEmpty {
+                        let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
+                        let items = ElevatorInspectionDecoder.decodeItems(from: source.rawPayloadJSON)
+                        let hasMat = items.contains { $0.hasMaterial }
+                        var res: [String: String] = [:]
+                        var acts: [String: String] = [:]
+                        var mats: [String: Bool] = [:]
+                        var notes: [String: String] = [:]
+                        for itm in items {
+                            res[itm.id] = inspection.elementValues[itm.resultElementID] ?? ""
+                            if let actID = itm.actionElementID { acts[itm.id] = inspection.elementValues[actID] ?? "" }
+                            if let matID = itm.materialElementID { mats[itm.id] = inspection.materialFlags[matID] ?? false }
+                            notes[itm.id] = inspection.comments[itm.commentElementID] ?? inspection.comments[itm.id] ?? ""
+                        }
+                        let payload = ElevatorInspectionPDFPayload(
+                            notificationID: inspection.notificationID,
+                            notificationTitle: source.title,
+                            functionalLocation: source.functionalLocationID,
+                            equipmentID: source.equipmentID.isEmpty ? nil : source.equipmentID,
+                            equipmentName: nil,
+                            locationCity: "",
+                            locationStreet: "",
+                            weGe: "",
+                            workerName: [userProfile?.firstName, userProfile?.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "),
+                            workerID: userProfile?.personalNumber ?? workerID,
+                            company: userProfile?.company ?? "",
+                            orgUnit: "",
+                            plant: "",
+                            performedAt: inspection.performedOn,
+                            items: items,
+                            results: res,
+                            actions: acts,
+                            materials: mats,
+                            notes: notes,
+                            hasMaterialColumn: hasMat
+                        )
+                        pdfData = (try? ElevatorInspectionPDFRenderer.render(payload).data) ?? Data()
+                    }
+                    batches.append(try SAPTFM2InspectionUploadBuilder.build(
+                        workItem: item, source: source, syncUserID: syncUserID,
+                        photoData: photos, pdfData: pdfData
                     ))
                 case let .mobileLadder(draft):
                     var photos: [String: Data] = [:]

@@ -75,6 +75,8 @@ struct NotificationsView: View {
                     detail: detail,
                     offlineWorkStore: demo.offlineWorkStore,
                     photoAttachmentStore: demo.photoAttachmentStore,
+                    sapDataStore: demo.sapDataStore,
+                    elevatorAssetDataProvider: demo.elevatorAssetDataProvider,
                     dismiss: { demo.selectedNotificationID = nil }
                 )
                 .id(detail.summary.id)
@@ -784,10 +786,22 @@ private struct NotificationDetailScreen: View {
     let detail: SAPNotificationDetail
     let offlineWorkStore: OfflineWorkStore
     let photoAttachmentStore: any PhotoAttachmentStore
+    let sapDataStore: SAPDataStore?
+    let elevatorAssetDataProvider: (any ElevatorAssetDataProviding)?
     let dismiss: () -> Void
 
     var body: some View {
-        if detail.formCode.uppercased() == "TFM1" {
+        if detail.isTFM2ElevatorInspection {
+            TFM2ElevatorInspectionView(
+                detail: detail,
+                offlineWorkStore: offlineWorkStore,
+                photoAttachmentStore: photoAttachmentStore,
+                sapDataStore: sapDataStore,
+                elevatorAssetDataProvider: elevatorAssetDataProvider ?? sapDataStore ?? UnavailableElevatorAssetDataProvider(),
+                backDestination: .notifications,
+                dismiss: dismiss
+            )
+        } else if detail.formCode.uppercased() == "TFM1" {
             WartungsplanDetailView(
                 detail: detail,
                 offlineWorkStore: offlineWorkStore,

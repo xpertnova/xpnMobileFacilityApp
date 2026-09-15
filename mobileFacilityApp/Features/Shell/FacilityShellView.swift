@@ -63,7 +63,21 @@ struct FacilityShellView: View {
                         .transition(.opacity)
 
                     if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
-                        if selectedOfflineNotificationDetail.formCode.uppercased() == "TFM1" {
+                        if selectedOfflineNotificationDetail.isTFM2ElevatorInspection {
+                            TFM2ElevatorInspectionView(
+                                detail: selectedOfflineNotificationDetail,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                sapDataStore: demo.sapDataStore,
+                                elevatorAssetDataProvider: demo.elevatorAssetDataProvider,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                            )
+                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
+                        } else if selectedOfflineNotificationDetail.formCode.uppercased() == "TFM1" {
                             WartungsplanDetailView(
                                 detail: selectedOfflineNotificationDetail,
                                 offlineWorkStore: demo.offlineWorkStore,
@@ -280,6 +294,7 @@ struct FacilityShellView: View {
                 .padding(.top, 8)
         }
         .padding(16)
+        .safeAreaPadding(.top, 4)
         .frame(width: expandedSidebarWidth)
         .background(FacilityTheme.sidebar)
         .animation(.snappy(duration: 0.22, extraBounce: 0), value: isShowingUserMenu)
@@ -345,6 +360,7 @@ struct FacilityShellView: View {
             compactProfileButton
         }
         .padding(.vertical, 14)
+        .safeAreaPadding(.top, 4)
         .frame(width: compactSidebarWidth)
         .background(FacilityTheme.sidebar)
     }

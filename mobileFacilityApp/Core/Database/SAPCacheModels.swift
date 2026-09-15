@@ -549,6 +549,7 @@ protocol SAPDataCacheRepository: TechnicalObjectRepository {
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata]
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile?
 }
 
 typealias LegacySAPRow = [String: String?]
@@ -556,6 +557,17 @@ typealias LegacySAPRow = [String: String?]
 struct LegacySAPIncomingPackage: Sendable {
     let tables: [String: [LegacySAPRow]]
     let isLastPackage: Bool
+}
+
+/// A compact, privacy-safe description of the incoming snapshot after it has
+/// been committed to the legacy cache. The application intentionally pages
+/// notifications from SQLite instead of retaining every decoded notification
+/// in `SAPCachedData`, so this summary is the authoritative sync diagnostic.
+struct SAPIncomingCacheSummary: Equatable, Sendable {
+    let notificationRowCount: Int
+    let actionableNotificationCount: Int
+    let businessEntityCount: Int
+    let elevatorInspectionCount: Int
 }
 
 struct LegacySAPOutgoingPayload: Encodable, Sendable {
@@ -582,6 +594,7 @@ protocol SAPLegacySynchronizationStore: Sendable {
     func beginIncoming() async throws
     func appendIncoming(_ package: LegacySAPIncomingPackage) async throws
     func commitIncoming(sapWorkerID: String, refreshedAt: Date) async throws -> SAPCachedData
+    func incomingCacheSummary() async throws -> SAPIncomingCacheSummary
     func abortIncoming() async
 }
 
@@ -727,6 +740,18 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata] {
         dataByWorkerID[localWorkerID]?.notifications.compactMap(\.structuralFilterMetadata) ?? []
+    }
+
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
+        guard let profile = dataByWorkerID[workerID]?.workerProfile else { return nil }
+        return SAPUserProfile(
+            personalNumber: profile.personnelNumber,
+            name: profile.lastName,
+            firstName: profile.firstName,
+            company: profile.organizationUnit,
+            email: profile.email,
+            canCreateI2: true
+        )
     }
 
     func loadTechnicalObjectRoots(
@@ -904,6 +929,10 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
         throw SAPReadError.serviceUnavailable
     }
 
