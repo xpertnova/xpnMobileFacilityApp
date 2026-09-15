@@ -11,6 +11,7 @@ final class FacilityDemoViewModel {
     let meterReferenceProvider: any MeterReferenceProviding
     let photoAttachmentStore: any PhotoAttachmentStore
     let mobileLadderCreationProvider: any MobileLadderCreationProviding
+    let elevatorAssetDataProvider: any ElevatorAssetDataProviding
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     private(set) var profileSettingsReturnDestination: AppDestination = .overview
@@ -48,6 +49,7 @@ final class FacilityDemoViewModel {
         meterReferenceProvider: any MeterReferenceProviding,
         photoAttachmentStore: any PhotoAttachmentStore,
         mobileLadderCreationProvider: (any MobileLadderCreationProviding)? = nil,
+        elevatorAssetDataProvider: (any ElevatorAssetDataProviding)? = nil,
         workerDisplayName: String = "Alex Morgan",
         workerRole: FacilityUserRole = .technician
     ) {
@@ -63,6 +65,13 @@ final class FacilityDemoViewModel {
         } else {
             self.mobileLadderCreationProvider = sapDataStore
         }
+        if let elevatorAssetDataProvider {
+            self.elevatorAssetDataProvider = elevatorAssetDataProvider
+        } else if isDemoMode {
+            self.elevatorAssetDataProvider = DemoElevatorAssetDataProvider()
+        } else {
+            self.elevatorAssetDataProvider = sapDataStore
+        }
         self.technicalPlacesStore = TechnicalPlacesViewModel(
             sapDataStore: sapDataStore,
             offlineWorkStore: offlineWorkStore
@@ -76,7 +85,10 @@ final class FacilityDemoViewModel {
     }
 
     var selectedSAPNotification: SAPNotificationSummary? {
-        guard !isDemoMode, let selectedNotificationID else { return nil }
+        guard let selectedNotificationID else { return nil }
+        if isDemoMode {
+            return MockFacilityData.sapNotifications.first { $0.id == selectedNotificationID }
+        }
         return sapDataStore.notifications.first { $0.id == selectedNotificationID }
     }
 
@@ -89,8 +101,50 @@ final class FacilityDemoViewModel {
     }
 
     var visibleNotifications: [MaintenanceNotification] {
-        guard !isDemoMode else { return notifications }
+        guard !isDemoMode else {
+            return notifications.map { notification in
+                if let inspection = offlineWorkStore.elevatorInspection(notificationID: notification.id) {
+                    let isClosed = inspection.isClosedLocally
+                    let isDef = inspection.closingSystemStatus == "MIAR" || inspection.closingUserStatus.contains("Mnot")
+                    return MaintenanceNotification(
+                        id: notification.id,
+                        title: notification.title,
+                        location: notification.location,
+                        dueDate: notification.dueDate,
+                        equipment: notification.equipment,
+                        sapStatus: notification.sapStatus,
+                        status: isClosed ? .closedLocally : .draft,
+                        completedChecks: inspection.elementValues.count,
+                        totalChecks: notification.totalChecks,
+                        isTemporarilySaved: !isClosed,
+                        isClosedLocally: isClosed,
+                        hasLocalDefect: isDef,
+                        structuralFilterMetadata: notification.structuralFilterMetadata
+                    )
+                }
+                return notification
+            }
+        }
         return sapDataStore.notifications.map { notification in
+            if let inspection = offlineWorkStore.elevatorInspection(notificationID: notification.id) {
+                let isClosed = inspection.isClosedLocally
+                let isDef = inspection.closingSystemStatus == "MIAR" || inspection.closingUserStatus.contains("Mnot")
+                return MaintenanceNotification(
+                    id: notification.id,
+                    title: notification.title.isEmpty ? notification.id : notification.title,
+                    location: notification.displayLocation,
+                    dueDate: notification.displayDateRange,
+                    equipment: notification.functionalLocationID,
+                    sapStatus: notification.displayStatus,
+                    status: isClosed ? .closedLocally : .draft,
+                    completedChecks: inspection.elementValues.count,
+                    totalChecks: 0,
+                    isTemporarilySaved: !isClosed,
+                    isClosedLocally: isClosed,
+                    hasLocalDefect: isDef,
+                    structuralFilterMetadata: notification.structuralFilterMetadata
+                )
+            }
             let review = locallySavedNotificationReview(for: notification.id)
             let isClosedLocally = review?.isClosedLocally == true
             let hasLocalDefect = review?.results.values.contains(.yes) == true
@@ -244,6 +298,32 @@ final class FacilityDemoViewModel {
         return true
     }
 
+    func openSavedElevatorInspection(_ inspection: ElevatorInspectionDraftPayload) async -> Bool {
+        let returnDestination = selection
+        if let snapshot = inspection.notificationSnapshot {
+            selectedNotificationID = nil
+            selectedOfflineNotificationDetail = SAPNotificationDetail(
+                offlineSnapshot: snapshot,
+                notificationID: inspection.notificationID
+            )
+            offlineNotificationReturnDestination = returnDestination
+            return true
+        }
+
+        let cachedSummary: SAPNotificationSummary?
+        if isDemoMode {
+            cachedSummary = MockFacilityData.sapNotifications.first { $0.id == inspection.notificationID }
+        } else {
+            cachedSummary = await sapDataStore.cachedNotification(id: inspection.notificationID)
+        }
+        guard let cachedSummary else { return false }
+
+        selectedNotificationID = nil
+        selectedOfflineNotificationDetail = SAPNotificationDetail(summary: cachedSummary)
+        offlineNotificationReturnDestination = returnDestination
+        return true
+    }
+
     /// Saved reviews are presented over their source screen and return there
     /// when the user closes the detail.
     func dismissOfflineNotificationDetail() {
@@ -277,7 +357,7 @@ final class FacilityDemoViewModel {
         guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
         if sapDataStore.hasValidSavedToken {
-            _ = sapDataStore.beginTokenRefresh()
+            guard sapDataStore.beginTokenRefresh() else { return }
             shouldPresentSAPRefresh = true
             Task {
                 let success = await sapDataStore.refreshWithSavedToken()
@@ -323,8 +403,101 @@ final class FacilityDemoViewModel {
     }
 }
 
-private enum MockFacilityData {
+enum MockFacilityData {
+    static let tfm2PayloadJSON = """
+    {
+      "QMNUM": "4710000012",
+      "QMART": "I1",
+      "FORMNR": "TFM2",
+      "PLTXT": "Aufzugskontrolle Personenaufzug",
+      "STRNO": "UN01-ST01-BG01-TECH-460-AUF1",
+      "EQUNR": "EQ-100010",
+      "EQKTX": "Personenaufzug Otis 2000",
+      "CITY1_TO": "Essen",
+      "STREET_TO": "Hauptstraße 12",
+      "TPWEH": "WE 01",
+      "TPGEB": "Gebäude A",
+      "IWERK": "1501",
+      "GEWRK": "TFM",
+      "T_PLPOD": [
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM2",
+          "VORNR": "0010",
+          "LTXA1": "Triebwerksraum / Schachtkopf sauber und frei von Fremdkörpern",
+          "LTXA2": "Überprüfung auf Sauberkeit und Brandlasten.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" },
+            { "POSNR": "3", "DFVAL": "X;", "DFVAL_TXT": "Material bestellen;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM2",
+          "VORNR": "0020",
+          "LTXA1": "Fahrkorbtableau und Notrufeinrichtung funktionsfähig",
+          "LTXA2": "Notruftaste betätigen und Sprechverbindung zur Leitstelle prüfen.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM2",
+          "VORNR": "0030",
+          "LTXA1": "Schachttüren und Türverriegelungen mechanisch einwandfrei",
+          "LTXA2": "Prüfung auf Leichtgängigkeit und Verriegelungssicherheit.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" },
+            { "POSNR": "3", "DFVAL": "X;", "DFVAL_TXT": "Material bestellen;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM2",
+          "VORNR": "0040",
+          "LTXA1": "Fahrkorbbeleuchtung und Notbeleuchtung in Ordnung",
+          "LTXA2": "",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM2",
+          "VORNR": "0050",
+          "LTXA1": "Haltegenauigkeit an den Haltestellen innerhalb der Toleranz",
+          "LTXA2": "Bündigkeit der Schwelle an allen Etagen kontrollieren.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        }
+      ]
+    }
+    """
+
+    static let sapNotifications: [SAPNotificationSummary] = [
+        SAPNotificationSummary(
+            id: "4710000012",
+            client: "100",
+            title: "Aufzugskontrolle Personenaufzug",
+            functionalLocationID: "UN01-ST01-BG01-TECH-460-AUF1",
+            functionalLocationName: "Personenaufzug Trakt A",
+            equipmentID: "EQ-100010",
+            startDate: "2026-08-10",
+            endDate: "2026-08-20",
+            systemStatus: "Offen",
+            userStatus: "",
+            rawPayloadJSON: tfm2PayloadJSON
+        )
+    ]
+
     static let notifications: [MaintenanceNotification] = [
+        .init(id: "4710000012", title: "Aufzugskontrolle Personenaufzug", location: "Gebäude A · Aufzug 1", dueDate: "Heute", equipment: "EQ-100010", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM2", functionalLocationName: "Gebäude A")),
         .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM3", functionalLocationName: "Building A")),
         .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "C", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Building C")),
         .init(id: "M-30987", title: "Ventilation filter check", location: "Building B · Roof plant", dueDate: "Tomorrow", equipment: "AHU-03", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "B", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "Building B")),

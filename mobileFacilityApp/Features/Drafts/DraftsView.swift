@@ -202,6 +202,10 @@ struct DraftsView: View {
                     SavedNotificationRow(item: item, review: review) {
                         open(review)
                     }
+                } else if let inspection = item.payload.elevatorInspection {
+                    SavedElevatorInspectionRow(item: item, inspection: inspection) {
+                        open(inspection)
+                    }
                 }
             }
     }
@@ -291,6 +295,38 @@ struct DraftsView: View {
                 return
             }
         }
+    }
+
+    private func open(_ inspection: ElevatorInspectionDraftPayload) {
+        Task {
+            guard await demo.openSavedElevatorInspection(inspection) else {
+                showsUnavailableNotificationAlert = true
+                return
+            }
+        }
+    }
+}
+
+private struct SavedElevatorInspectionRow: View {
+    let item: OfflineWorkItem
+    let inspection: ElevatorInspectionDraftPayload
+    let action: () -> Void
+
+    private var title: String {
+        let savedTitle = inspection.notificationSnapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return savedTitle.isEmpty ? String(localized: "elevator.inspection.title") : savedTitle
+    }
+
+    var body: some View {
+        LocalWorkTemplateRow(
+            icon: "🛗",
+            title: Text(title),
+            subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks"))"),
+            status: inspection.isClosedLocally ? .closedLocally : .offline(item.status),
+            syncError: item.syncError,
+            action: action
+        )
+        .accessibilityHint(Text("drafts.accessibility.openNotification"))
     }
 }
 

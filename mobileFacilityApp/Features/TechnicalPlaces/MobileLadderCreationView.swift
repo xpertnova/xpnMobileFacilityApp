@@ -881,15 +881,13 @@ private struct DigitsOnlyTextField: View {
 }
 
 private struct MobileLadderInspectionRow: View {
-    private enum ExpandedPicker { case result, action }
-
     @Binding var item: MobileLadderInspectionItem
     let photoCount: Int
     let isEditingEnabled: Bool
     let openPhotos: () -> Void
     let editComment: () -> Void
     @State private var isShowingInformation = false
-    @State private var expandedPicker: ExpandedPicker?
+    @State private var expandedPicker: InspectionPickerField?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -927,33 +925,29 @@ private struct MobileLadderInspectionRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            inspectionCodePicker(
+            InspectionCodePicker(
                 picker: .result,
+                expandedPicker: $expandedPicker,
                 selection: item.result.map(\.code),
+                options: MobileLadderInspectionResult.allCases.map { InspectionCodeOption(code: $0.code, titleKey: $0.titleKey) },
                 optionsHeight: 250,
-                isEnabled: isEditingEnabled
-            ) {
-                ForEach(MobileLadderInspectionResult.allCases) { result in
-                    inspectionCodeOption(code: result.code, titleKey: result.titleKey) {
-                        item.result = result
-                        expandedPicker = nil
-                    }
-                }
+                isEnabled: isEditingEnabled,
+                accessibilityLabel: Text("mobileLadder.column.result")
+            ) { code in
+                item.result = MobileLadderInspectionResult(rawValue: code)
             }
             .frame(width: 160)
 
-            inspectionCodePicker(
+            InspectionCodePicker(
                 picker: .action,
+                expandedPicker: $expandedPicker,
                 selection: item.action.map(\.code),
+                options: MobileLadderInspectionAction.allCases.map { InspectionCodeOption(code: $0.code, titleKey: $0.titleKey) },
                 optionsHeight: 150,
-                isEnabled: isEditingEnabled
-            ) {
-                ForEach(MobileLadderInspectionAction.allCases) { action in
-                    inspectionCodeOption(code: action.code, titleKey: action.titleKey) {
-                        item.action = action
-                        expandedPicker = nil
-                    }
-                }
+                isEnabled: isEditingEnabled,
+                accessibilityLabel: Text("mobileLadder.column.action")
+            ) { code in
+                item.action = MobileLadderInspectionAction(rawValue: code)
             }
             .frame(width: 160)
 
@@ -1003,96 +997,6 @@ private struct MobileLadderInspectionRow: View {
         .zIndex(expandedPicker == nil ? 0 : 1)
     }
 
-    private func inspectionCodePicker<Options: View>(
-        picker: ExpandedPicker,
-        selection: String?,
-        optionsHeight: CGFloat,
-        isEnabled: Bool,
-        @ViewBuilder options: @escaping () -> Options
-    ) -> some View {
-        let isExpanded = expandedPicker == picker
-
-        return Button {
-            expandedPicker = isExpanded ? nil : picker
-        } label: {
-            HStack(spacing: 0) {
-                Text(selection ?? "")
-                    .font(.body)
-                    .monospacedDigit()
-                    .foregroundStyle(FacilityTheme.ink)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.leading, 18)
-
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isExpanded ? .white : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(isExpanded ? FacilityTheme.blue : .clear)
-                    .accessibilityHidden(true)
-            }
-            .background(FacilityTheme.surface)
-            .overlay {
-                Rectangle()
-                    .stroke(isExpanded ? FacilityTheme.blue : .secondary.opacity(0.42))
-            }
-            .frame(width: 120, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.45)
-        .accessibilityLabel(
-            picker == .result
-                ? Text("mobileLadder.column.result")
-                : Text("mobileLadder.column.action")
-        )
-        .popover(
-            isPresented: pickerPresentationBinding(for: picker),
-            attachmentAnchor: .rect(.bounds)
-        ) {
-            ScrollView {
-                LazyVStack(spacing: 0) { options() }
-            }
-            .frame(width: 360, height: optionsHeight, alignment: .top)
-            .background(FacilityTheme.surface)
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private func pickerPresentationBinding(for picker: ExpandedPicker) -> Binding<Bool> {
-        Binding(
-            get: { expandedPicker == picker },
-            set: { isPresented in
-                if !isPresented, expandedPicker == picker {
-                    expandedPicker = nil
-                }
-            }
-        )
-    }
-
-    private func inspectionCodeOption(
-        code: String,
-        titleKey: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Text(code)
-                    .monospacedDigit()
-                    .frame(width: 46, alignment: .leading)
-                Text(LocalizedStringKey(titleKey))
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .font(.body)
-            .foregroundStyle(FacilityTheme.ink)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, minHeight: 50)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "\(code), \(String(localized: String.LocalizationValue(titleKey)))"))
-    }
 }
 
 private extension MobileLadderCreationViewModel.Feedback {

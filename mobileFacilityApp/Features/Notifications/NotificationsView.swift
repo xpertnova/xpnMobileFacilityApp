@@ -75,6 +75,8 @@ struct NotificationsView: View {
                     summary: selectedSAPNotification,
                     offlineWorkStore: demo.offlineWorkStore,
                     photoAttachmentStore: demo.photoAttachmentStore,
+                    sapDataStore: demo.sapDataStore,
+                    elevatorAssetDataProvider: demo.elevatorAssetDataProvider,
                     dismiss: { demo.selectedNotificationID = nil }
                 )
                 .id(selectedSAPNotification.id)
@@ -784,28 +786,46 @@ private struct SAPNotificationDetailScreen: View {
     @State private var detail: SAPNotificationDetail
     let offlineWorkStore: OfflineWorkStore
     let photoAttachmentStore: any PhotoAttachmentStore
+    let sapDataStore: SAPDataStore?
+    let elevatorAssetDataProvider: (any ElevatorAssetDataProviding)?
     let dismiss: () -> Void
 
     init(
         summary: SAPNotificationSummary,
         offlineWorkStore: OfflineWorkStore,
         photoAttachmentStore: any PhotoAttachmentStore,
+        sapDataStore: SAPDataStore? = nil,
+        elevatorAssetDataProvider: (any ElevatorAssetDataProviding)? = nil,
         dismiss: @escaping () -> Void
     ) {
         _detail = State(initialValue: SAPNotificationDetail(summary: summary))
         self.offlineWorkStore = offlineWorkStore
         self.photoAttachmentStore = photoAttachmentStore
+        self.sapDataStore = sapDataStore
+        self.elevatorAssetDataProvider = elevatorAssetDataProvider
         self.dismiss = dismiss
     }
 
     var body: some View {
-        NotificationDetailView(
-            detail: detail,
-            offlineWorkStore: offlineWorkStore,
-            photoAttachmentStore: photoAttachmentStore,
-            backDestination: .notifications,
-            dismiss: dismiss
-        )
+        if detail.isTFM2ElevatorInspection {
+            TFM2ElevatorInspectionView(
+                detail: detail,
+                offlineWorkStore: offlineWorkStore,
+                photoAttachmentStore: photoAttachmentStore,
+                sapDataStore: sapDataStore,
+                elevatorAssetDataProvider: elevatorAssetDataProvider ?? sapDataStore ?? UnavailableElevatorAssetDataProvider(),
+                backDestination: .notifications,
+                dismiss: dismiss
+            )
+        } else {
+            NotificationDetailView(
+                detail: detail,
+                offlineWorkStore: offlineWorkStore,
+                photoAttachmentStore: photoAttachmentStore,
+                backDestination: .notifications,
+                dismiss: dismiss
+            )
+        }
     }
 }
 

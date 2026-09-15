@@ -157,14 +157,17 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) Calling \(method)\(requestIDs.isEmpty ? "" : ": \(requestIDs)").")
     }
 
-    static func logSynchronizationCompleted(
-        notificationCount: Int,
-        businessEntityCount: Int
-    ) {
+    static func logSynchronizationCompleted(_ summary: SAPIncomingCacheSummary) {
         print(
-            "\(prefix) Synchronization completed: \(notificationCount) notifications, " +
-                "\(businessEntityCount) business entities."
+            "\(prefix) Synchronization completed: persisted \(summary.notificationRowCount) notification rows; " +
+                "mapped \(summary.actionableNotificationCount) actionable notifications, " +
+                "\(summary.businessEntityCount) business entities, and " +
+                "\(summary.elevatorInspectionCount) TFM2 elevator inspections."
         )
+    }
+
+    static func logElevatorAssetCacheResolution(_ detail: String) {
+        print("\(prefix) TFM2 asset cache: \(detail).")
     }
 
     static func logIncomingPackage(_ tables: [String: [LegacySAPRow]]) {
@@ -463,9 +466,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         // sends it even when there are no pending supported records.
         let fromRequestID = Self.makeRequestID(prefix: "MTFMSYNCFROM")
         let toRequestID = Self.makeRequestID(prefix: "MTFMSYNCTO")
-        let notificationBatch = try await notificationOutgoingCoordinator?.prepare() ?? .empty
         SAPSynchronizationDiagnostics.logSynchronizationStage(1, "Uploading TO metadata")
+        // Preparing the local outgoing queue can fail before any SAP request.
+        // Report that work as the upload stage so the dialog never attributes
+        // a local queue error to the already-completed password check.
         await progress(.uploadingOutgoingMetadata)
+        let notificationBatch = try await notificationOutgoingCoordinator?.prepare() ?? .empty
         let outgoingPayload = try await synchronizationStore.stageOutgoing(requestID: toRequestID)
         do {
             try await submitOutgoingMetadata(
@@ -542,10 +548,8 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 sapWorkerID: sapWorkerID,
                 refreshedAt: Date()
             )
-            SAPSynchronizationDiagnostics.logSynchronizationCompleted(
-                notificationCount: cachedData.notifications.count,
-                businessEntityCount: 0
-            )
+            let cacheSummary = try await synchronizationStore.incomingCacheSummary()
+            SAPSynchronizationDiagnostics.logSynchronizationCompleted(cacheSummary)
             return cachedData
         } catch {
             await synchronizationStore.abortIncoming()
@@ -932,7 +936,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
 
     private static func isRecoverableLifecyclePollingError(_ error: SAPReadError) -> Bool {
         switch error {
-        case .httpStatus(504), .requestTimedOut:
+        // SAPURLSession can surface a transient gateway/session interruption as
+        // `serviceUnavailable` instead of a URLError.  MMTFM002/MMTFM003 are
+        // explicitly the authoritative lifecycle checks, so retain the legacy
+        // client's retry behavior for those interruptions rather than treating
+        // an already-started ABAP operation as failed.
+        case .httpStatus(504), .requestTimedOut, .networkUnavailable, .serviceUnavailable:
             true
         default:
             false
@@ -994,7 +1003,21 @@ enum SAPLegacyDataExchangeCodec {
     }
 
     static func decodedFeldwertObject(_ feldwert: String) -> [String: Any]? {
-        feldwertValue(from: feldwert) as? [String: Any]
+        decodedFeldwertObjects(feldwert).first
+    }
+
+    static func decodedFeldwertObjects(_ feldwert: String) -> [[String: Any]] {
+        let value = feldwertValue(from: feldwert)
+        if let object = value as? [String: Any] {
+            return [object]
+        }
+        if let array = value as? [[String: Any]] {
+            return array
+        }
+        if let array = value as? [Any] {
+            return array.compactMap { $0 as? [String: Any] }
+        }
+        return []
     }
 
     private struct Envelope: Codable {
@@ -1052,7 +1075,7 @@ enum SAPLegacyDataExchangeCodec {
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
 
-    static func packedFeldwert(_ object: [String: Any]) throws -> String {
+    static func packedFeldwert(_ object: Any) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
     }
@@ -1066,7 +1089,7 @@ enum SAPLegacyDataExchangeCodec {
             firstSAPString(["CLASS", "KLASSE"], from: $0).uppercased() == "TFMMOBLEITER"
         }
         let classPayload = classRow.flatMap {
-            feldwertValue(from: stringValue(value(named: "FELDWERT", in: $0))) as? [String: Any]
+            decodedFeldwertObject(stringValue(value(named: "FELDWERT", in: $0)))
         } ?? [:]
         let classJSON = jsonStringValue(classPayload) ?? "{}"
         let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
@@ -1429,6 +1452,24 @@ enum SAPLegacyDataExchangeCodec {
             email: stringValue(value(named: "EMAIL", in: row)),
             isActive: stringValue(value(named: "AKTIV", in: row)),
             roleCode: stringValue(value(named: "RCDEX", in: row))
+        )
+    }
+
+    static func userProfile(from row: [String: Any]) -> SAPUserProfile? {
+        let persnr = stringValue(value(named: "PERSNR", in: row))
+        guard !persnr.isEmpty else { return nil }
+        let name = stringValue(value(named: "NAME", in: row))
+        let vorname = stringValue(value(named: "VORNAME", in: row))
+        let company = stringValue(value(named: "GESELLSCHAFT", in: row))
+        let email = stringValue(value(named: "EMAIL", in: row))
+        let i2 = stringValue(value(named: "I2", in: row))
+        return SAPUserProfile(
+            personalNumber: persnr,
+            name: name,
+            firstName: vorname,
+            company: company,
+            email: email,
+            canCreateI2: i2.uppercased() == "X"
         )
     }
 

@@ -112,6 +112,17 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 payload = .photoCollection(try decoder.decode(PhotoCollectionDraftPayload.self, from: data))
             case .mobileLadder:
                 payload = .mobileLadder(try decoder.decode(MobileLadderDraftPayload.self, from: data))
+            case .subdistribution:
+                // TFM7 subdistribution drafts were persisted by a prior app
+                // version. Keep their original JSON verbatim: this build has
+                // no verified TFM7 edit or upload contract, but those records
+                // must never make the entire offline queue unreadable.
+                guard (try? JSONSerialization.jsonObject(with: data)) != nil else {
+                    throw OfflineWorkRepositoryError.invalidStoredItem
+                }
+                payload = .subdistribution(.init(jsonData: data))
+            case .elevatorInspection:
+                payload = .elevatorInspection(try decoder.decode(ElevatorInspectionDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -141,6 +152,12 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         case let (.photoCollection, .photoCollection(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         case let (.mobileLadder, .mobileLadder(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.subdistribution, .subdistribution(payload)):
+            // Preserve historical TFM7 payloads byte-for-byte. No code in
+            // this build creates or uploads them.
+            payloadData = payload.jsonData
+        case let (.elevatorInspection, .elevatorInspection(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil

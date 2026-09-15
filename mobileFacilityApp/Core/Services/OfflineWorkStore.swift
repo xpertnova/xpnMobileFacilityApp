@@ -32,15 +32,20 @@ final class OfflineWorkStore {
     }
 
     var savedNotificationItems: [OfflineWorkItem] {
-        activeQueueItems.filter { $0.type == .notificationReview }
+        activeQueueItems.filter { $0.type == .notificationReview || $0.type == .elevatorInspection }
     }
 
     /// The Local work screen intentionally contains only notification reviews
     /// that are still drafts or have been closed locally.
     var localWorkNotificationItems: [OfflineWorkItem] {
         savedNotificationItems.filter { item in
-            guard let review = item.payload.notificationReview else { return false }
-            return item.status == .draft || review.isClosedLocally
+            if let review = item.payload.notificationReview {
+                return item.status == .draft || review.isClosedLocally
+            }
+            if let inspection = item.payload.elevatorInspection {
+                return item.status == .draft || inspection.isClosedLocally
+            }
+            return false
         }
     }
 
@@ -54,6 +59,10 @@ final class OfflineWorkStore {
             + proofOfQualificationItems.count
             + photoCollectionItems.filter { $0.payload.photoCollection?.scope.workflow != .mobileLadder }.count
             + mobileLadderItems.count
+    }
+
+    var elevatorInspectionItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .elevatorInspection }
     }
 
     var defectItems: [OfflineWorkItem] {
@@ -151,8 +160,13 @@ final class OfflineWorkStore {
     /// closed locally. Open or draft notifications never appear as defects.
     var closedDefectNotificationItems: [OfflineWorkItem] {
         localWorkNotificationItems.filter { item in
-            guard let review = item.payload.notificationReview else { return false }
-            return review.isClosedLocally && review.results.values.contains(.yes)
+            if let review = item.payload.notificationReview {
+                return review.isClosedLocally && review.results.values.contains(.yes)
+            }
+            if let inspection = item.payload.elevatorInspection {
+                return inspection.isClosedLocally && (inspection.statusNumber == "2" || inspection.closingUserStatus.contains("Mnot"))
+            }
+            return false
         }
     }
 
@@ -265,6 +279,42 @@ final class OfflineWorkStore {
         try await repository.save(item)
         await load()
         return item
+    }
+
+    func elevatorInspection(notificationID: String) -> ElevatorInspectionDraftPayload? {
+        items.first {
+            $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == notificationID
+        }?.payload.elevatorInspection
+    }
+
+    func saveElevatorInspection(_ payload: ElevatorInspectionDraftPayload) async throws -> OfflineWorkItem {
+        let existing = items.first {
+            $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == payload.notificationID
+        }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .elevatorInspection,
+            status: payload.isClosedLocally ? .pendingSynchronization : .draft,
+            payload: .elevatorInspection(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func deleteElevatorInspection(notificationID: String) async throws {
+        let matching = items.filter {
+            $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == notificationID
+        }
+        if !matching.isEmpty {
+            try await repository.delete(ids: matching.map(\.id))
+            await load()
+        }
     }
 
     func saveBriefing(

@@ -11,6 +11,11 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case proofOfQualification
     case photoCollection
     case mobileLadder
+    /// Work saved by the earlier TFM7 subdistribution feature. The feature is
+    /// not currently available in this build, but existing local entries must
+    /// remain readable so they cannot block unrelated SAP synchronization.
+    case subdistribution
+    case elevatorInspection
 }
 
 enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
@@ -23,6 +28,7 @@ enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
     case proofOfQualification
     case technicalObject
     case mobileLadder
+    case subdistribution
 
     var titleKey: String {
         switch self {
@@ -35,6 +41,7 @@ enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
         case .proofOfQualification: "forms.qualification.title"
         case .technicalObject: "places.title"
         case .mobileLadder: "mobileLadder.title"
+        case .subdistribution: "subdistribution.title"
         }
     }
 }
@@ -375,6 +382,19 @@ struct BriefingTemporaryPartner: Codable, Equatable, Sendable {
     }
 }
 
+/// An opaque, lossless representation of a TFM7 subdistribution draft created
+/// by an earlier app version. The TFM7 UI and SAP write contract are not part
+/// of this build, so the JSON is deliberately retained without reinterpretation
+/// or upload. This compatibility wrapper lets the common offline queue continue
+/// loading while preserving the user's existing local record intact.
+struct PersistedSubdistributionPayload: Equatable, Sendable {
+    let jsonData: Data
+
+    init(jsonData: Data) {
+        self.jsonData = jsonData
+    }
+}
+
 enum OfflineWorkPayload: Equatable, Sendable {
     case manualCapture(ManualCaptureDraftPayload)
     case defect(DefectDraftPayload)
@@ -386,6 +406,8 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case proofOfQualification(ProofOfQualificationDraftPayload)
     case photoCollection(PhotoCollectionDraftPayload)
     case mobileLadder(MobileLadderDraftPayload)
+    case subdistribution(PersistedSubdistributionPayload)
+    case elevatorInspection(ElevatorInspectionDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -435,6 +457,42 @@ enum OfflineWorkPayload: Equatable, Sendable {
     var mobileLadder: MobileLadderDraftPayload? {
         guard case let .mobileLadder(payload) = self else { return nil }
         return payload
+    }
+
+    var subdistribution: PersistedSubdistributionPayload? {
+        guard case let .subdistribution(payload) = self else { return nil }
+        return payload
+    }
+
+    var elevatorInspection: ElevatorInspectionDraftPayload? {
+        guard case let .elevatorInspection(payload) = self else { return nil }
+        return payload
+    }
+}
+
+/// Worker-scoped user profile data cached from the `USER` table.
+struct SAPUserProfile: Codable, Equatable, Sendable {
+    let personalNumber: String
+    let name: String
+    let firstName: String
+    let company: String
+    let email: String
+    let canCreateI2: Bool
+
+    init(
+        personalNumber: String = "",
+        name: String = "",
+        firstName: String = "",
+        company: String = "",
+        email: String = "",
+        canCreateI2: Bool = false
+    ) {
+        self.personalNumber = personalNumber
+        self.name = name
+        self.firstName = firstName
+        self.company = company
+        self.email = email
+        self.canCreateI2 = canCreateI2
     }
 }
 

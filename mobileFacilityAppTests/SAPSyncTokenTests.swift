@@ -304,6 +304,30 @@ final class SAPSyncTokenTests: XCTestCase {
     }
 
     @MainActor
+    func testPasswordRefreshFailureAfterPostUsesThePostAcknowledgementStage() async throws {
+        let workerID = "TEST_WORKER"
+        let mockService = MockTokenRefreshService()
+        mockService.passwordFailureStage = .waitingForOutgoingAcknowledgement
+        mockService.passwordRefreshError = .serviceUnavailable
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        await dataStore.refresh(sapPassword: "not-stored")
+
+        guard let failureContext = dataStore.refreshFailureContext else {
+            return XCTFail("Expected the dialog to retain the post failure stage")
+        }
+        XCTAssertEqual(failureContext.stage, .waitingForOutgoingAcknowledgement)
+        guard case .serviceUnavailable = failureContext.error else {
+            return XCTFail("Expected the original service-unavailable error")
+        }
+    }
+
+    @MainActor
     func testViewModelSAPRefreshWithSavedTokenShowsProgressAndCompletes() async throws {
         let tokenStore = InMemorySAPSyncTokenStore()
         let workerID = "TEST_WORKER"
@@ -532,21 +556,59 @@ final class SAPSyncTokenTests: XCTestCase {
         // Token sync was invoked
         XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
     }
+
+    @MainActor
+    func testDataStoreDoesNotStartSecondTokenRefreshWhileFirstIsInFlight() async throws {
+        let workerID = "TEST_WORKER"
+        let tokenStore = InMemorySAPSyncTokenStore()
+        try tokenStore.save(token: "SAVED_TOKEN", for: workerID)
+        let mockService = MockTokenRefreshService()
+        mockService.suspendsTokenRefresh = true
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            tokenStore: tokenStore,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        XCTAssertTrue(dataStore.beginTokenRefresh())
+        let firstRefresh = Task { await dataStore.refreshWithSavedToken() }
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+
+        let concurrentRefreshResult = await dataStore.refreshWithSavedToken()
+        XCTAssertFalse(concurrentRefreshResult)
+        await dataStore.refresh(sapPassword: "password")
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+        XCTAssertEqual(mockService.passwordRefreshCallCount, 0)
+
+        mockService.finishSuspendedTokenRefresh()
+        let firstRefreshResult = await firstRefresh.value
+        XCTAssertTrue(firstRefreshResult)
+        XCTAssertFalse(dataStore.isRefreshing)
+    }
 }
 
 private final class MockTokenRefreshService: SAPNotificationRefreshService, @unchecked Sendable {
     var shouldSucceedWithToken = true
     var tokenRefreshError: SAPReadError?
     var passwordRefreshError: SAPReadError?
+    var passwordFailureStage: SAPReadRefreshStage?
     var returnedTokenOnPasswordSync: String?
     var tokenRefreshCallCount = 0
     var passwordRefreshCallCount = 0
+    var suspendsTokenRefresh = false
+    private var tokenRefreshContinuation: CheckedContinuation<Void, Never>?
 
     func refresh(
         sapPassword: String,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         passwordRefreshCallCount += 1
+        if let passwordFailureStage {
+            await progress(passwordFailureStage)
+        }
         if let passwordRefreshError {
             throw passwordRefreshError
         }
@@ -565,6 +627,11 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         tokenRefreshCallCount += 1
+        if suspendsTokenRefresh {
+            await withCheckedContinuation { continuation in
+                tokenRefreshContinuation = continuation
+            }
+        }
         if let tokenRefreshError {
             throw tokenRefreshError
         }
@@ -580,5 +647,10 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         } else {
             throw SAPReadError.tokenInvalidOrExpired
         }
+    }
+
+    func finishSuspendedTokenRefresh() {
+        tokenRefreshContinuation?.resume()
+        tokenRefreshContinuation = nil
     }
 }

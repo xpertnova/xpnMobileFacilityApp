@@ -1,7 +1,24 @@
 import CryptoKit
 import Foundation
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, MobileLadderCreationProviding {
+/// The legacy synchronization protocol uses shared `TMP_FROM_*` tables. More
+/// than one repository can be composed for the same worker cache while the app
+/// changes roots, so the lease is process-wide rather than actor-local.
+private actor LegacyIncomingSynchronizationRegistry {
+    private var activeDatabasePaths: Set<String> = []
+
+    func acquire(databasePath: String) -> Bool {
+        activeDatabasePaths.insert(databasePath).inserted
+    }
+
+    func release(databasePath: String) {
+        activeDatabasePaths.remove(databasePath)
+    }
+}
+
+private let legacyIncomingSynchronizationRegistry = LegacyIncomingSynchronizationRegistry()
+
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, MobileLadderCreationProviding, ElevatorAssetDataProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -31,6 +48,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     private var incomingUserRows: [LegacySAPRow] = []
     private var incomingSawUserTable = false
     private var incomingSawLastPackage = false
+    private var incomingSynchronizationIsActive = false
 
     init(databaseURL: URL, workerID: String? = nil) throws {
         self.databaseURL = databaseURL
@@ -104,6 +122,14 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             technicalObjects: try Self.technicalObjects(on: database),
             metadata: try Self.metadata(on: database)
         )
+    }
+
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
+        try validateWorker(workerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return try Self.rows(in: "USER", on: database)
+            .compactMap(SAPLegacyDataExchangeCodec.userProfile(from:))
+            .first
     }
 
     func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
@@ -191,6 +217,129 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             catalog[field] = values.isEmpty ? MobileLadderCatalog.legacyReference.options(for: field) : values
         }
         return MobileLadderCreationData(contexts: uniqueContexts, catalog: MobileLadderCatalog(options: catalog))
+    }
+
+    /// Rebuilds the read-only TFM2 header section from the same legacy cache
+    /// tables used by Cordova: T0263 describes the class, while T0266 (or
+    /// T0265 for a technical-place assignment) supplies the asset values.
+    func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
+        try validateWorker(localWorkerID ?? "")
+        guard let database else { throw SAPReadError.serviceUnavailable }
+
+        func value(named key: String, in row: [String: Any]) -> Any? {
+            row.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
+        }
+
+        func string(named key: String, in row: [String: Any]) -> String {
+            switch value(named: key, in: row) {
+            case let value as String:
+                value.trimmingCharacters(in: .whitespacesAndNewlines)
+            case let value as NSNumber:
+                value.stringValue
+            default:
+                ""
+            }
+        }
+
+        func dictionaries(named key: String, in dictionary: [String: Any]) -> [[String: Any]] {
+            guard let rawValue = value(named: key, in: dictionary) else { return [] }
+            if let dicts = rawValue as? [[String: Any]] { return dicts }
+            if let list = rawValue as? [Any] { return list.compactMap { $0 as? [String: Any] } }
+            return []
+        }
+
+        func decodedPayload(from row: [String: Any]) -> [String: Any]? {
+            let fieldValue = string(named: "FELDWERT", in: row)
+            guard !fieldValue.isEmpty else { return nil }
+            return SAPLegacyDataExchangeCodec.decodedFeldwertObject(fieldValue)
+        }
+
+        func elevatorType(row: [String: Any], payload: [String: Any]) -> String {
+            string(named: "EQART", in: row)
+                .ifEmpty(string(named: "EQART_TO", in: row))
+                .ifEmpty(string(named: "EQART", in: payload))
+                .ifEmpty(string(named: "EQART_TO", in: payload))
+                .uppercased()
+        }
+
+        let equipmentRows = try Self.rows(in: "FROM_T0266", on: database)
+        let locationRows = try Self.rows(in: "FROM_T0265", on: database)
+        var masterRow: [String: Any]?
+        if !notification.equipmentID.isEmpty {
+            masterRow = equipmentRows.first {
+                string(named: "EQUNR", in: $0) == notification.equipmentID
+            }
+        }
+        if masterRow == nil && !notification.functionalLocationID.isEmpty {
+            masterRow = locationRows.first {
+                let locationID = string(named: "STRNO", in: $0).ifEmpty(string(named: "TPLNR", in: $0))
+                return locationID.caseInsensitiveCompare(notification.functionalLocationID) == .orderedSame
+            }
+        }
+        if masterRow == nil && !notification.equipmentID.isEmpty {
+            masterRow = locationRows.first {
+                string(named: "EQUNR", in: $0) == notification.equipmentID
+            }
+        }
+        guard let masterRow else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("no matching master record")
+            return .empty
+        }
+        guard let masterPayload = decodedPayload(from: masterRow) else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("matching master record has no readable FELDWERT")
+            return .empty
+        }
+
+        let type = elevatorType(row: masterRow, payload: masterPayload)
+        let supportedTypes: Set<String> = ["TFMPERS", "TFMLAST", "TFMBEFAHR", "TFMKLGUT"]
+        let masterClassNames = Set(
+            (dictionaries(named: "T_CLASS_EQ", in: masterPayload) + dictionaries(named: "T_CLASS_TP", in: masterPayload))
+                .compactMap {
+                    let name = string(named: "CLASS", in: $0).ifEmpty(string(named: "KLASSE", in: $0)).uppercased()
+                    return name.isEmpty ? nil : name
+                }
+        )
+
+        let resolvedType: String
+        if supportedTypes.contains(type) {
+            resolvedType = type
+        } else if masterClassNames.contains("TFMAUFZUG") {
+            resolvedType = type.isEmpty ? "TFMPERS" : type
+        } else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("master record is not a supported elevator type")
+            return .empty
+        }
+
+        let classRows = try Self.rows(in: "FROM_T0263", on: database)
+        let classRow = classRows.first { row in
+            guard let payload = decodedPayload(from: row) else { return false }
+            return elevatorType(row: row, payload: payload) == resolvedType
+        } ?? classRows.first { row in
+            guard let payload = decodedPayload(from: row) else { return false }
+            let rowClass = string(named: "CLASS", in: row).ifEmpty(string(named: "CLASS", in: payload)).uppercased()
+            return rowClass == resolvedType || masterClassNames.contains(rowClass) || rowClass == "TFMAUFZUG"
+        }
+        guard let classRow else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("no matching class definition")
+            return .empty
+        }
+        guard let classPayload = decodedPayload(from: classRow) else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("matching class definition has no readable FELDWERT")
+            return .empty
+        }
+
+        guard let assetData = ElevatorAssetDataDecoder.decode(
+            equipmentType: resolvedType,
+            classDefinition: classPayload,
+            masterData: masterPayload
+        ) else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("class definition has no usable characteristics")
+            return .empty
+        }
+        SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution(
+            "loaded \(assetData.characteristics.count) classification characteristics"
+        )
+        return assetData
     }
 
     func loadNotifications(
@@ -456,7 +605,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     func beginIncoming() async throws {
+        guard !incomingSynchronizationIsActive else { throw SAPReadError.serviceUnavailable }
         guard let database else { throw SAPReadError.serviceUnavailable }
+        let databasePath = databaseURL.standardizedFileURL.path
+        guard await legacyIncomingSynchronizationRegistry.acquire(databasePath: databasePath) else {
+            throw SAPReadError.serviceUnavailable
+        }
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for table in LegacySQLiteSchema.temporaryInbound {
@@ -466,14 +620,16 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             incomingUserRows = []
             incomingSawUserTable = false
             incomingSawLastPackage = false
+            incomingSynchronizationIsActive = true
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
+            await legacyIncomingSynchronizationRegistry.release(databasePath: databasePath)
             throw error
         }
     }
 
     func appendIncoming(_ package: LegacySAPIncomingPackage) async throws {
-        guard let database else { throw SAPReadError.serviceUnavailable }
+        guard incomingSynchronizationIsActive, let database else { throw SAPReadError.malformedPayload }
         var appendedUserRows = incomingUserRows
         var sawUserTable = incomingSawUserTable
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
@@ -509,7 +665,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     func commitIncoming(sapWorkerID: String, refreshedAt: Date) async throws -> SAPCachedData {
-        guard let database, incomingSawLastPackage else { throw SAPReadError.malformedPayload }
+        guard let database, incomingSynchronizationIsActive, incomingSawLastPackage else {
+            throw SAPReadError.malformedPayload
+        }
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for permanent in LegacySQLiteSchema.permanentInbound {
@@ -536,21 +694,53 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             incomingUserRows = []
             incomingSawUserTable = false
             incomingSawLastPackage = false
+            incomingSynchronizationIsActive = false
+            await legacyIncomingSynchronizationRegistry.release(
+                databasePath: databaseURL.standardizedFileURL.path
+            )
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
+            incomingSynchronizationIsActive = false
+            await legacyIncomingSynchronizationRegistry.release(
+                databasePath: databaseURL.standardizedFileURL.path
+            )
             throw error
         }
         return try await load(for: localWorkerID ?? sapWorkerID)
     }
 
+    func incomingCacheSummary() async throws -> SAPIncomingCacheSummary {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let notificationRows = try Self.rows(in: "FROM_T0271", on: database)
+        let notifications = notificationRows.compactMap(SAPLegacyDataExchangeCodec.notification(from:))
+        let businessEntityCount = Set(
+            notifications
+                .compactMap(\.structuralFilterMetadata)
+                .map(\.businessEntityID)
+        ).count
+        return SAPIncomingCacheSummary(
+            notificationRowCount: notificationRows.count,
+            actionableNotificationCount: notifications.count,
+            businessEntityCount: businessEntityCount,
+            elevatorInspectionCount: notifications.filter(\.isTFM2ElevatorInspection).count
+        )
+    }
+
     func abortIncoming() async {
         guard let database else { return }
+        let wasActive = incomingSynchronizationIsActive
         for table in LegacySQLiteSchema.temporaryInbound {
             try? Self.execute(on: database, "DELETE FROM \(table.name)")
         }
         incomingUserRows = []
         incomingSawUserTable = false
         incomingSawLastPackage = false
+        incomingSynchronizationIsActive = false
+        if wasActive {
+            await legacyIncomingSynchronizationRegistry.release(
+                databasePath: databaseURL.standardizedFileURL.path
+            )
+        }
     }
 
     func insertLegacyRows(_ rows: [LegacySAPRow], into tableName: String) async throws {

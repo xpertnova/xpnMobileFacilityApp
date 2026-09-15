@@ -7,6 +7,9 @@
     " " : {
 
     },
+    "-" : {
+
+    },
     "—" : {
 
     },
@@ -21,6 +24,16 @@
     },
     "%@" : {
 
+    },
+    "%@ - %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ - %2$@"
+          }
+        }
+      }
     },
     "%@ · %@" : {
       "localizations" : {
@@ -3464,6 +3477,672 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Work responsible person"
+          }
+        }
+      }
+    },
+    "elevator.assetData.demo.passengerLift" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personenaufzug"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passenger lift"
+          }
+        }
+      }
+    },
+    "elevator.assetData.demo.passengerTransport" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personenbeförderung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passenger transport"
+          }
+        }
+      }
+    },
+    "elevator.assetData.demo.yes" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ja"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yes"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.accessPoints" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl Zugangsstellen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Number of access points"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.capacity" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tragkraft"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Load capacity"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.emergencyCall" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notrufeinrichtung vorhanden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emergency call system available"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.fireControl" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brandfallsteuerung vorhanden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fire control available"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.number" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzugsnummer"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elevator number"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.stops" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl Haltestellen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Number of stops"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.travelHeight" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Förderhöhe"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Travel height"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.type" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzugsart"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elevator type"
+          }
+        }
+      }
+    },
+    "elevator.assetData.field.usage" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendungszweck"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intended use"
+          }
+        }
+      }
+    },
+    "elevator.assetData.loading" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzugsmerkmale werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading elevator data …"
+          }
+        }
+      }
+    },
+    "elevator.assetData.readOnly" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stammdaten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Master data"
+          }
+        }
+      }
+    },
+    "elevator.assetData.required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pflichtfeld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Required field"
+          }
+        }
+      }
+    },
+    "elevator.assetData.retry" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try again"
+          }
+        }
+      }
+    },
+    "elevator.assetData.subtitle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technische Merkmale des Aufzugs"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical characteristics of this elevator"
+          }
+        }
+      }
+    },
+    "elevator.assetData.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzug Merkmale"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elevator data"
+          }
+        }
+      }
+    },
+    "elevator.assetData.unavailable.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für dieses Equipment sind keine zwischengespeicherten Aufzugsmerkmale verfügbar. Synchronisieren Sie die Stammdaten und versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No cached elevator characteristics are available for this equipment. Synchronize master data, then try again."
+          }
+        }
+      }
+    },
+    "elevator.assetData.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzugsmerkmale nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elevator data unavailable"
+          }
+        }
+      }
+    },
+    "elevator.closeDialog.close" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abschließen (MMAB)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close (MMAB)"
+          }
+        }
+      }
+    },
+    "elevator.closeDialog.leaveOpen" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offen lassen (MIAR)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave open (MIAR)"
+          }
+        }
+      }
+    },
+    "elevator.closeDialog.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Aufzugskontrolle wurden Mängel erfasst. Soll die Meldung offen bleiben oder abgeschlossen werden?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defects were recorded for this elevator inspection. Should the notification remain open or be closed?"
+          }
+        }
+      }
+    },
+    "elevator.closeDialog.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldung abschließen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Notification"
+          }
+        }
+      }
+    },
+    "elevator.column.action" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maßnahme"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Action"
+          }
+        }
+      }
+    },
+    "elevator.column.material" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Material"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Material"
+          }
+        }
+      }
+    },
+    "elevator.column.result" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Befund"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finding"
+          }
+        }
+      }
+    },
+    "elevator.i2.created.success" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I2-Folgemeldung(en) erfolgreich lokal gespeichert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Follow-up I2 notification(s) successfully saved locally."
+          }
+        }
+      }
+    },
+    "elevator.i2.sheet.create" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I2-Meldung(en) anlegen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create I2 Notification(s)"
+          }
+        }
+      }
+    },
+    "elevator.i2.sheet.description" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie die festgestellten Mängel aus, für die Folgemeldungen (I2) angelegt werden sollen:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select the recorded defects for which follow-up notifications (I2) should be created:"
+          }
+        }
+      }
+    },
+    "elevator.i2.sheet.skip" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überspringen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip"
+          }
+        }
+      }
+    },
+    "elevator.i2.sheet.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mängel als I2 erfassen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create I2 Defects"
+          }
+        }
+      }
+    },
+    "elevator.inspection.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzugskontrolle"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elevator Inspection"
+          }
+        }
+      }
+    },
+    "elevator.picker.selectAction" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maßnahme..."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select action..."
+          }
+        }
+      }
+    },
+    "elevator.picker.selectResult" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Befund..."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select finding..."
+          }
+        }
+      }
+    },
+    "elevator.status.defect" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mangel erfasst"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defect recorded"
+          }
+        }
+      }
+    },
+    "elevator.status.inOrder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Ordnung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In order"
+          }
+        }
+      }
+    },
+    "elevator.unavailable.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Meldung wurden keine Prüfpunkte gefunden. Bitte synchronisieren Sie die Meldung erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No inspection items were found for this notification. Please synchronize the notification again."
+          }
+        }
+      }
+    },
+    "elevator.unavailable.retry" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut versuchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try again"
+          }
+        }
+      }
+    },
+    "elevator.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufzugskontrolle nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elevator Inspection Unavailable"
           }
         }
       }
@@ -8548,6 +9227,23 @@
         }
       }
     },
+    "notifications.detail.card.information" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informationen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Information"
+          }
+        }
+      }
+    },
     "notifications.detail.closeConfirmation.confirm" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8743,6 +9439,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Complete check locally"
+          }
+        }
+      }
+    },
+    "notifications.detail.functionalLocation" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technischer Platz"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical place"
           }
         }
       }
@@ -9193,6 +9906,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Source"
+          }
+        }
+      }
+    },
+    "notifications.detail.status.closed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokal abgeschlossen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Closed locally"
           }
         }
       }
@@ -13026,6 +13755,23 @@
         }
       }
     },
+    "sap.refresh.details.postAcknowledgementOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM002 · Verarbeitung der Übertragung prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM002 · check outgoing processing"
+          }
+        }
+      }
+    },
     "sap.refresh.details.passwordOperation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13043,6 +13789,91 @@
         }
       }
     },
+    "sap.refresh.details.postOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002021 · Übertragung starten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002021 · start outgoing processing"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.prepareIncomingOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM004 · Empfang vorbereiten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM004 · prepare incoming data"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.incomingAcknowledgementOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM003 · Empfangsverarbeitung prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM003 · check incoming processing"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.receivePackageOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002003 · Datenpaket empfangen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002003 · receive data package"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.saveSnapshotOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lokaler Datenspeicher"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local data store"
+          }
+        }
+      }
+    },
     "sap.refresh.details.response" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13056,6 +13887,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Server response"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.uploadDocumentOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002031 · Dokument übertragen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002031 · upload document"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.uploadMetadataOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002001 · Übertragung vorbereiten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0002001 · prepare outgoing data"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.versionOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM008 · SAP-Kompatibilität prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM008 · check SAP compatibility"
           }
         }
       }
@@ -14513,6 +15395,9 @@
           }
         }
       }
+    },
+    "TFM2" : {
+
     },
     "vorschlag.history" : {
       "localizations" : {
