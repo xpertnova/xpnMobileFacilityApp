@@ -102,6 +102,65 @@ final class FacilityDemoViewModel {
         return sapDataStore.notifications.first { $0.id == selectedNotificationID }
     }
 
+    var selectedNotificationDetail: SAPNotificationDetail? {
+        if isDemoMode {
+            guard let selectedNotificationID else { return nil }
+            return demoNotificationDetail(for: selectedNotificationID)
+        } else {
+            return selectedSAPNotification.map { SAPNotificationDetail(summary: $0) }
+        }
+    }
+
+    func demoNotificationDetail(for id: String) -> SAPNotificationDetail? {
+        guard let notification = notifications.first(where: { $0.id == id }) else { return nil }
+        if notification.structuralFilterMetadata?.formCode == "TFM1" {
+            let items: [SAPNotificationDetail.InspectionItem] = [
+                .init(
+                    id: "TFM1-0010-1",
+                    title: "Sind die Ansprechpartner noch korrekt?",
+                    information: "Überprüfung der hinterlegten Alarmkontakte und Notfall-Ansprechpartner.",
+                    resultElementID: "TFM1-0010-1",
+                    commentElementID: "TFM1-0010-9B"
+                ),
+                .init(
+                    id: "TFM1-0020-1",
+                    title: "Sind die Kontaktdaten noch korrekt?",
+                    information: "Prüfung von Telefonnummern, Mobilnummern und E-Mail-Adressen.",
+                    resultElementID: "TFM1-0020-1",
+                    commentElementID: "TFM1-0020-9B"
+                ),
+                .init(
+                    id: "TFM1-0030-1",
+                    title: "Sind die geschalteten Anlagen korrekt?",
+                    information: "Abgleich der im Alarmplan aufgeführten Brandmelde- und Lüftungsanlagen.",
+                    resultElementID: "TFM1-0030-1",
+                    commentElementID: "TFM1-0030-9B"
+                )
+            ]
+            let summary = SAPNotificationSummary(
+                id: notification.id,
+                client: "100",
+                title: notification.title,
+                functionalLocationID: notification.equipment.isEmpty ? "DE-SAF-11152-10" : notification.equipment,
+                functionalLocationName: notification.location.isEmpty ? "GB10_Rauschermühle_V1 Verwaltungsgebäude" : notification.location,
+                startDate: "15.09.2026",
+                endDate: "15.09.2026",
+                systemStatus: "",
+                userStatus: "OPEN",
+                rawPayloadJSON: ""
+            )
+            return SAPNotificationDetail(
+                summary: summary,
+                structure: notification.equipment,
+                equipmentID: "",
+                inspectionItems: items,
+                address: "Rauschermühle , 56648-Saffig",
+                formCode: "TFM1"
+            )
+        }
+        return nil
+    }
+
     var openNotifications: Int {
         visibleNotifications.filter { $0.status == .open || $0.status == .attention }.count
     }
@@ -111,44 +170,39 @@ final class FacilityDemoViewModel {
     }
 
     var visibleNotifications: [MaintenanceNotification] {
-        guard !isDemoMode else {
-            return notifications.map { notification in
-                if let inspection = offlineWorkStore.elevatorInspection(notificationID: notification.id) {
-                    let isClosed = inspection.isClosedLocally
-                    let isDef = inspection.closingSystemStatus == "MIAR" || inspection.closingUserStatus.contains("Mnot")
-                    return MaintenanceNotification(
-                        id: notification.id,
-                        title: notification.title,
-                        location: notification.location,
-                        dueDate: notification.dueDate,
-                        equipment: notification.equipment,
-                        sapStatus: notification.sapStatus,
-                        status: isClosed ? .closedLocally : .draft,
-                        completedChecks: inspection.elementValues.count,
-                        totalChecks: notification.totalChecks,
-                        isTemporarilySaved: !isClosed,
-                        isClosedLocally: isClosed,
-                        hasLocalDefect: isDef,
-                        structuralFilterMetadata: notification.structuralFilterMetadata
-                    )
-                }
-                return notification
-            }
-        }
-        return sapDataStore.notifications.map { notification in
-            if let inspection = offlineWorkStore.elevatorInspection(notificationID: notification.id) {
-                let isClosed = inspection.isClosedLocally
-                let isDef = inspection.closingSystemStatus == "MIAR" || inspection.closingUserStatus.contains("Mnot")
-                return MaintenanceNotification(
+        let baseList: [MaintenanceNotification]
+        if isDemoMode {
+            baseList = notifications
+        } else {
+            baseList = sapDataStore.notifications.map { notification in
+                MaintenanceNotification(
                     id: notification.id,
                     title: notification.title.isEmpty ? notification.id : notification.title,
                     location: notification.displayLocation,
                     dueDate: notification.displayDateRange,
                     equipment: notification.functionalLocationID,
                     sapStatus: notification.displayStatus,
+                    status: .open,
+                    completedChecks: 0,
+                    totalChecks: 0,
+                    structuralFilterMetadata: notification.structuralFilterMetadata
+                )
+            }
+        }
+        return baseList.map { notification in
+            if let inspection = offlineWorkStore.elevatorInspection(notificationID: notification.id) {
+                let isClosed = inspection.isClosedLocally
+                let isDef = inspection.closingSystemStatus == "MIAR" || inspection.closingUserStatus.contains("Mnot")
+                return MaintenanceNotification(
+                    id: notification.id,
+                    title: notification.title,
+                    location: notification.location,
+                    dueDate: notification.dueDate,
+                    equipment: notification.equipment,
+                    sapStatus: notification.sapStatus,
                     status: isClosed ? .closedLocally : .draft,
                     completedChecks: inspection.elementValues.count,
-                    totalChecks: 0,
+                    totalChecks: notification.totalChecks,
                     isTemporarilySaved: !isClosed,
                     isClosedLocally: isClosed,
                     hasLocalDefect: isDef,
@@ -160,14 +214,14 @@ final class FacilityDemoViewModel {
             let hasLocalDefect = review?.results.values.contains(.yes) == true
             return MaintenanceNotification(
                 id: notification.id,
-                title: notification.title.isEmpty ? notification.id : notification.title,
-                location: notification.displayLocation,
-                dueDate: notification.displayDateRange,
-                equipment: notification.functionalLocationID,
-                sapStatus: notification.displayStatus,
-                status: isClosedLocally ? .closedLocally : (review == nil ? .open : .draft),
-                completedChecks: 0,
-                totalChecks: 0,
+                title: notification.title,
+                location: notification.location,
+                dueDate: notification.dueDate,
+                equipment: notification.equipment,
+                sapStatus: notification.sapStatus,
+                status: isClosedLocally ? .closedLocally : (review == nil ? notification.status : .draft),
+                completedChecks: notification.completedChecks,
+                totalChecks: notification.totalChecks,
                 isTemporarilySaved: review != nil && !isClosedLocally,
                 isClosedLocally: isClosedLocally,
                 hasLocalDefect: hasLocalDefect,
@@ -519,7 +573,7 @@ enum MockFacilityData {
         .init(id: "4710000012", title: "Aufzugskontrolle Personenaufzug", location: "Gebäude A · Aufzug 1", dueDate: "Heute", equipment: "EQ-100010", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM2", functionalLocationName: "Gebäude A")),
         .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM3", functionalLocationName: "Building A")),
         .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "C", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Building C")),
-        .init(id: "M-30987", title: "Ventilation filter check", location: "Building B · Roof plant", dueDate: "Tomorrow", equipment: "AHU-03", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "B", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "Building B")),
+        .init(id: "005140055904", title: "MTFM_Überprüfung Alarmpläne", location: "GB10_Rauschermühle_V1 Verwaltungsgebäude", dueDate: "Tomorrow", equipment: "DE-SAF-11152-10", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 3, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "SAF", businessEntityCode: "11152", buildingCode: "GB10", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "GB10_Rauschermühle_V1 Verwaltungsgebäude")),
         .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", sapStatus: nil, status: .pending, completedChecks: 4, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "U", tradeCode: "UTIL", formCode: "TFM1", functionalLocationName: "Utility room"))
     ]
 

@@ -351,6 +351,24 @@ struct SAPNotificationDetail: Equatable, Sendable {
     let structure: String
     let equipmentID: String
     let inspectionItems: [InspectionItem]
+    let address: String
+    let formCode: String
+
+    init(
+        summary: SAPNotificationSummary,
+        structure: String = "",
+        equipmentID: String = "",
+        inspectionItems: [InspectionItem] = [],
+        address: String = "",
+        formCode: String = ""
+    ) {
+        self.summary = summary
+        self.structure = structure
+        self.equipmentID = equipmentID
+        self.inspectionItems = inspectionItems
+        self.address = address
+        self.formCode = formCode
+    }
 
     init(summary: SAPNotificationSummary) {
         self.summary = summary
@@ -361,6 +379,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
             structure = ""
             equipmentID = ""
             inspectionItems = []
+            address = ""
+            formCode = summary.structuralFilterMetadata?.formCode ?? ""
             return
         }
 
@@ -375,7 +395,32 @@ struct SAPNotificationDetail: Equatable, Sendable {
 
         structure = Self.stringValue(named: "STRUR", in: payload)
         equipmentID = Self.stringValue(named: "EQUNR", in: payload)
+
+        let street = Self.stringValue(named: "STREET_TO", in: payload)
+        let houseNumber = Self.stringValue(named: "HOUSE_NUM1_TO", in: payload)
+        let postalCode = Self.stringValue(named: "POST_CODE1_TO", in: payload)
+        let city = Self.stringValue(named: "CITY1_TO", in: payload)
+        let streetPart = [street, houseNumber].filter { !$0.isEmpty }.joined(separator: " ")
+        let cityPart = [postalCode, city].filter { !$0.isEmpty }.joined(separator: "-")
+        if !streetPart.isEmpty && !cityPart.isEmpty {
+            address = "\(streetPart) , \(cityPart)"
+        } else {
+            address = streetPart.isEmpty ? cityPart : streetPart
+        }
+
+        let directFormCode = Self.stringValue(named: "STEUS", in: payload)
         let rows = Self.value(named: "T_PLPOD", in: payload) as? [[String: Any]] ?? []
+
+        if !directFormCode.isEmpty {
+            formCode = directFormCode
+        } else if let firstRow = rows.first, let rowControl = Self.stringValue(named: "STEUS", in: firstRow) as String?, !rowControl.isEmpty {
+            formCode = rowControl
+        } else if let structuralForm = summary.structuralFilterMetadata?.formCode, !structuralForm.isEmpty {
+            formCode = structuralForm
+        } else {
+            formCode = ""
+        }
+
         inspectionItems = rows.enumerated().compactMap { index, row in
             let rowType = Self.stringValue(named: "USR00", in: row)
             let fallbackRowType = Self.stringValue(named: "DNAME", in: row)
@@ -438,6 +483,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
         )
         structure = offlineSnapshot.structure
         equipmentID = offlineSnapshot.equipmentID
+        address = offlineSnapshot.address ?? ""
+        formCode = offlineSnapshot.formCode ?? ""
         inspectionItems = offlineSnapshot.inspectionItems.map {
             InspectionItem(
                 id: $0.id,
@@ -476,6 +523,8 @@ extension OfflineNotificationSnapshot {
         userStatus = detail.summary.userStatus
         structure = detail.structure
         equipmentID = detail.equipmentID
+        address = detail.address
+        formCode = detail.formCode
         inspectionItems = detail.inspectionItems.map {
             InspectionItem(
                 id: $0.id,

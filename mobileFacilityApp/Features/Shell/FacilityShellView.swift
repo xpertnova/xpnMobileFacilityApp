@@ -77,6 +77,18 @@ struct FacilityShellView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                             .zIndex(1)
+                        } else if selectedOfflineNotificationDetail.formCode.uppercased() == "TFM1" {
+                            WartungsplanDetailView(
+                                detail: selectedOfflineNotificationDetail,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                            )
+                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
                         } else {
                             NotificationDetailView(
                                 detail: selectedOfflineNotificationDetail,
