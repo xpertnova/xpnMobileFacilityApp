@@ -766,19 +766,21 @@ enum BriefingSignatureRasterizer {
 }
 
 extension View {
-    func briefingFieldChrome(invalid: Bool) -> some View {
+    func briefingFieldChrome(invalid: Bool, isDisabled: Bool = false) -> some View {
         padding(.horizontal, 14)
             .frame(minHeight: 48)
-            .background(Color(uiColor: .systemBackground))
+            .background(Color(uiColor: isDisabled ? .systemGray6 : .systemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(
-                        invalid ? FacilityTheme.red : Color.black.opacity(0.11),
+                        invalid
+                            ? FacilityTheme.red
+                            : (isDisabled ? Color(uiColor: .systemGray4) : Color.black.opacity(0.11)),
                         lineWidth: invalid ? 2 : 1
                     )
             }
-            .shadow(color: Color.black.opacity(0.025), radius: 3, y: 1)
+            .shadow(color: isDisabled ? .clear : Color.black.opacity(0.025), radius: 3, y: 1)
     }
 
     func briefingReadOnlyValue() -> some View {

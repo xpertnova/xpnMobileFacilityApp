@@ -11,9 +11,6 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case proofOfQualification
     case photoCollection
     case mobileLadder
-    /// Work saved by the earlier TFM7 subdistribution feature. The feature is
-    /// not currently available in this build, but existing local entries must
-    /// remain readable so they cannot block unrelated SAP synchronization.
     case subdistribution
     case elevatorInspection
 }
@@ -382,19 +379,6 @@ struct BriefingTemporaryPartner: Codable, Equatable, Sendable {
     }
 }
 
-/// An opaque, lossless representation of a TFM7 subdistribution draft created
-/// by an earlier app version. The TFM7 UI and SAP write contract are not part
-/// of this build, so the JSON is deliberately retained without reinterpretation
-/// or upload. This compatibility wrapper lets the common offline queue continue
-/// loading while preserving the user's existing local record intact.
-struct PersistedSubdistributionPayload: Equatable, Sendable {
-    let jsonData: Data
-
-    init(jsonData: Data) {
-        self.jsonData = jsonData
-    }
-}
-
 enum OfflineWorkPayload: Equatable, Sendable {
     case manualCapture(ManualCaptureDraftPayload)
     case defect(DefectDraftPayload)
@@ -406,7 +390,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case proofOfQualification(ProofOfQualificationDraftPayload)
     case photoCollection(PhotoCollectionDraftPayload)
     case mobileLadder(MobileLadderDraftPayload)
-    case subdistribution(PersistedSubdistributionPayload)
+    case subdistribution(SubdistributionDraftPayload)
     case elevatorInspection(ElevatorInspectionDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
@@ -459,7 +443,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
         return payload
     }
 
-    var subdistribution: PersistedSubdistributionPayload? {
+    var subdistribution: SubdistributionDraftPayload? {
         guard case let .subdistribution(payload) = self else { return nil }
         return payload
     }

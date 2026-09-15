@@ -163,10 +163,6 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 Text("mobileLadder.title")
                     .font(.system(size: 29, weight: .bold))
                     .foregroundStyle(FacilityTheme.ink)
-
-                Text(demo.isDemoMode ? "mobileLadder.mode.demo" : "mobileLadder.mode.production")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 12)
@@ -244,59 +240,35 @@ private enum DisassembledTransition: Hashable, Identifiable {
                     .disabled(model.businessEntities.isEmpty)
                 }
 
-                SafetyFormField("mobileLadder.address.building") {
-                    Button {
+                TechnicalPlaceContextDropdownField(
+                    "mobileLadder.address.building",
+                    placeholder: "briefing.building.placeholder",
+                    iconName: "building.2",
+                    options: model.buildings,
+                    selection: model.selectedBuilding,
+                    isEnabled: model.selectedBusinessEntity != nil,
+                    isPresented: $isBuildingPickerPresented,
+                    onOpen: {
                         isTradePickerPresented = false
                         presentedCatalogField = nil
-                        isBuildingPickerPresented = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text(model.selectedBuilding ?? String(localized: "briefing.building.placeholder"))
-                                .foregroundStyle(model.selectedBuilding == nil ? .secondary : FacilityTheme.ink)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(model.selectedBusinessEntity == nil ? .secondary : FacilityTheme.blue)
-                        }
-                        .briefingFieldChrome(invalid: false)
-                    }
-                    .buttonStyle(.plain)
-                    .facilityPopover(
-                        isPresented: $isBuildingPickerPresented,
-                        arrowEdge: .top
-                    ) {
-                        buildingPicker
-                    }
-                    .disabled(model.selectedBusinessEntity == nil || model.buildings.isEmpty)
-                }
+                    },
+                    onSelect: model.selectBuilding
+                )
 
-                SafetyFormField("mobileLadder.address.trade") {
-                    Button {
+                TechnicalPlaceContextDropdownField(
+                    "mobileLadder.address.trade",
+                    placeholder: "mobileLadder.address.choose",
+                    iconName: "wrench.and.screwdriver",
+                    options: model.trades,
+                    selection: model.selectedTrade,
+                    isEnabled: model.selectedBuilding != nil,
+                    isPresented: $isTradePickerPresented,
+                    onOpen: {
                         isBuildingPickerPresented = false
                         presentedCatalogField = nil
-                        isTradePickerPresented = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Text(model.selectedTrade ?? String(localized: "mobileLadder.address.choose"))
-                                .foregroundStyle(model.selectedTrade == nil ? .secondary : FacilityTheme.ink)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(model.selectedBuilding == nil ? .secondary : FacilityTheme.blue)
-                        }
-                        .briefingFieldChrome(invalid: false)
-                    }
-                    .buttonStyle(.plain)
-                    .facilityPopover(
-                        isPresented: $isTradePickerPresented,
-                        arrowEdge: .top
-                    ) {
-                        tradePicker
-                    }
-                    .disabled(model.selectedBuilding == nil || model.trades.isEmpty)
-                }
+                    },
+                    onSelect: model.selectTrade
+                )
             }
 
             if let context = model.draft.context {
@@ -312,114 +284,6 @@ private enum DisassembledTransition: Hashable, Identifiable {
             }
         }
         .facilityCard(padding: 22)
-    }
-
-    private var buildingPicker: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "building.2")
-                    .foregroundStyle(FacilityTheme.accent)
-                Text("briefing.building.placeholder")
-                    .font(.headline)
-                    .foregroundStyle(FacilityTheme.ink)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-
-            Divider()
-
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(model.buildings, id: \.self) { building in
-                        let isSelected = building == model.selectedBuilding
-
-                        Button {
-                            model.selectBuilding(building)
-                            isBuildingPickerPresented = false
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(building)
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(FacilityTheme.ink)
-                                    .lineLimit(2)
-
-                                Spacer(minLength: 12)
-
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(isSelected ? FacilityTheme.accent : .secondary)
-                            }
-                            .padding(.horizontal, 18)
-                            .frame(minHeight: 52)
-                            .background(isSelected ? FacilityTheme.accentSoft : FacilityTheme.surface)
-                        }
-                        .buttonStyle(.plain)
-
-                        if building != model.buildings.last {
-                            Divider().padding(.leading, 18)
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 300)
-        }
-        .frame(width: 340)
-        .background(FacilityTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var tradePicker: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "wrench.and.screwdriver")
-                    .foregroundStyle(FacilityTheme.accent)
-                Text("mobileLadder.address.trade")
-                    .font(.headline)
-                    .foregroundStyle(FacilityTheme.ink)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-
-            Divider()
-
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(model.trades, id: \.self) { trade in
-                        let isSelected = trade == model.selectedTrade
-
-                        Button {
-                            model.selectTrade(trade)
-                            isTradePickerPresented = false
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(trade)
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(FacilityTheme.ink)
-                                    .lineLimit(2)
-
-                                Spacer(minLength: 12)
-
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(isSelected ? FacilityTheme.accent : .secondary)
-                            }
-                            .padding(.horizontal, 18)
-                            .frame(minHeight: 52)
-                            .background(isSelected ? FacilityTheme.accentSoft : FacilityTheme.surface)
-                        }
-                        .buttonStyle(.plain)
-
-                        if trade != model.trades.last {
-                            Divider().padding(.leading, 18)
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 300)
-        }
-        .frame(width: 340)
-        .background(FacilityTheme.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func metadataValue(_ title: LocalizedStringKey, _ value: String, monospaced: Bool = false) -> some View {
@@ -495,62 +359,18 @@ private enum DisassembledTransition: Hashable, Identifiable {
     }
 
     private var disassembledControls: some View {
-        HStack(spacing: 10) {
-            Toggle(
-                "mobileLadder.field.disassembled",
-                isOn: Binding(
-                    get: { model.draft.isDisassembled },
-                    set: { requestedValue in
-                        guard requestedValue != model.draft.isDisassembled else { return }
-                        disassembledTransition = requestedValue ? .enable : .disable
-                    }
-                )
-            )
-            .fixedSize()
-            .disabled(model.isSaving)
-
-            Button(action: openDisassembledPhotos) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: model.photoCount(for: MobileLadderDraftPayload.disassembledStatusRowID) == 0 ? "camera" : "camera.fill")
-                        .foregroundStyle(
-                            model.draft.isDisassembled
-                                ? FacilityTheme.blue
-                                : Color.secondary.opacity(0.45)
-                        )
-                        .frame(width: 44, height: 44)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-                    let count = model.photoCount(for: MobileLadderDraftPayload.disassembledStatusRowID)
-                    if count > 0 {
-                        Text(count, format: .number)
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(FacilityTheme.blue, in: Circle())
-                            .offset(x: 5, y: -5)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(!model.draft.isDisassembled || model.isSaving)
-            .accessibilityLabel(Text("notifications.detail.photo"))
-            .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), model.photoCount(for: MobileLadderDraftPayload.disassembledStatusRowID))))
-
-            Button { editingCommentID = MobileLadderDraftPayload.disassembledStatusRowID } label: {
-                Image(systemName: (model.draft.disassembledComment ?? "").isEmpty ? "pencil" : "note.text")
-                    .foregroundStyle(
-                        model.draft.isDisassembled
-                            ? FacilityTheme.blue
-                            : Color.secondary.opacity(0.45)
-                    )
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-            }
-            .buttonStyle(.plain)
-            .disabled(!model.draft.isDisassembled || model.isSaving)
-            .accessibilityLabel(Text("notifications.detail.comment"))
-        }
+        TechnicalPlaceStatusControls(
+            title: "mobileLadder.field.disassembled",
+            isStatusActive: model.draft.isDisassembled,
+            photoCount: model.photoCount(for: MobileLadderDraftPayload.disassembledStatusRowID),
+            hasComment: !(model.draft.disassembledComment ?? "").isEmpty,
+            isEnabled: !model.isSaving,
+            requestStatusChange: {
+                disassembledTransition = model.draft.isDisassembled ? .disable : .enable
+            },
+            openPhotos: openDisassembledPhotos,
+            editComment: { editingCommentID = MobileLadderDraftPayload.disassembledStatusRowID }
+        )
     }
 
     private func catalogDropdownField(
@@ -742,55 +562,49 @@ private enum DisassembledTransition: Hashable, Identifiable {
         }
     }
 
+    @ViewBuilder
     private var actionBar: some View {
-        HStack(spacing: 14) {
-            Spacer(minLength: 12)
-
-            if model.isReadOnly {
+        if model.isReadOnly {
+            HStack(spacing: 14) {
+                Spacer(minLength: 12)
                 Button("common.back", action: close)
                     .buttonStyle(.bordered)
                     .tint(FacilityTheme.ink)
-            } else {
-                Button("mobileLadder.action.allOkay") { model.markEverythingOkay() }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(FacilityTheme.blue)
-                    .disabled(model.draft.inspectionItems.isEmpty || model.draft.isDisassembled || model.isSaving)
-
-                Button("mobileLadder.action.temporarySave") {
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .top) { Divider() }
+        } else {
+            FacilityInspectionActionBar(
+                markEverythingOkay: { model.markEverythingOkay() },
+                saveDraft: {
                     Task {
                         if await model.saveTemporarily() {
                             isDraftSavedConfirmationPresented = true
                         }
                     }
-                }
-                .buttonStyle(.bordered)
-                .tint(FacilityTheme.ink)
-                .disabled(model.isSaving)
-                .alert(
-                    "mobileLadder.feedback.saved.title",
-                    isPresented: $isDraftSavedConfirmationPresented
-                ) {
-                    Button("common.ok") { close() }
-                } message: {
-                    Text("mobileLadder.feedback.saved.message")
-                }
-
-                Button(demo.isDemoMode ? "mobileLadder.action.saveDemo" : "mobileLadder.action.close") {
+                },
+                closeNotification: {
                     if demo.isDemoMode {
                         Task { _ = await model.close() }
                     } else {
                         isCloseConfirmationPresented = true
                     }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.accent)
-                .disabled(model.isSaving || !model.isReadyToClose)
+                },
+                isMarkEverythingOkayEnabled: !model.draft.inspectionItems.isEmpty && !model.draft.isDisassembled && !model.isSaving,
+                isSaveDraftEnabled: !model.isSaving,
+                isCloseNotificationEnabled: !model.isSaving && model.isReadyToClose
+            )
+            .alert(
+                "mobileLadder.feedback.saved.title",
+                isPresented: $isDraftSavedConfirmationPresented
+            ) {
+                Button("common.ok") { close() }
+            } message: {
+                Text("mobileLadder.feedback.saved.message")
             }
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider() }
     }
 
     private func commentBinding(for itemID: String) -> Binding<String> {
@@ -887,7 +701,7 @@ private struct MobileLadderInspectionRow: View {
     let openPhotos: () -> Void
     let editComment: () -> Void
     @State private var isShowingInformation = false
-    @State private var expandedPicker: InspectionPickerField?
+    @State private var expandedPicker: MobileLadderInspectionCodePickerKind?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -925,29 +739,43 @@ private struct MobileLadderInspectionRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            InspectionCodePicker(
+            MobileLadderInspectionCodePicker(
                 picker: .result,
-                expandedPicker: $expandedPicker,
                 selection: item.result.map(\.code),
-                options: MobileLadderInspectionResult.allCases.map { InspectionCodeOption(code: $0.code, titleKey: $0.titleKey) },
                 optionsHeight: 250,
                 isEnabled: isEditingEnabled,
-                accessibilityLabel: Text("mobileLadder.column.result")
-            ) { code in
-                item.result = MobileLadderInspectionResult(rawValue: code)
+                accessibilityLabel: "mobileLadder.column.result",
+                expandedPicker: $expandedPicker
+            ) {
+                ForEach(MobileLadderInspectionResult.allCases) { result in
+                    MobileLadderInspectionCodeOption(
+                        code: result.code,
+                        title: String(localized: String.LocalizationValue(result.titleKey))
+                    ) {
+                        item.result = result
+                        expandedPicker = nil
+                    }
+                }
             }
             .frame(width: 160)
 
-            InspectionCodePicker(
+            MobileLadderInspectionCodePicker(
                 picker: .action,
-                expandedPicker: $expandedPicker,
                 selection: item.action.map(\.code),
-                options: MobileLadderInspectionAction.allCases.map { InspectionCodeOption(code: $0.code, titleKey: $0.titleKey) },
                 optionsHeight: 150,
                 isEnabled: isEditingEnabled,
-                accessibilityLabel: Text("mobileLadder.column.action")
-            ) { code in
-                item.action = MobileLadderInspectionAction(rawValue: code)
+                accessibilityLabel: "mobileLadder.column.action",
+                expandedPicker: $expandedPicker
+            ) {
+                ForEach(MobileLadderInspectionAction.allCases) { action in
+                    MobileLadderInspectionCodeOption(
+                        code: action.code,
+                        title: String(localized: String.LocalizationValue(action.titleKey))
+                    ) {
+                        item.action = action
+                        expandedPicker = nil
+                    }
+                }
             }
             .frame(width: 160)
 
@@ -997,6 +825,114 @@ private struct MobileLadderInspectionRow: View {
         .zIndex(expandedPicker == nil ? 0 : 1)
     }
 
+}
+
+/// The original Mobile Ladder inspection selector. It is intentionally shared
+/// with other SAP-driven inspection forms so all result/action dropdowns keep
+/// the same anchored-popover interaction and visual treatment.
+enum MobileLadderInspectionCodePickerKind {
+    case result, action
+}
+
+struct MobileLadderInspectionCodePicker<Options: View>: View {
+    let picker: MobileLadderInspectionCodePickerKind
+    let selection: String?
+    let optionsHeight: CGFloat
+    let isEnabled: Bool
+    let accessibilityLabel: LocalizedStringKey
+    @Binding var expandedPicker: MobileLadderInspectionCodePickerKind?
+    let options: () -> Options
+
+    init(
+        picker: MobileLadderInspectionCodePickerKind,
+        selection: String?,
+        optionsHeight: CGFloat,
+        isEnabled: Bool,
+        accessibilityLabel: LocalizedStringKey,
+        expandedPicker: Binding<MobileLadderInspectionCodePickerKind?>,
+        @ViewBuilder options: @escaping () -> Options
+    ) {
+        self.picker = picker
+        self.selection = selection
+        self.optionsHeight = optionsHeight
+        self.isEnabled = isEnabled
+        self.accessibilityLabel = accessibilityLabel
+        _expandedPicker = expandedPicker
+        self.options = options
+    }
+
+    var body: some View {
+        let isExpanded = expandedPicker == picker
+        Button {
+            expandedPicker = isExpanded ? nil : picker
+        } label: {
+            HStack(spacing: 0) {
+                Text(selection ?? "")
+                    .font(.body)
+                    .monospacedDigit()
+                    .foregroundStyle(FacilityTheme.ink)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(.leading, 18)
+
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isExpanded ? .white : FacilityTheme.blue)
+                    .frame(width: 44, height: 44)
+                    .background(isExpanded ? FacilityTheme.blue : .clear)
+                    .accessibilityHidden(true)
+            }
+            .background(FacilityTheme.surface)
+            .overlay {
+                Rectangle().stroke(isExpanded ? FacilityTheme.blue : .secondary.opacity(0.42))
+            }
+            .frame(width: 120, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityLabel(Text(accessibilityLabel))
+        .popover(isPresented: pickerPresentationBinding) {
+            ScrollView {
+                LazyVStack(spacing: 0) { options() }
+            }
+            .frame(width: 360, height: optionsHeight, alignment: .top)
+            .background(FacilityTheme.surface)
+            .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private var pickerPresentationBinding: Binding<Bool> {
+        Binding(
+            get: { expandedPicker == picker },
+            set: { isPresented in
+                if !isPresented, expandedPicker == picker { expandedPicker = nil }
+            }
+        )
+    }
+}
+
+struct MobileLadderInspectionCodeOption: View {
+    let code: String
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Text(code).monospacedDigit().frame(width: 46, alignment: .leading)
+                Text(verbatim: title).frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .font(.body)
+            .foregroundStyle(FacilityTheme.ink)
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
 }
 
 private extension MobileLadderCreationViewModel.Feedback {

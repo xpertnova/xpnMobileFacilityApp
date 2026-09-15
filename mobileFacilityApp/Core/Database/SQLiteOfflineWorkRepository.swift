@@ -113,14 +113,14 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             case .mobileLadder:
                 payload = .mobileLadder(try decoder.decode(MobileLadderDraftPayload.self, from: data))
             case .subdistribution:
-                // TFM7 subdistribution drafts were persisted by a prior app
-                // version. Keep their original JSON verbatim: this build has
-                // no verified TFM7 edit or upload contract, but those records
-                // must never make the entire offline queue unreadable.
-                guard (try? JSONSerialization.jsonObject(with: data)) != nil else {
-                    throw OfflineWorkRepositoryError.invalidStoredItem
+                if let draft = try? decoder.decode(SubdistributionDraftPayload.self, from: data) {
+                    payload = .subdistribution(draft)
+                } else {
+                    guard (try? JSONSerialization.jsonObject(with: data)) != nil else {
+                        throw OfflineWorkRepositoryError.invalidStoredItem
+                    }
+                    payload = .subdistribution(.init(jsonData: data))
                 }
-                payload = .subdistribution(.init(jsonData: data))
             case .elevatorInspection:
                 payload = .elevatorInspection(try decoder.decode(ElevatorInspectionDraftPayload.self, from: data))
             }
@@ -154,9 +154,7 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         case let (.mobileLadder, .mobileLadder(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         case let (.subdistribution, .subdistribution(payload)):
-            // Preserve historical TFM7 payloads byte-for-byte. No code in
-            // this build creates or uploads them.
-            payloadData = payload.jsonData
+            payloadData = payload.legacyJSONData ?? (try? JSONEncoder().encode(payload))
         case let (.elevatorInspection, .elevatorInspection(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         default:

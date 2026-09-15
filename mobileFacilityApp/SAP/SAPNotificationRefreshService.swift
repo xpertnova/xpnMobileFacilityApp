@@ -651,8 +651,8 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     ) async throws {
         var row = document.metadata
         row["REQID"] = requestID
-        row["FELDWERT"] = document.jpegData.base64EncodedString()
-        guard !row["FELDWERT", default: ""].hasPrefix("data:image") else {
+        row["FELDWERT"] = document.data.base64EncodedString()
+        guard !row["FELDWERT", default: ""].isEmpty else {
             throw SAPReadError.malformedPayload
         }
         let response = try await call(
@@ -1166,6 +1166,146 @@ enum SAPLegacyDataExchangeCodec {
                 characteristics: characteristics, inspectionItems: positions
             )
         }
+    }
+
+    /// Decodes the TFM7 schema as delivered by SAP. Unlike the historical
+    /// Cordova screen, this returns no static field/value fallback: a missing
+    /// plan, class or value-help means the caller presents "unavailable".
+    ///
+    /// The legacy source named `TFM7_001` as the plan, but the synchronized
+    /// SAP payload identifies valid TFM7 plans by their equipment type, plan
+    /// type and position form (`STEUS`). The actual plan number is retained
+    /// with the draft and used again for the outgoing package.
+    static func subdistributionTemplates(
+        planRows: [[String: Any]],
+        classRows: [[String: Any]],
+        equipmentRows: [[String: Any]]
+    ) -> [SubdistributionLegacyTemplate] {
+        let allowedTypes = Set(["TFMNSPV"])
+        let classDefinition = classRows.lazy.compactMap { row -> (row: [String: Any], payload: [String: Any])? in
+            guard let payload = firstDictionary(in: feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            )) else { return nil }
+            let type = firstSAPString(["EQART", "EQART_TO"], from: row, fallback: payload).uppercased()
+            let name = firstSAPString(["CLASS", "KLASSE"], from: row, fallback: payload).uppercased()
+            guard allowedTypes.contains(type) || name.contains("UNTERVERT") else { return nil }
+            return (row, payload)
+        }.first
+        guard let classDefinition else { return [] }
+        let classRow = classDefinition.row
+        let classPayload = classDefinition.payload
+
+        let classJSON = jsonStringValue(classPayload) ?? "{}"
+        let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
+        let characteristicValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
+        let characteristics = characteristicRows.enumerated().compactMap { index, row -> SubdistributionCharacteristic? in
+            let name = firstSAPString(["ATNAM", "CHARACTERISTIC"], from: row)
+            guard !name.isEmpty else { return nil }
+            let values = characteristicValues.compactMap { value -> SubdistributionValue? in
+                guard firstSAPString(["ATNAM", "CHARACTERISTIC"], from: value) == name else { return nil }
+                let code = firstSAPString(["ATWRT", "VALUE"], from: value)
+                guard !code.isEmpty else { return nil }
+                let title = firstSAPString(["ATWTB", "VALUE_TEXT"], from: value)
+                return SubdistributionValue(value: code, title: title.isEmpty ? code : title)
+            }
+            let dataType = firstSAPString(["ATFOR", "DATA_TYPE"], from: row).uppercased()
+            let kind: SubdistributionCharacteristicKind = !values.isEmpty ? .choice : (dataType == "NUM" ? .numeric : .text)
+            return SubdistributionCharacteristic(
+                position: Int(firstSAPString(["ATINN", "POSNR"], from: row)) ?? index,
+                name: name, title: firstSAPString(["ATBEZ", "TITLE"], from: row), kind: kind,
+                maximumLength: Int(firstSAPString(["ANZST", "LENGTH"], from: row)) ?? 0,
+                unit: firstSAPString(["MSEHI", "UNIT"], from: row),
+                required: ["X", "1", "TRUE"].contains(firstSAPString(["ATERF", "PFLICHT", "REQUIRED"], from: row).uppercased()),
+                values: values
+            )
+        }.sorted { $0.position < $1.position }
+        guard !characteristics.isEmpty,
+              characteristics.contains(where: {
+                  $0.name.caseInsensitiveCompare("TFMUNTERVERT_BEZUNTERVERT") == .orderedSame
+                      || $0.name.caseInsensitiveCompare("TFMSCHUTZSCH_UNTERVERTEILUNG") == .orderedSame
+              })
+        else { return [] }
+
+        let equipmentPayload = equipmentRows.compactMap { row -> [String: Any]? in
+            let key = firstSAPString(["LKEY"], from: row).uppercased()
+            let parameter = firstSAPString(["LPAR"], from: row).uppercased()
+            guard key == "EQUIPMENT" || parameter == "EQUIPMENT" else { return nil }
+            return firstDictionary(in: feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ))
+        }.first
+        guard let equipmentPayload else { return [] }
+        let equipmentJSON = jsonStringValue(equipmentPayload) ?? "{}"
+
+        return planRows.compactMap { row -> SubdistributionLegacyTemplate? in
+            guard let decoded = feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ) else { return nil }
+            let payload = decoded as? [String: Any] ?? [:]
+            let equipmentType = firstSAPString(["EQART"], from: row, fallback: payload).uppercased()
+            let planType = firstSAPString(["PLNTY"], from: row, fallback: payload)
+            let planNumber = firstSAPString(["PLNNR"], from: row, fallback: payload)
+            guard equipmentType == "TFMNSPV", planType == "A", !planNumber.isEmpty else { return nil }
+            let rawPositions = (value(named: "T_PLPOD", in: payload) as? [Any]) ?? (decoded as? [Any]) ?? []
+            let positions = rawPositions.compactMap { raw -> SubdistributionInspectionDefinition? in
+                guard let position = raw as? [String: Any] else { return nil }
+                let rowType = firstSAPString(["USR00", "DNAME"], from: position).uppercased()
+                guard rowType.isEmpty || rowType == "POSITION" || rowType == "FOTO" else { return nil }
+                let form = firstSAPString(["STEUS"], from: position)
+                let operation = firstSAPString(["VORNR"], from: position)
+                guard form == "TFM7", !operation.isEmpty else { return nil }
+                let properties = value(named: "T_PROPS", in: position) as? [Any] ?? []
+                func options(at index: Int) -> [SubdistributionValue] {
+                    guard properties.indices.contains(index), let property = properties[index] as? [String: Any] else { return [] }
+                    let keys = semicolonSeparatedValues(stringValue(value(named: "DFVAL", in: property)))
+                    let titles = semicolonSeparatedValues(stringValue(value(named: "DFVAL_TXT", in: property)))
+                    return keys.enumerated().compactMap { offset, rawValue in
+                        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !value.isEmpty else { return nil }
+                        let title = titles.indices.contains(offset) ? titles[offset].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                        return SubdistributionValue(value: value, title: title.isEmpty ? value : title)
+                    }
+                }
+                let isPhotoPosition = rowType == "FOTO"
+                let results = isPhotoPosition ? [] : options(at: 0)
+                let actions = isPhotoPosition ? [] : options(at: 1)
+                return SubdistributionInspectionDefinition(
+                    operation: operation, title: firstSAPString(["LTXA1", "KTEX1"], from: position),
+                    information: firstSAPString(["LTXA2"], from: position),
+                    resultElementID: "TFM7-\(operation)-1", actionElementID: "TFM7-\(operation)-2",
+                    commentElementID: "TFM7-\(operation)-9B", resultValues: results, actionValues: actions,
+                    requiresResult: !results.isEmpty,
+                    requiresPhotoAndComment: isPhotoPosition
+                )
+            }.sorted { $0.operation < $1.operation }
+            // A TFM7 plan without result value-help cannot safely offer the
+            // "Alles OK" action, and is therefore unavailable in production.
+            guard positions.contains(where: \.requiresResult),
+                  positions.filter(\.requiresResult).allSatisfy({
+                      $0.resultValues.contains(where: { $0.value == "1" })
+                  })
+            else { return nil }
+            let formCode = "TFM7"
+            let planVersion = firstSAPString(["PLNAL", "ZAEHL"], from: row, fallback: payload)
+            return SubdistributionLegacyTemplate(
+                id: [equipmentType, planType, planNumber, planVersion].joined(separator: "|"),
+                equipmentType: equipmentType, formCode: formCode, planType: planType, planNumber: planNumber,
+                planVersion: planVersion, title: firstSAPString(["KTEXT", "PLANTEXT", "LTXA1"], from: row, fallback: payload),
+                plant: firstSAPString(["IWERK"], from: row, fallback: payload),
+                plannerGroup: firstSAPString(["INGRP"], from: row, fallback: payload),
+                workCenter: firstSAPString(["GEWRK", "ARBPL"], from: row, fallback: payload),
+                className: firstSAPString(["CLASS", "KLASSE"], from: classRow, fallback: classPayload),
+                classType: firstSAPString(["KLART"], from: classRow, fallback: classPayload),
+                classGroup: firstSAPString(["KLAGR"], from: classPayload),
+                classDataJSON: classJSON, equipmentDataJSON: equipmentJSON,
+                characteristics: characteristics, inspectionItems: positions
+            )
+        }
+    }
+
+    private static func firstDictionary(in value: Any?) -> [String: Any]? {
+        if let dictionary = value as? [String: Any] { return dictionary }
+        return (value as? [Any])?.first { $0 is [String: Any] } as? [String: Any]
     }
 
     private static func packed(method: String, parameters: Encodable) throws -> String {

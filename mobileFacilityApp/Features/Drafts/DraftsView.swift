@@ -53,6 +53,7 @@ struct DraftsView: View {
                         && demo.offlineWorkStore.technicalObjectEditItems.isEmpty
                         && demo.offlineWorkStore.proofOfQualificationItems.isEmpty
                         && demo.offlineWorkStore.mobileLadderItems.isEmpty
+                        && demo.offlineWorkStore.subdistributionItems.isEmpty
                         && demo.offlineWorkStore.photoCollectionItems.isEmpty {
                         emptyState
                     } else {
@@ -109,6 +110,7 @@ struct DraftsView: View {
         LazyVStack(spacing: 12) {
             savedNotificationRows
             savedMobileLadderRows
+            savedSubdistributionRows
             savedDefectRows
             savedMeterReadingRows
             savedBriefingRows
@@ -137,9 +139,29 @@ struct DraftsView: View {
     }
 
     @ViewBuilder
+    private var savedSubdistributionRows: some View {
+        ForEach(demo.offlineWorkStore.subdistributionItems) { item in
+            if let subdistribution = item.payload.subdistribution {
+                let name = subdistribution.characteristicValues["TFMUNTERVERT_BEZUNTERVERT"]
+                    ?? subdistribution.characteristicValues["TFMSCHUTZSCH_UNTERVERTEILUNG"]
+                    ?? ""
+                LocalWorkTemplateRow(
+                    icon: "⚡",
+                    title: Text(name.isEmpty ? String(localized: "subdistribution.title") : name),
+                    subtitle: Text(subdistribution.context?.legacyContext.functionalLocation ?? String(localized: "subdistribution.context.notSelected")),
+                    status: demo.isDemoMode ? .demoLocal : .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openSubdistribution(item.id) }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
     private var savedPhotoCollections: some View {
         ForEach(demo.offlineWorkStore.photoCollectionItems.filter {
-            $0.payload.photoCollection?.scope.workflow != .mobileLadder
+            let workflow = $0.payload.photoCollection?.scope.workflow
+            return workflow != .mobileLadder && workflow != .subdistribution
         }) { item in
             if let collection = item.payload.photoCollection, !collection.attachments.isEmpty {
                 LocalWorkTemplateRow(

@@ -12,6 +12,7 @@ final class FacilityDemoViewModel {
     let photoAttachmentStore: any PhotoAttachmentStore
     let mobileLadderCreationProvider: any MobileLadderCreationProviding
     let elevatorAssetDataProvider: any ElevatorAssetDataProviding
+    let subdistributionCreationProvider: any SubdistributionCreationProviding
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     private(set) var profileSettingsReturnDestination: AppDestination = .overview
@@ -50,6 +51,7 @@ final class FacilityDemoViewModel {
         photoAttachmentStore: any PhotoAttachmentStore,
         mobileLadderCreationProvider: (any MobileLadderCreationProviding)? = nil,
         elevatorAssetDataProvider: (any ElevatorAssetDataProviding)? = nil,
+        subdistributionCreationProvider: (any SubdistributionCreationProviding)? = nil,
         workerDisplayName: String = "Alex Morgan",
         workerRole: FacilityUserRole = .technician
     ) {
@@ -71,6 +73,14 @@ final class FacilityDemoViewModel {
             self.elevatorAssetDataProvider = DemoElevatorAssetDataProvider()
         } else {
             self.elevatorAssetDataProvider = sapDataStore
+        }
+
+        if let subdistributionCreationProvider {
+            self.subdistributionCreationProvider = subdistributionCreationProvider
+        } else if isDemoMode {
+            self.subdistributionCreationProvider = DemoSubdistributionCreationProvider()
+        } else {
+            self.subdistributionCreationProvider = sapDataStore
         }
         self.technicalPlacesStore = TechnicalPlacesViewModel(
             sapDataStore: sapDataStore,
@@ -248,6 +258,15 @@ final class FacilityDemoViewModel {
     }
 
     func closeMobileLadder() {
+        technicalPlacesRoute = .hierarchy
+    }
+
+    func openSubdistribution(_ itemID: UUID? = nil) {
+        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.subdistributionDraft) ?? .createSubdistribution
+        selection = .technicalPlaces
+    }
+
+    func closeSubdistribution() {
         technicalPlacesRoute = .hierarchy
     }
 

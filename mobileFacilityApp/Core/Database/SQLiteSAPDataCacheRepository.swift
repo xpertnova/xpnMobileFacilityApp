@@ -18,7 +18,7 @@ private actor LegacyIncomingSynchronizationRegistry {
 
 private let legacyIncomingSynchronizationRegistry = LegacyIncomingSynchronizationRegistry()
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, MobileLadderCreationProviding, ElevatorAssetDataProviding {
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -340,6 +340,66 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             "loaded \(assetData.characteristics.count) classification characteristics"
         )
         return assetData
+    }
+
+    func loadSubdistributionCreationData(for workerID: String) async throws -> SubdistributionCreationData {
+        try validateWorker(workerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let templates = SAPLegacyDataExchangeCodec.subdistributionTemplates(
+            planRows: try Self.rows(in: "FROM_T0267", on: database),
+            classRows: try Self.rows(in: "FROM_T0263", on: database),
+            equipmentRows: try Self.rows(in: "FROM_T0268", on: database)
+        )
+        guard !templates.isEmpty else { return .empty }
+
+        let contexts = try Self.rows(in: "FROM_T0272", on: database).compactMap { row -> SubdistributionCreationContext? in
+            func string(_ key: String) -> String { row[key] as? String ?? "" }
+            let deletionFlag = string("LVORM").uppercased()
+            let userStatus = string("USTXT")
+            let parentType = string("EQART").uppercased()
+            // Cordova allows only an active existing subdistribution or
+            // subdistribution distributor as the parent of TFMNSPV.
+            guard deletionFlag != "X", parentType == "TFMNSPV" || parentType == "TFMNSPVER",
+                  userStatus.localizedCaseInsensitiveContains("iBet")
+            else { return nil }
+            let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
+            let building = string("TPGEB")
+            let segment = string("TPGSG")
+            guard !functionalLocation.isEmpty, !building.isEmpty, !segment.isEmpty else { return nil }
+            guard let template = templates.first(where: {
+                ($0.plant.isEmpty || $0.plant == string("IWERK"))
+                    && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
+            }) ?? templates.first,
+            let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
+            let sourceJSON = String(data: sourceData, encoding: .utf8)
+            else { return nil }
+
+            let cityLine = [string("POST_CODE1"), string("CITY1")].filter { !$0.isEmpty }.joined(separator: " ")
+            let businessCode = [string("TPLND"), string("TPORT"), string("TPWEH")]
+                .filter { !$0.isEmpty }.joined(separator: "-")
+            let businessTitle = [businessCode, cityLine, string("STREET")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let buildingTitle = [building, string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let parentTitle = [functionalLocation, string("EQKTX"), string("PLTXT")]
+                .filter { !$0.isEmpty }.joined(separator: " · ")
+            return SubdistributionCreationContext(
+                businessEntity: businessTitle.isEmpty ? string("TPWEH") : businessTitle,
+                building: buildingTitle.isEmpty ? functionalLocation : buildingTitle,
+                parentLocation: parentTitle,
+                legacyContext: SubdistributionLegacyContext(
+                    client: string("MANDT"), functionalLocation: functionalLocation, parentEquipmentType: parentType,
+                    country: string("TPLND"), location: string("TPORT"), businessEntity: string("TPWEH"),
+                    building: building, segment: segment, plant: string("IWERK"), plannerGroup: string("INGRP"),
+                    workCenter: string("GEWRK").isEmpty ? string("ARBPL") : string("GEWRK"),
+                    addressNumber: string("ADRNR"), contactName: string("NAME_LIST"), city: string("CITY1"),
+                    postalCode: string("POST_CODE1"), street: string("STREET"), sourceNotificationJSON: sourceJSON,
+                    template: template
+                )
+            )
+        }
+        let uniqueContexts = Dictionary(grouping: contexts, by: \SubdistributionCreationContext.id)
+            .compactMap { $0.value.first }
+            .sorted { ($0.businessEntity, $0.building, $0.parentLocation) < ($1.businessEntity, $1.building, $1.parentLocation) }
+        return SubdistributionCreationData(contexts: uniqueContexts)
     }
 
     func loadNotifications(
