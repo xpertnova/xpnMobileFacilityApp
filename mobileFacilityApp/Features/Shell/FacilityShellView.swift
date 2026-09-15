@@ -63,17 +63,31 @@ struct FacilityShellView: View {
                         .transition(.opacity)
 
                     if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
-                        NotificationDetailView(
-                            detail: selectedOfflineNotificationDetail,
-                            offlineWorkStore: demo.offlineWorkStore,
-                            photoAttachmentStore: demo.photoAttachmentStore,
-                            backDestination: demo.offlineNotificationDetailReturnDestination,
-                            dismiss: { demo.dismissOfflineNotificationDetail() }
-                        )
-                        .id(selectedOfflineNotificationDetail.summary.id)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                        .zIndex(1)
+                        if selectedOfflineNotificationDetail.formCode.uppercased() == "TFM1" {
+                            WartungsplanDetailView(
+                                detail: selectedOfflineNotificationDetail,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                            )
+                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
+                        } else {
+                            NotificationDetailView(
+                                detail: selectedOfflineNotificationDetail,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                            )
+                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
+                        }
                     }
 
                     if demo.selection == .profileSettings {

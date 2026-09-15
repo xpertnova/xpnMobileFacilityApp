@@ -228,6 +228,52 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
     let structure: String
     let equipmentID: String
     let inspectionItems: [InspectionItem]
+    let address: String?
+    let formCode: String?
+
+    init(
+        title: String,
+        functionalLocationID: String,
+        functionalLocationName: String,
+        startDate: String,
+        endDate: String,
+        systemStatus: String,
+        userStatus: String,
+        structure: String,
+        equipmentID: String,
+        inspectionItems: [InspectionItem],
+        address: String? = nil,
+        formCode: String? = nil
+    ) {
+        self.title = title
+        self.functionalLocationID = functionalLocationID
+        self.functionalLocationName = functionalLocationName
+        self.startDate = startDate
+        self.endDate = endDate
+        self.systemStatus = systemStatus
+        self.userStatus = userStatus
+        self.structure = structure
+        self.equipmentID = equipmentID
+        self.inspectionItems = inspectionItems
+        self.address = address
+        self.formCode = formCode
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        functionalLocationID = try container.decode(String.self, forKey: .functionalLocationID)
+        functionalLocationName = try container.decode(String.self, forKey: .functionalLocationName)
+        startDate = try container.decode(String.self, forKey: .startDate)
+        endDate = try container.decode(String.self, forKey: .endDate)
+        systemStatus = try container.decode(String.self, forKey: .systemStatus)
+        userStatus = try container.decode(String.self, forKey: .userStatus)
+        structure = try container.decode(String.self, forKey: .structure)
+        equipmentID = try container.decode(String.self, forKey: .equipmentID)
+        inspectionItems = try container.decode([InspectionItem].self, forKey: .inspectionItems)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        formCode = try container.decodeIfPresent(String.self, forKey: .formCode)
+    }
 }
 
 struct NotificationPhotoAttachment: Codable, Equatable, Identifiable, Sendable {

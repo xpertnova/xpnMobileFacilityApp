@@ -57,7 +57,7 @@ struct NotificationDetailView: View {
         )
         .overlay {
             if let editingCommentID {
-                CommentEditorOverlay(
+                NotificationCommentEditorOverlay(
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
                 )
@@ -175,27 +175,52 @@ struct NotificationDetailView: View {
     private var metadataCard: some View {
         HStack(alignment: .top, spacing: 30) {
             VStack(alignment: .leading, spacing: 15) {
-                metadataRow(
-                    "notifications.detail.technicalPlace",
-                    detail.summary.functionalLocationID,
+                NotificationMetadataRow(
+                    titleKey: "notifications.detail.technicalPlace",
+                    value: detail.summary.functionalLocationID,
                     monospaced: true
                 )
-                metadataRow("notifications.detail.description", detail.summary.functionalLocationName)
+                NotificationMetadataRow(
+                    titleKey: "notifications.detail.description",
+                    value: detail.summary.functionalLocationName
+                )
 
+                if !detail.address.isEmpty {
+                    NotificationMetadataRow(
+                        titleKey: "notifications.detail.address",
+                        value: detail.address
+                    )
+                }
                 if !detail.structure.isEmpty {
-                    metadataRow("notifications.detail.structure", detail.structure)
+                    NotificationMetadataRow(
+                        titleKey: "notifications.detail.structure",
+                        value: detail.structure
+                    )
                 }
                 if !detail.equipmentID.isEmpty {
-                    metadataRow("notifications.detail.equipment", detail.equipmentID, monospaced: true)
+                    NotificationMetadataRow(
+                        titleKey: "notifications.detail.equipment",
+                        value: detail.equipmentID,
+                        monospaced: true
+                    )
                 }
                 if !detail.summary.systemStatus.isEmpty {
-                    metadataRow("notifications.detail.systemStatus", detail.summary.systemStatus)
+                    NotificationMetadataRow(
+                        titleKey: "notifications.detail.systemStatus",
+                        value: detail.summary.systemStatus
+                    )
                 }
                 if !detail.summary.userStatus.isEmpty {
-                    metadataRow("notifications.detail.userStatus", detail.summary.userStatus)
+                    NotificationMetadataRow(
+                        titleKey: "notifications.detail.userStatus",
+                        value: detail.summary.userStatus
+                    )
                 }
                 if !detail.summary.displayDateRange.isEmpty {
-                    metadataRow("notifications.detail.dateRange", detail.summary.displayDateRange)
+                    NotificationMetadataRow(
+                        titleKey: "notifications.detail.dateRange",
+                        value: detail.summary.displayDateRange
+                    )
                 }
             }
 
@@ -228,26 +253,6 @@ struct NotificationDetailView: View {
             .frame(width: 190, alignment: .leading)
         }
         .facilityCard(padding: 22)
-    }
-
-    private func metadataRow(
-        _ titleKey: String,
-        _ value: String,
-        monospaced: Bool = false
-    ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 24) {
-            Text(LocalizedStringKey(titleKey))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 180, alignment: .leading)
-
-            Text(value)
-                .font(monospaced ? .subheadline.monospaced() : .body)
-                .foregroundStyle(FacilityTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-        }
     }
 
     private var inspectionCard: some View {
@@ -378,59 +383,6 @@ private extension NotificationReviewViewModel.Feedback {
     }
 }
 
-private struct CommentEditorOverlay: View {
-    @Binding var comment: String
-    let dismiss: () -> Void
-    @FocusState private var isEditorFocused: Bool
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.14)
-                .ignoresSafeArea()
-                .onTapGesture(perform: dismiss)
-
-            VStack(alignment: .leading, spacing: 16) {
-                Text("notifications.detail.commentEditor.title")
-                    .font(.headline)
-                    .foregroundStyle(FacilityTheme.ink)
-
-                ZStack(alignment: .topLeading) {
-                    if comment.isEmpty {
-                        Text("notifications.detail.commentEditor.placeholder")
-                            .font(.body)
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 18)
-                            .allowsHitTesting(false)
-                    }
-
-                    TextEditor(text: $comment)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .padding(10)
-                        .focused($isEditorFocused)
-                        .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
-                }
-                .frame(height: 190)
-                .background(Color(white: 0.89), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                HStack {
-                    Spacer()
-                    Button("notifications.detail.commentEditor.done", action: dismiss)
-                        .buttonStyle(.borderedProminent)
-                        .tint(FacilityTheme.accent)
-                }
-            }
-            .padding(22)
-            .frame(maxWidth: 460)
-            .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
-            .padding(28)
-        }
-        .onAppear { isEditorFocused = true }
-    }
-}
-
 private struct InspectionItemRow: View {
     let item: SAPNotificationDetail.InspectionItem
     let number: Int
@@ -442,7 +394,6 @@ private struct InspectionItemRow: View {
     let openPhotos: () -> Void
     let comment: String
     let editComment: () -> Void
-    @State private var isShowingInformation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -461,28 +412,7 @@ private struct InspectionItemRow: View {
                     .accessibilityHidden(!isResultMissing)
 
                 HStack(spacing: 10) {
-                    if item.information.isEmpty {
-                        Image(systemName: "info.circle")
-                            .foregroundStyle(.tertiary)
-                            .frame(width: 28, height: 28)
-                    } else {
-                        Button {
-                            isShowingInformation = true
-                        } label: {
-                            Image(systemName: "info.circle.fill")
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(FacilityTheme.blue)
-                                .frame(width: 52, height: 52)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text("notifications.detail.showInformation"))
-                        .popover(isPresented: $isShowingInformation) {
-                            Text(item.information)
-                                .font(.body)
-                                .padding(20)
-                                .frame(width: 360, alignment: .leading)
-                        }
-                    }
+                    NotificationInfoButton(information: item.information)
 
                     Text(item.title)
                         .font(.body)
@@ -493,39 +423,13 @@ private struct InspectionItemRow: View {
                 resultControl
                     .frame(width: 130)
 
-                Button(action: openPhotos) {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: attachments.isEmpty ? "camera" : "camera.fill")
-                            .foregroundStyle(attachments.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                            .frame(width: 44, height: 44)
-                            .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-                        if !attachments.isEmpty {
-                            Text(attachments.count, format: .number)
-                                .font(.caption2.bold())
-                                .foregroundStyle(.white)
-                                .frame(minWidth: 18, minHeight: 18)
-                                .background(FacilityTheme.blue, in: Circle())
-                                .offset(x: 5, y: -5)
-                        }
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("notifications.detail.photo"))
-                .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), attachments.count)))
-                .frame(width: 52)
+                NotificationPhotoButton(count: attachments.count, action: openPhotos)
 
-                Button(action: editComment) {
-                    Image(systemName: comment.isEmpty ? "pencil" : "note.text")
-                        .foregroundStyle(comment.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                        .frame(width: 44, height: 44)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-                }
-                .buttonStyle(.plain)
-                .disabled(isReadOnly)
-                .accessibilityLabel(Text("notifications.detail.comment"))
-                .frame(width: 58)
+                NotificationCommentButton(
+                    hasComment: !comment.isEmpty,
+                    isReadOnly: isReadOnly,
+                    action: editComment
+                )
             }
 
         }

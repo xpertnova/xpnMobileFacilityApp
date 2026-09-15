@@ -70,14 +70,14 @@ struct NotificationsView: View {
 
     var body: some View {
         ZStack {
-            if let selectedSAPNotification = demo.selectedSAPNotification {
-                SAPNotificationDetailScreen(
-                    summary: selectedSAPNotification,
+            if let detail = demo.selectedNotificationDetail {
+                NotificationDetailScreen(
+                    detail: detail,
                     offlineWorkStore: demo.offlineWorkStore,
                     photoAttachmentStore: demo.photoAttachmentStore,
                     dismiss: { demo.selectedNotificationID = nil }
                 )
-                .id(selectedSAPNotification.id)
+                .id(detail.summary.id)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
                 .zIndex(1)
             } else {
@@ -331,7 +331,7 @@ struct NotificationsView: View {
                 }
             }
 
-            if let notification = demo.selectedNotification {
+            if let notification = demo.selectedNotification, demo.selectedNotificationDetail == nil {
                 NotificationDetailCard(notification: notification, isReadOnly: !demo.isDemoMode) {
                     demo.finishChecks(for: notification)
                 }
@@ -780,32 +780,30 @@ private struct StructuralFilterControlAnchorKey: PreferenceKey {
 /// Holds the decoded `FELDWERT` detail for the lifetime of one selected
 /// notification. Rebuilding it in `NotificationsView.body` made decoding part
 /// of unrelated SwiftUI invalidations while the user was reading the checklist.
-private struct SAPNotificationDetailScreen: View {
-    @State private var detail: SAPNotificationDetail
+private struct NotificationDetailScreen: View {
+    let detail: SAPNotificationDetail
     let offlineWorkStore: OfflineWorkStore
     let photoAttachmentStore: any PhotoAttachmentStore
     let dismiss: () -> Void
 
-    init(
-        summary: SAPNotificationSummary,
-        offlineWorkStore: OfflineWorkStore,
-        photoAttachmentStore: any PhotoAttachmentStore,
-        dismiss: @escaping () -> Void
-    ) {
-        _detail = State(initialValue: SAPNotificationDetail(summary: summary))
-        self.offlineWorkStore = offlineWorkStore
-        self.photoAttachmentStore = photoAttachmentStore
-        self.dismiss = dismiss
-    }
-
     var body: some View {
-        NotificationDetailView(
-            detail: detail,
-            offlineWorkStore: offlineWorkStore,
-            photoAttachmentStore: photoAttachmentStore,
-            backDestination: .notifications,
-            dismiss: dismiss
-        )
+        if detail.formCode.uppercased() == "TFM1" {
+            WartungsplanDetailView(
+                detail: detail,
+                offlineWorkStore: offlineWorkStore,
+                photoAttachmentStore: photoAttachmentStore,
+                backDestination: .notifications,
+                dismiss: dismiss
+            )
+        } else {
+            NotificationDetailView(
+                detail: detail,
+                offlineWorkStore: offlineWorkStore,
+                photoAttachmentStore: photoAttachmentStore,
+                backDestination: .notifications,
+                dismiss: dismiss
+            )
+        }
     }
 }
 
