@@ -78,16 +78,6 @@
         }
       }
     },
-    "%@: %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@: %2$@"
-          }
-        }
-      }
-    },
     "%@. %@" : {
       "localizations" : {
         "en" : {
@@ -6540,9 +6530,6 @@
         }
       }
     },
-    "i" : {
-
-    },
     "inspection.action.closeNotification" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8876,6 +8863,7 @@
       }
     },
     "mobileLadder.title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9227,6 +9215,23 @@
         }
       }
     },
+    "notifications.detail.address" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adresse"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Address"
+          }
+        }
+      }
+    },
     "notifications.detail.allGood" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9405,23 +9410,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Comment"
-          }
-        }
-      }
-    },
-    "notifications.detail.address" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adresse"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Address"
           }
         }
       }
@@ -13789,6 +13777,23 @@
         }
       }
     },
+    "sap.refresh.details.incomingAcknowledgementOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM003 · Empfangsverarbeitung prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM003 · check incoming processing"
+          }
+        }
+      }
+    },
     "sap.refresh.details.operation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13806,23 +13811,6 @@
         }
       }
     },
-    "sap.refresh.details.postAcknowledgementOperation" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MMTFM002 · Verarbeitung der Übertragung prüfen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MMTFM002 · check outgoing processing"
-          }
-        }
-      }
-    },
     "sap.refresh.details.passwordOperation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13836,6 +13824,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "M0153003 · SAP password check"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.postAcknowledgementOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM002 · Verarbeitung der Übertragung prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM002 · check outgoing processing"
           }
         }
       }
@@ -13874,23 +13879,6 @@
         }
       }
     },
-    "sap.refresh.details.incomingAcknowledgementOperation" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MMTFM003 · Empfangsverarbeitung prüfen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MMTFM003 · check incoming processing"
-          }
-        }
-      }
-    },
     "sap.refresh.details.receivePackageOperation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -13904,6 +13892,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "M0002003 · receive data package"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.response" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serverantwort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server response"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.savedTokenOperation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0155003 · gespeicherte Sitzung prüfen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "M0155003 · saved session check"
           }
         }
       }
@@ -13925,19 +13947,36 @@
         }
       }
     },
-    "sap.refresh.details.response" : {
+    "sap.refresh.details.stage" : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Serverantwort"
+            "value" : "Abgebrochen bei"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Server response"
+            "value" : "Stopped during"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Details"
           }
         }
       }
@@ -13989,57 +14028,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MMTFM008 · check SAP compatibility"
-          }
-        }
-      }
-    },
-    "sap.refresh.details.savedTokenOperation" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "M0155003 · gespeicherte Sitzung prüfen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "M0155003 · saved session check"
-          }
-        }
-      }
-    },
-    "sap.refresh.details.stage" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Abgebrochen bei"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stopped during"
-          }
-        }
-      }
-    },
-    "sap.refresh.details.title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Details"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Details"
           }
         }
       }
@@ -15447,9 +15435,6 @@
         }
       }
     },
-    "TFM2" : {
-
-    },
     "subdistribution.action.allOkay" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -16096,7 +16081,7 @@
             "value" : "Check entries"
           }
         }
-}
+      }
     },
     "vorschlag.history" : {
       "localizations" : {

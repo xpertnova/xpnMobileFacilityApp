@@ -121,138 +121,33 @@ struct NotificationDetailView: View {
         )
     }
 
-    private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 7) {
-                Button {
-                    Task {
-                        await model.cancel()
-                        dismiss()
-                    }
-                } label: {
-                    Label(LocalizedStringKey(backDestination.titleKey), systemImage: "chevron.left")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(FacilityTheme.blue)
-                .frame(minHeight: 44, alignment: .leading)
-
-                Text(detail.summary.title.isEmpty ? detail.summary.id : detail.summary.title)
-                    .font(.system(size: 29, weight: .bold))
-                    .foregroundStyle(FacilityTheme.ink)
-
-                Text(notificationSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 12)
-
-            VStack(alignment: .trailing, spacing: 10) {
-                if !detail.summary.displayStatus.isEmpty {
-                    Text(detail.summary.displayStatus)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.blue)
-                        .multilineTextAlignment(.trailing)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(FacilityTheme.blue.opacity(0.10), in: Capsule())
-                }
-            }
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 18)
-        .background(FacilityTheme.surface)
+    private var headerInfo: NotificationFormHeaderInfo {
+        NotificationFormHeaderInfo(detail: detail)
     }
 
-    private var notificationSubtitle: String {
-        let identifier = "\(String(localized: "notifications.detail.number")) \(detail.summary.id)"
-        return [identifier, detail.summary.displayDateRange]
-            .filter { !$0.isEmpty }
-            .joined(separator: " · ")
+    private var header: some View {
+        NotificationFormHeaderBar(
+            info: headerInfo,
+            backTitleKey: backDestination.titleKey,
+            isClosedLocally: model.isClosedLocally,
+            back: {
+                Task {
+                    await model.cancel()
+                    dismiss()
+                }
+            }
+        )
     }
 
     private var metadataCard: some View {
-        HStack(alignment: .top, spacing: 30) {
-            VStack(alignment: .leading, spacing: 15) {
-                NotificationMetadataRow(
-                    titleKey: "notifications.detail.technicalPlace",
-                    value: detail.summary.functionalLocationID,
-                    monospaced: true
-                )
-                NotificationMetadataRow(
-                    titleKey: "notifications.detail.description",
-                    value: detail.summary.functionalLocationName
-                )
-
-                if !detail.address.isEmpty {
-                    NotificationMetadataRow(
-                        titleKey: "notifications.detail.address",
-                        value: detail.address
-                    )
-                }
-                if !detail.structure.isEmpty {
-                    NotificationMetadataRow(
-                        titleKey: "notifications.detail.structure",
-                        value: detail.structure
-                    )
-                }
-                if !detail.equipmentID.isEmpty {
-                    NotificationMetadataRow(
-                        titleKey: "notifications.detail.equipment",
-                        value: detail.equipmentID,
-                        monospaced: true
-                    )
-                }
-                if !detail.summary.systemStatus.isEmpty {
-                    NotificationMetadataRow(
-                        titleKey: "notifications.detail.systemStatus",
-                        value: detail.summary.systemStatus
-                    )
-                }
-                if !detail.summary.userStatus.isEmpty {
-                    NotificationMetadataRow(
-                        titleKey: "notifications.detail.userStatus",
-                        value: detail.summary.userStatus
-                    )
-                }
-                if !detail.summary.displayDateRange.isEmpty {
-                    NotificationMetadataRow(
-                        titleKey: "notifications.detail.dateRange",
-                        value: detail.summary.displayDateRange
-                    )
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("notifications.detail.performedOn")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                DatePicker(
-                    "notifications.detail.performedOn",
-                    selection: Binding(
-                        get: { model.performedOn },
-                        set: { model.performedOn = $0 }
-                    ),
-                    displayedComponents: .date
-                )
-                .labelsHidden()
-                .datePickerStyle(.compact)
-                .disabled(isEditingDisabled)
-                .padding(.horizontal, 8)
-                .frame(minHeight: 44)
-                .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(.gray.opacity(0.22))
-                }
-            }
-            .frame(width: 190, alignment: .leading)
-        }
-        .facilityCard(padding: 22)
+        NotificationFormHeaderCard(
+            info: headerInfo,
+            performedOn: Binding(
+                get: { model.performedOn },
+                set: { model.performedOn = $0 }
+            ),
+            isPerformedOnDisabled: isEditingDisabled
+        )
     }
 
     private var inspectionCard: some View {
