@@ -1556,18 +1556,23 @@ enum SAPLegacyDataExchangeCodec {
         guard type == "I1", systemStatus != "MMAB", !id.isEmpty else { return nil }
         let rawPayloadJSON = (try? JSONSerialization.data(withJSONObject: mergedNotificationData))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let functionalLocationName = stringValue(value(named: "PLTXT", in: mergedNotificationData))
         return SAPNotificationSummary(
             id: id,
             client: stringValue(value(named: "MANDT", in: mergedNotificationData)),
             title: stringValue(value(named: "QMTXT", in: mergedNotificationData)),
             functionalLocationID: stringValue(value(named: "STRNO", in: mergedNotificationData)),
-            functionalLocationName: stringValue(value(named: "PLTXT", in: mergedNotificationData)),
+            functionalLocationName: functionalLocationName,
             equipmentID: stringValue(value(named: "EQUNR", in: mergedNotificationData)),
             startDate: stringValue(value(named: "STRMN", in: mergedNotificationData)),
             endDate: stringValue(value(named: "LTRMN", in: mergedNotificationData)),
             systemStatus: systemStatus,
             userStatus: stringValue(value(named: "USTXT", in: mergedNotificationData)),
-            rawPayloadJSON: rawPayloadJSON
+            rawPayloadJSON: rawPayloadJSON,
+            structuralFilterMetadata: SAPNotificationSummary.structuralFilterMetadata(
+                from: mergedNotificationData,
+                functionalLocationName: functionalLocationName
+            )
         )
     }
 

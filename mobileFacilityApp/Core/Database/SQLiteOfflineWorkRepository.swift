@@ -17,6 +17,7 @@ enum SQLiteC {
     @_silgen_name("sqlite3_prepare_v2") static func prepare(_ database: OpaquePointer?, _ sql: UnsafePointer<CChar>?, _ length: Int32, _ statement: UnsafeMutablePointer<OpaquePointer?>?, _ tail: UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Int32
     @_silgen_name("sqlite3_finalize") static func finalize(_ statement: OpaquePointer?) -> Int32
     @_silgen_name("sqlite3_step") static func step(_ statement: OpaquePointer?) -> Int32
+    @_silgen_name("sqlite3_reset") static func reset(_ statement: OpaquePointer?) -> Int32
     @_silgen_name("sqlite3_bind_text") static func bindText(_ statement: OpaquePointer?, _ index: Int32, _ value: UnsafePointer<CChar>?, _ length: Int32, _ destructor: SQLiteDestructor?) -> Int32
     @_silgen_name("sqlite3_bind_null") static func bindNull(_ statement: OpaquePointer?, _ index: Int32) -> Int32
     @_silgen_name("sqlite3_column_text") static func columnText(_ statement: OpaquePointer?, _ index: Int32) -> UnsafePointer<CChar>?

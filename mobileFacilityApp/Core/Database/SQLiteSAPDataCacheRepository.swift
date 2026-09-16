@@ -42,6 +42,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
 
     nonisolated let databaseURL: URL
     private let localWorkerID: String?
+    private let notificationListIndex: SQLiteNotificationListIndex?
     private var database: OpaquePointer?
     private var stagedOutgoingRowIDs: [String: [Int64]] = [:]
     private var stagedOutgoingRequestID: String?
@@ -53,6 +54,11 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     init(databaseURL: URL, workerID: String? = nil) throws {
         self.databaseURL = databaseURL
         localWorkerID = workerID
+        notificationListIndex = try? SQLiteNotificationListIndex(
+            databaseURL: databaseURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("notification-list-index.sqlite")
+        )
         try FileManager.default.createDirectory(
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -105,6 +111,14 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     func load(for localWorkerID: String) async throws -> SAPCachedData {
         try validateWorker(localWorkerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
+        let metadata = try Self.metadata(on: database)
+        if let metadata {
+            await rebuildNotificationListIndexIfNeeded(
+                for: localWorkerID,
+                metadata: metadata,
+                on: database
+            )
+        }
         let profile = try Self.rows(in: "USER", on: database)
             .compactMap(SAPLegacyDataExchangeCodec.workerProfile(from:))
             .first
@@ -119,8 +133,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             workerProfile: profile,
             briefingPartners: partners,
             briefingTemplates: templates,
-            technicalObjects: try Self.technicalObjects(on: database),
-            metadata: try Self.metadata(on: database)
+            technicalObjects: [],
+            metadata: metadata
         )
     }
 
@@ -411,6 +425,16 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     ) async throws -> SAPNotificationPage {
         try validateWorker(localWorkerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
+        if let indexedPage = await indexedNotificationPage(
+            for: localWorkerID,
+            matching: searchText,
+            structuralFilter: structuralFilter,
+            limit: limit,
+            offset: offset,
+            on: database
+        ) {
+            return indexedPage
+        }
         let search = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let matching = try Self.notifications(on: database)
             .filter { notification in
@@ -437,6 +461,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     ) async throws -> [NotificationStructuralFilterMetadata] {
         try validateWorker(localWorkerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
+        if let indexedMetadata = await indexedNotificationFilterMetadata(
+            for: localWorkerID,
+            on: database
+        ) {
+            return indexedMetadata
+        }
         let values = try Self.notifications(on: database).compactMap(\.structuralFilterMetadata)
         return Array(Set(values)).sorted { $0.id < $1.id }
     }
@@ -766,11 +796,37 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             )
             throw error
         }
+        if let metadata = try? Self.metadata(on: database) {
+            await rebuildNotificationListIndexIfNeeded(
+                for: localWorkerID ?? sapWorkerID,
+                metadata: metadata,
+                on: database
+            )
+        }
         return try await load(for: localWorkerID ?? sapWorkerID)
     }
 
     func incomingCacheSummary() async throws -> SAPIncomingCacheSummary {
         guard let database else { throw SAPReadError.serviceUnavailable }
+        let notificationRowCount = Int(try Self.query(on: database, "SELECT COUNT(*) FROM FROM_T0271") {
+            SQLiteC.columnInt($0, 0)
+        }.first ?? 0)
+        if let metadata = try? Self.metadata(on: database),
+           let notificationListIndex,
+           (try? await notificationListIndex.isCurrent(
+                for: localWorkerID ?? metadata.sapWorkerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+           )) == true,
+           let summary = try? await notificationListIndex.summary(
+                for: localWorkerID ?? metadata.sapWorkerID
+           ) {
+            return SAPIncomingCacheSummary(
+                notificationRowCount: notificationRowCount,
+                actionableNotificationCount: summary.actionableCount,
+                businessEntityCount: summary.businessEntityCount,
+                elevatorInspectionCount: summary.elevatorInspectionCount
+            )
+        }
         let notificationRows = try Self.rows(in: "FROM_T0271", on: database)
         let notifications = notificationRows.compactMap(SAPLegacyDataExchangeCodec.notification(from:))
         let businessEntityCount = Set(
@@ -874,6 +930,69 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return try Self.technicalObjects(on: database)
     }
 
+    private func rebuildNotificationListIndexIfNeeded(
+        for workerID: String,
+        metadata: SAPCacheMetadata,
+        on database: OpaquePointer
+    ) async {
+        guard let notificationListIndex else { return }
+        let sourceVersion = Self.notificationIndexSourceVersion(metadata)
+        guard (try? await notificationListIndex.isCurrent(
+            for: workerID,
+            sourceVersion: sourceVersion
+        )) != true else {
+            return
+        }
+        guard let notifications = try? Self.notifications(on: database) else { return }
+        try? await notificationListIndex.replace(
+            notifications,
+            for: workerID,
+            sourceVersion: sourceVersion
+        )
+    }
+
+    private func indexedNotificationPage(
+        for workerID: String,
+        matching searchText: String,
+        structuralFilter: NotificationStructuralFilter,
+        limit: Int,
+        offset: Int,
+        on database: OpaquePointer
+    ) async -> SAPNotificationPage? {
+        guard let metadata = try? Self.metadata(on: database),
+              let notificationListIndex,
+              (try? await notificationListIndex.isCurrent(
+                for: workerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+              )) == true
+        else {
+            return nil
+        }
+        return try? await notificationListIndex.loadNotifications(
+            for: workerID,
+            matching: searchText,
+            structuralFilter: structuralFilter,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    private func indexedNotificationFilterMetadata(
+        for workerID: String,
+        on database: OpaquePointer
+    ) async -> [NotificationStructuralFilterMetadata]? {
+        guard let metadata = try? Self.metadata(on: database),
+              let notificationListIndex,
+              (try? await notificationListIndex.isCurrent(
+                for: workerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+              )) == true
+        else {
+            return nil
+        }
+        return try? await notificationListIndex.loadFilterMetadata(for: workerID)
+    }
+
     private static func initialize(on database: OpaquePointer) throws {
         try execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
@@ -963,6 +1082,10 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             return nil
         }
         return SAPCacheMetadata(sapWorkerID: worker, lastSuccessfulRefreshAt: date)
+    }
+
+    private static func notificationIndexSourceVersion(_ metadata: SAPCacheMetadata) -> String {
+        ISO8601DateFormatter().string(from: metadata.lastSuccessfulRefreshAt)
     }
 
     private static func setParameter(
