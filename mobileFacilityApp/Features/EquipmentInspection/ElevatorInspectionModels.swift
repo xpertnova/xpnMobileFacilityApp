@@ -95,6 +95,9 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
         case .roofSystem: return Self.roofSystemData
         case .elevator, nil: break
         }
+        if notification.equipmentInspectionForm == .subdistribution {
+            return Self.subdistributionData
+        }
         let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
         let passengerLift = ElevatorInspectionValueOption(
             code: "PERS",
@@ -206,6 +209,24 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
                 "DEMO_LADDER_MATERIAL": String(localized: "fixedLadder.masterData.demo.steel"),
                 "DEMO_LADDER_FALL_PROTECTION": "X",
                 "DEMO_LADDER_BACK_PROTECTION": "X"
+            ]
+        )
+    }
+
+    private static var subdistributionData: ElevatorAssetData {
+        let characteristics = [
+            ElevatorAssetCharacteristic(position: 1, name: "DEMO_SUBDISTRIBUTION_NAME", title: String(localized: "subdistribution.masterData.demo.name"), unit: "", isRequired: true, isNumeric: false, allowsMultipleValues: false, options: []),
+            ElevatorAssetCharacteristic(position: 2, name: "DEMO_SUBDISTRIBUTION_RCD", title: String(localized: "subdistribution.masterData.demo.rcd"), unit: "", isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []),
+            ElevatorAssetCharacteristic(position: 3, name: "DEMO_SUBDISTRIBUTION_CIRCUITS", title: String(localized: "subdistribution.masterData.demo.circuits"), unit: "ST", isRequired: false, isNumeric: true, allowsMultipleValues: false, options: [])
+        ]
+        return ElevatorAssetData(
+            equipmentType: "TFMNSPV", className: "TFMNSPV",
+            classTitle: String(localized: "subdistribution.title"),
+            characteristics: characteristics,
+            values: [
+                "DEMO_SUBDISTRIBUTION_NAME": "UV Bürotrakt 1. OG",
+                "DEMO_SUBDISTRIBUTION_RCD": "FI-Schutzschalter 30 mA",
+                "DEMO_SUBDISTRIBUTION_CIRCUITS": "12"
             ]
         )
     }
@@ -533,6 +554,16 @@ struct ElevatorInspectionItem: Identifiable, Equatable, Sendable {
     let actionOptions: [ElevatorInspectionValueOption]
     let materialElementID: String?
     let commentElementID: String
+    /// `USR00 == "FOTO"` rows have no value help but must carry a JPEG before
+    /// the notification can be closed (`HeaderFormBuilder.validateFormValues`).
+    var requiresPhoto: Bool = false
+    /// TFM7's photo documentation must additionally retain its linked note.
+    /// Cordova provides that note affordance for every `FOTO` row; the native
+    /// TFM7 close contract requires both pieces of documentation.
+    var requiresPhotoAndComment: Bool = false
+    /// Photo rows have no `Befund` selector and must not be treated as
+    /// unanswered inspection results.
+    var requiresResult: Bool = true
     /// `LTXA1` of the preceding `USR00 == "HEADER"` / `"U1"` row, rendered as
     /// a group band above this position — the legacy
     /// `Aufzugskontrolle.getGroupHeaderListItem`.
@@ -723,6 +754,7 @@ enum ElevatorInspectionLogic {
     ) -> Set<String> {
         var missing: Set<String> = []
         for item in items {
+            guard item.requiresResult else { continue }
             let val = elementValues[item.id] ?? elementValues[item.resultElementID] ?? ""
             if val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 missing.insert(item.id)
@@ -778,9 +810,6 @@ enum ElevatorInspectionDecoder {
                 currentGroupTitle = stringValue(value(named: "LTXA1", in: row))
                 continue
             }
-            // Exclude standalone photo rows
-            guard normalizedType != "FOTO" else { continue }
-
             let title = stringValue(value(named: "LTXA1", in: row))
             let operation = stringValue(value(named: "VORNR", in: row))
             let control = stringValue(value(named: "STEUS", in: row))
@@ -788,15 +817,17 @@ enum ElevatorInspectionDecoder {
 
             let properties = value(named: "T_PROPS", in: row) as? [[String: Any]] ?? []
 
-            // Find property 1: Befund / Result
-            guard let prop1 = property(position: 1, in: properties) else { continue }
-            let resultOptions = parseOptions(from: prop1)
-            guard !resultOptions.isEmpty else { continue }
+            let isPhotoRow = normalizedType == "FOTO"
+            let requiresPhotoAndComment = isPhotoRow && control.uppercased() == "TFM7"
+            // A regular position needs its result value help. A photo-only
+            // row intentionally has none and is kept as an evidence row.
+            let resultOptions = property(position: 1, in: properties).map(parseOptions) ?? []
+            guard isPhotoRow || !resultOptions.isEmpty else { continue }
 
             // Find property 2: Maßnahme / Action (optional)
             var actionElementID: String? = nil
             var actionOptions: [ElevatorInspectionValueOption] = []
-            if let prop2 = property(position: 2, in: properties) {
+            if !isPhotoRow, let prop2 = property(position: 2, in: properties) {
                 let options = parseOptions(from: prop2)
                 if !options.isEmpty {
                     actionElementID = "\(control)-\(operation)-2"
@@ -806,7 +837,7 @@ enum ElevatorInspectionDecoder {
 
             // Find property 3: Material flag (optional)
             var materialElementID: String? = nil
-            if property(position: 3, in: properties) != nil {
+            if !isPhotoRow, property(position: 3, in: properties) != nil {
                 materialElementID = "\(control)-\(operation)-3"
             }
 
@@ -827,6 +858,9 @@ enum ElevatorInspectionDecoder {
                 actionOptions: actionOptions,
                 materialElementID: materialElementID,
                 commentElementID: commentElementID,
+                requiresPhoto: isPhotoRow,
+                requiresPhotoAndComment: requiresPhotoAndComment,
+                requiresResult: !isPhotoRow,
                 groupTitle: currentGroupTitle
             ))
             itemNumber += 1

@@ -29,6 +29,12 @@ enum InspectionFormRules {
         case actionNotAllowedForResult
         /// `msg.viewForm.massnahmeMaterialException`
         case materialNotAllowedForResult
+        /// `HeaderFormBuilder.validateFormValues` rejects a `FOTO` plan row
+        /// when no document is attached to its `...-9B` element.
+        case photoRequired
+        /// TFM7's photo documentation close contract additionally requires
+        /// the linked `...-9B` note.
+        case photoAndCommentRequired
         /// `msg.viewForm.befund.leerOutOfOrder`
         case outOfServiceCommentRequired
 
@@ -39,6 +45,8 @@ enum InspectionFormRules {
             case .actionAndCommentRequired: "inspection.validation.actionAndCommentRequired"
             case .actionNotAllowedForResult: "inspection.validation.actionNotAllowed"
             case .materialNotAllowedForResult: "inspection.validation.materialNotAllowed"
+            case .photoRequired: "inspection.validation.photoRequired"
+            case .photoAndCommentRequired: "inspection.validation.photoAndCommentRequired"
             case .outOfServiceCommentRequired: "inspection.validation.outOfServiceCommentRequired"
             }
         }
@@ -82,6 +90,9 @@ enum InspectionFormRules {
         isMaterialSelected: Bool = false,
         comment: String = "",
         requiresResult: Bool = true,
+        requiresPhoto: Bool = false,
+        requiresPhotoAndComment: Bool = false,
+        photoCount: Int = 0,
         variant: InspectionFormVariant
     ) -> [Issue] {
         let result = normalized(resultCode)
@@ -89,7 +100,16 @@ enum InspectionFormRules {
         let hasComment = !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         guard !result.isEmpty else {
-            return requiresResult ? [.resultMissing] : []
+            var issues: [Issue] = requiresResult ? [.resultMissing] : []
+            if let issue = documentationIssue(
+                requiresPhoto: requiresPhoto,
+                requiresPhotoAndComment: requiresPhotoAndComment,
+                photoCount: photoCount,
+                hasComment: hasComment
+            ) {
+                issues.append(issue)
+            }
+            return issues
         }
 
         switch variant.resultStyle {
@@ -118,6 +138,14 @@ enum InspectionFormRules {
                 }
             default:
                 break
+            }
+            if let issue = documentationIssue(
+                requiresPhoto: requiresPhoto,
+                requiresPhotoAndComment: requiresPhotoAndComment,
+                photoCount: photoCount,
+                hasComment: hasComment
+            ) {
+                issues.append(issue)
             }
             return issues
         }
@@ -160,5 +188,18 @@ enum InspectionFormRules {
 
     private static func normalized(_ value: String?) -> String {
         value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func documentationIssue(
+        requiresPhoto: Bool,
+        requiresPhotoAndComment: Bool,
+        photoCount: Int,
+        hasComment: Bool
+    ) -> Issue? {
+        guard requiresPhoto else { return nil }
+        if requiresPhotoAndComment && (photoCount == 0 || !hasComment) {
+            return .photoAndCommentRequired
+        }
+        return photoCount == 0 ? .photoRequired : nil
     }
 }

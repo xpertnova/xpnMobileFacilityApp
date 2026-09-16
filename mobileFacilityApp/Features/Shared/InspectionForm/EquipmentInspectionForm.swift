@@ -19,6 +19,8 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     case elevator = "TFM2"
     /// Steigleitern (equipment type `TFMLEITER`).
     case fixedLadder = "TFM4"
+    /// Unterverteilung / FI-Schutzschalter (equipment type `TFMNSPV`).
+    case subdistribution = "TFM7"
     /// Feststellanlage (equipment type `TFMFSA`).
     case holdOpenSystem = "TFM6"
     /// Dachanlagen (equipment type `TFMDACH`).
@@ -64,6 +66,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: ["TFMPERS", "TFMLAST", "TFMBEFAHR", "TFMKLGUT"]
         case .fixedLadder: ["TFMLEITER"]
+        case .subdistribution: ["TFMNSPV"]
         case .holdOpenSystem: ["TFMFSA"]
         case .roofSystem: ["TFMDACH"]
         }
@@ -74,7 +77,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     var fallbackClassName: String? {
         switch self {
         case .elevator: "TFMAUFZUG"
-        case .fixedLadder, .holdOpenSystem, .roofSystem: nil
+        case .fixedLadder, .subdistribution, .holdOpenSystem, .roofSystem: nil
         }
     }
 
@@ -95,6 +98,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.inspection.title"
         case .fixedLadder: "fixedLadder.inspection.title"
+        case .subdistribution: "subdistribution.title"
         case .holdOpenSystem: "holdOpenSystem.inspection.title"
         case .roofSystem: "roofSystem.inspection.title"
         }
@@ -105,6 +109,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "🛗"
         case .fixedLadder: "🪜"
+        case .subdistribution: "⚡️"
         case .holdOpenSystem: "🚪"
         case .roofSystem: "🏠"
         }
@@ -114,6 +119,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.title"
         case .fixedLadder: "fixedLadder.masterData.title"
+        case .subdistribution: "subdistribution.masterData.title"
         case .holdOpenSystem: "holdOpenSystem.masterData.title"
         case .roofSystem: "roofSystem.masterData.title"
         }
@@ -123,6 +129,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.subtitle"
         case .fixedLadder: "fixedLadder.masterData.subtitle"
+        case .subdistribution: "subdistribution.masterData.subtitle"
         case .holdOpenSystem: "holdOpenSystem.masterData.subtitle"
         case .roofSystem: "roofSystem.masterData.subtitle"
         }
@@ -132,6 +139,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.loading"
         case .fixedLadder: "fixedLadder.masterData.loading"
+        case .subdistribution: "subdistribution.masterData.loading"
         case .holdOpenSystem: "holdOpenSystem.masterData.loading"
         case .roofSystem: "roofSystem.masterData.loading"
         }
@@ -141,6 +149,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.unavailable.title"
         case .fixedLadder: "fixedLadder.masterData.unavailable.title"
+        case .subdistribution: "subdistribution.masterData.unavailable.title"
         case .holdOpenSystem: "holdOpenSystem.masterData.unavailable.title"
         case .roofSystem: "roofSystem.masterData.unavailable.title"
         }
@@ -150,6 +159,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.unavailable.message"
         case .fixedLadder: "fixedLadder.masterData.unavailable.message"
+        case .subdistribution: "subdistribution.masterData.unavailable.message"
         case .holdOpenSystem: "holdOpenSystem.masterData.unavailable.message"
         case .roofSystem: "roofSystem.masterData.unavailable.message"
         }
@@ -159,6 +169,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.unavailable.title"
         case .fixedLadder: "fixedLadder.unavailable.title"
+        case .subdistribution: "subdistribution.unavailable.title"
         case .holdOpenSystem: "holdOpenSystem.unavailable.title"
         case .roofSystem: "roofSystem.unavailable.title"
         }
@@ -168,6 +179,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.closeDialog.message"
         case .fixedLadder: "fixedLadder.closeDialog.message"
+        case .subdistribution: "subdistribution.closeDialog.message"
         case .holdOpenSystem: "holdOpenSystem.closeDialog.message"
         case .roofSystem: "roofSystem.closeDialog.message"
         }
@@ -185,6 +197,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "Aufzugskontrolle"
         case .fixedLadder: "Steigleitern"
+        case .subdistribution: "Unterverteilung"
         case .holdOpenSystem: "Feststellanlage"
         case .roofSystem: "Dachanlagen"
         }
@@ -195,6 +208,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "Aufzug Merkmale"
         case .fixedLadder: "Steigleiter Merkmale"
+        case .subdistribution: "Unterverteilung Merkmale"
         case .holdOpenSystem: "Feststellanlage Merkmale"
         case .roofSystem: "Dachanlage Merkmale"
         }

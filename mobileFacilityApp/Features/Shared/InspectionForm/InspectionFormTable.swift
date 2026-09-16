@@ -21,6 +21,12 @@ struct InspectionFormItem: Identifiable, Equatable, Sendable {
     /// `false` for the legacy photo-only and header rows, which carry no
     /// result control and must not be reported as unanswered.
     let requiresResult: Bool
+    /// `true` for legacy `USR00 == "FOTO"` rows. The shared row preserves its
+    /// photo and comment actions while its result/action cells stay empty.
+    let requiresPhoto: Bool
+    /// TFM7 photo documentation is complete only when the linked comment is
+    /// saved as well as a JPEG.
+    let requiresPhotoAndComment: Bool
 
     init(
         id: String,
@@ -31,7 +37,9 @@ struct InspectionFormItem: Identifiable, Equatable, Sendable {
         resultOptions: [InspectionFormOption] = [],
         actionOptions: [InspectionFormOption] = [],
         supportsMaterial: Bool = false,
-        requiresResult: Bool = true
+        requiresResult: Bool = true,
+        requiresPhoto: Bool = false,
+        requiresPhotoAndComment: Bool = false
     ) {
         self.id = id
         self.number = number
@@ -42,6 +50,8 @@ struct InspectionFormItem: Identifiable, Equatable, Sendable {
         self.actionOptions = actionOptions
         self.supportsMaterial = supportsMaterial
         self.requiresResult = requiresResult
+        self.requiresPhoto = requiresPhoto
+        self.requiresPhotoAndComment = requiresPhotoAndComment
     }
 }
 
@@ -355,6 +365,9 @@ struct InspectionFormRow: View {
             isMaterialSelected: state.isMaterialSelected,
             comment: state.comment,
             requiresResult: item.requiresResult,
+            requiresPhoto: item.requiresPhoto,
+            requiresPhotoAndComment: item.requiresPhotoAndComment,
+            photoCount: state.photoCount,
             variant: variant
         )
     }
@@ -386,12 +399,26 @@ struct InspectionFormRow: View {
                 alignment: .leading
             )
 
-            resultControl
-                .frame(width: InspectionFormMetrics.resultColumn)
+            if item.requiresResult {
+                resultControl
+                    .frame(width: InspectionFormMetrics.resultColumn)
+            } else {
+                // `USR00 == "FOTO"` has no Befund element. Keep the shared
+                // table's columns aligned, but do not render the em-dash
+                // placeholder as a result field.
+                Color.clear
+                    .frame(width: InspectionFormMetrics.resultColumn, height: 44)
+            }
 
             if variant.hasActionColumn {
-                actionControl
-                    .frame(width: InspectionFormMetrics.actionColumn)
+                if item.requiresResult {
+                    actionControl
+                        .frame(width: InspectionFormMetrics.actionColumn)
+                } else {
+                    // Photo-only rows also have no Maßnahme element.
+                    Color.clear
+                        .frame(width: InspectionFormMetrics.actionColumn, height: 44)
+                }
             }
 
             if variant.hasMaterialColumn {
@@ -446,7 +473,9 @@ struct InspectionFormRow: View {
     }
 
     private var isCommentFlagged: Bool {
-        issues.contains(.commentRequired) || issues.contains(.actionAndCommentRequired)
+        issues.contains(.commentRequired)
+            || issues.contains(.actionAndCommentRequired)
+            || issues.contains(.photoAndCommentRequired)
     }
 
     @ViewBuilder

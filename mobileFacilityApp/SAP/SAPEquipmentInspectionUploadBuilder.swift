@@ -65,9 +65,9 @@ enum SAPEquipmentInspectionUploadBuilder {
         }
 
         // `BaseFormController.buildDefaultElements` builds the "Außer Betrieb"
-        // status for TFM2, TFM4 and TFM6, but not for TFM8. While it is set,
-        // `setValues4AnwStatus` clears every position and `validateFormValues`
-        // validates only the status comment.
+        // status for TFM2, TFM4, TFM6 and TFM7, but not for TFM8. While it is
+        // set, `setValues4AnwStatus` clears every position and
+        // `validateFormValues` validates only the status comment.
         let form = inspection.form
         let isOutOfOperation = form.supportsOutOfService && (inspection.isOutOfOperation ?? false)
         let outOfOperationComment = isOutOfOperation ? inspection.outOfOperationComment ?? "" : ""
@@ -77,9 +77,20 @@ enum SAPEquipmentInspectionUploadBuilder {
                 throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
             }
         } else {
-            // Validate that all items have a Befund result
+            // Validate every result position and every dedicated photo row.
             for item in items {
-                guard let result = inspection.elementValues[item.resultElementID], !result.isEmpty else {
+                guard !item.requiresResult
+                    || (inspection.elementValues[item.resultElementID]?.isEmpty == false)
+                else {
+                    throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
+                }
+                if item.requiresPhoto,
+                   !inspection.photoAttachments.contains(where: { $0.checklistItemID == item.id }) {
+                    throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
+                }
+                if item.requiresPhotoAndComment,
+                   (inspection.comments[item.commentElementID] ?? inspection.comments[item.id] ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
                 }
             }
@@ -150,13 +161,15 @@ enum SAPEquipmentInspectionUploadBuilder {
         // T_0283 values
         var values: [LegacySAPRow] = []
         for item in items {
-            // Property 1 (Befund)
-            let befundVal = inspection.elementValues[item.resultElementID] ?? ""
-            values.append(valueRow(
-                client: source.client, processID: processID, notificationID: inspection.notificationID,
-                elementID: item.resultElementID, value: befundVal,
-                userID: userID, date: createdDate, time: createdTime
-            ))
+            // Property 1 (Befund), absent from legacy `FOTO` rows.
+            if item.requiresResult {
+                let befundVal = inspection.elementValues[item.resultElementID] ?? ""
+                values.append(valueRow(
+                    client: source.client, processID: processID, notificationID: inspection.notificationID,
+                    elementID: item.resultElementID, value: befundVal,
+                    userID: userID, date: createdDate, time: createdTime
+                ))
+            }
 
             // Property 2 (Action, if position exists)
             if item.hasAction, let actionID = item.actionElementID {

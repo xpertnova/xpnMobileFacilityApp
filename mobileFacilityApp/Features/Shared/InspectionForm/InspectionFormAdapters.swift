@@ -63,7 +63,10 @@ extension ElevatorInspectionItem {
             actionOptions: hasAction
                 ? actionOptions.map { InspectionFormOption(code: $0.code, title: $0.text) }
                 : [],
-            supportsMaterial: hasMaterial
+            supportsMaterial: hasMaterial,
+            requiresResult: requiresResult,
+            requiresPhoto: requiresPhoto,
+            requiresPhotoAndComment: requiresPhotoAndComment
         )
     }
 }

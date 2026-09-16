@@ -81,9 +81,12 @@ struct FacilityShellView: View {
                                 sapDataStore: demo.sapDataStore,
                                 elevatorAssetDataProvider: demo.elevatorAssetDataProvider,
                                 backDestination: demo.offlineNotificationDetailReturnDestination,
-                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                                dismiss: { demo.dismissOfflineNotificationDetail() },
+                                dismissForMissingMasterData: {
+                                    demo.dismissOfflineNotificationDetail(returningTo: .notifications)
+                                }
                             )
-                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .id(demo.notificationDetailPresentationID)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                             .zIndex(1)
@@ -95,7 +98,7 @@ struct FacilityShellView: View {
                                 backDestination: demo.offlineNotificationDetailReturnDestination,
                                 dismiss: { demo.dismissOfflineNotificationDetail() }
                             )
-                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .id(demo.notificationDetailPresentationID)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                             .zIndex(1)
@@ -107,7 +110,7 @@ struct FacilityShellView: View {
                                 backDestination: demo.offlineNotificationDetailReturnDestination,
                                 dismiss: { demo.dismissOfflineNotificationDetail() }
                             )
-                            .id(selectedOfflineNotificationDetail.summary.id)
+                            .id(demo.notificationDetailPresentationID)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                             .zIndex(1)

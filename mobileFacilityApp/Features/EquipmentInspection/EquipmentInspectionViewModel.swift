@@ -151,7 +151,8 @@ final class EquipmentInspectionViewModel {
     }
 
     var isAllGoodAvailable: Bool {
-        !isOutOfService && !items.isEmpty && items.allSatisfy { item in
+        let resultItems = items.filter(\.requiresResult)
+        return !isOutOfService && !resultItems.isEmpty && resultItems.allSatisfy { item in
             item.resultOptions.contains { $0.code == "1" }
         }
     }
@@ -162,12 +163,7 @@ final class EquipmentInspectionViewModel {
         if isOutOfService {
             return !isOutOfServiceCommentMissing
         }
-        return !items.isEmpty && items.allSatisfy { item in
-            if let val = results[item.id], !val.isEmpty {
-                return true
-            }
-            return false
-        }
+        return !items.isEmpty && invalidItemIDs.isEmpty
     }
 
     var hasDefect: Bool {
@@ -495,7 +491,7 @@ final class EquipmentInspectionViewModel {
 
     func applyAllGood() {
         guard arePositionsEditable, isAllGoodAvailable else { return }
-        for item in items {
+        for item in items where item.requiresResult {
             // Set only empty/unanswered result controls to "1"
             if results[item.id] == nil || results[item.id]?.isEmpty == true {
                 results[item.id] = "1"
@@ -523,7 +519,7 @@ final class EquipmentInspectionViewModel {
         }
 
         // Validate
-        let missing = ElevatorInspectionLogic.unansweredItemIDs(items: items, elementValues: results)
+        let missing = invalidItemIDs
 
         if !missing.isEmpty || !isMasterDataValid {
             validationErrors = missing
@@ -754,6 +750,23 @@ final class EquipmentInspectionViewModel {
 
     func addPhoto(jpegData: Data, to item: ElevatorInspectionItem) async {
         await addPhoto(jpegData: jpegData, checklistItemID: item.id, sapElementID: item.commentElementID)
+    }
+
+    private var invalidItemIDs: Set<String> {
+        Set(items.compactMap { item in
+            let issues = InspectionFormRules.issues(
+                resultCode: results[item.id],
+                actionCode: actions[item.id],
+                isMaterialSelected: materials[item.id] ?? false,
+                comment: comments[item.id, default: ""],
+                requiresResult: item.requiresResult,
+                requiresPhoto: item.requiresPhoto,
+                requiresPhotoAndComment: item.requiresPhotoAndComment,
+                photoCount: attachments(for: item.id).count,
+                variant: form.variant
+            )
+            return issues.isEmpty ? nil : item.id
+        })
     }
 
     /// Documents the header status. The legacy camera icon on the out-of-order

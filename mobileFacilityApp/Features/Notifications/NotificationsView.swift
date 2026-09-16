@@ -58,7 +58,11 @@ struct NotificationsView: View {
                     elevatorAssetDataProvider: demo.elevatorAssetDataProvider,
                     dismiss: { demo.selectedNotificationID = nil }
                 )
-                .id(detail.summary.id)
+                // The same notification can be opened again after the
+                // blocking master-data warning. Use the presentation token,
+                // not only its stable SAP number, so the form reloads and
+                // re-evaluates that warning every time.
+                .id(demo.notificationDetailPresentationID)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
                 .zIndex(1)
             } else {
