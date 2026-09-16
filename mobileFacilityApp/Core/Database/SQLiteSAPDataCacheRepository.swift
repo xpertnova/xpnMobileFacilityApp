@@ -233,9 +233,11 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return MobileLadderCreationData(contexts: uniqueContexts, catalog: MobileLadderCatalog(options: catalog))
     }
 
-    /// Rebuilds the read-only TFM2 header section from the same legacy cache
-    /// tables used by Cordova: T0263 describes the class, while T0266 (or
-    /// T0265 for a technical-place assignment) supplies the asset values.
+    /// Rebuilds the read-only master-data header of a shared equipment
+    /// inspection (TFM2, TFM4) from the same legacy cache tables used by
+    /// Cordova: T0263 describes the class, while T0266 (or T0265 for a
+    /// technical-place assignment) supplies the asset values. The accepted
+    /// equipment types come from the notification's `EquipmentInspectionForm`.
     func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
         try validateWorker(localWorkerID ?? "")
         guard let database else { throw SAPReadError.serviceUnavailable }
@@ -304,8 +306,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             return .empty
         }
 
+        let form = notification.equipmentInspectionForm ?? .elevator
         let type = elevatorType(row: masterRow, payload: masterPayload)
-        let supportedTypes: Set<String> = ["TFMPERS", "TFMLAST", "TFMBEFAHR", "TFMKLGUT"]
+        let supportedTypes = form.equipmentTypes
         let masterClassNames = Set(
             (dictionaries(named: "T_CLASS_EQ", in: masterPayload) + dictionaries(named: "T_CLASS_TP", in: masterPayload))
                 .compactMap {
@@ -317,10 +320,10 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let resolvedType: String
         if supportedTypes.contains(type) {
             resolvedType = type
-        } else if masterClassNames.contains("TFMAUFZUG") {
+        } else if form == .elevator, let fallbackClass = form.fallbackClassName, masterClassNames.contains(fallbackClass) {
             resolvedType = type.isEmpty ? "TFMPERS" : type
         } else {
-            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("master record is not a supported elevator type")
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("master record is not a supported \(form.rawValue) equipment type")
             return .empty
         }
 
@@ -331,7 +334,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         } ?? classRows.first { row in
             guard let payload = decodedPayload(from: row) else { return false }
             let rowClass = string(named: "CLASS", in: row).ifEmpty(string(named: "CLASS", in: payload)).uppercased()
-            return rowClass == resolvedType || masterClassNames.contains(rowClass) || rowClass == "TFMAUFZUG"
+            return rowClass == resolvedType
+                || masterClassNames.contains(rowClass)
+                || (form.fallbackClassName.map { rowClass == $0 } ?? false)
         }
         guard let classRow else {
             SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("no matching class definition")

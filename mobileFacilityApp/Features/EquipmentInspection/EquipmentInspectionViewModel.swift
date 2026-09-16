@@ -21,12 +21,16 @@ enum ElevatorAssetDataState: Equatable {
     case unavailable
 }
 
+/// State and business rules of every shared equipment inspection (TFM2
+/// Aufzugskontrolle, TFM4 Steigleitern). Everything that differs per form code
+/// comes from `form`; see `EquipmentInspectionForm`.
 @MainActor
 @Observable
-final class ElevatorInspectionViewModel {
+final class EquipmentInspectionViewModel {
     static let maximumPhotoCount = 20
 
     let detail: SAPNotificationDetail
+    let form: EquipmentInspectionForm
     let offlineWorkStore: OfflineWorkStore
     let photoStore: any PhotoAttachmentStore
     let sapDataStore: SAPDataStore?
@@ -46,6 +50,8 @@ final class ElevatorInspectionViewModel {
     private(set) var elevatorAssetDataState: ElevatorAssetDataState = .loading
     private(set) var elevatorAssetCharacteristics: [ElevatorAssetCharacteristic] = []
     private(set) var elevatorAssetValues: [String: String] = [:]
+    /// Class description (`TXTBZ`) of the loaded characteristics.
+    private(set) var masterDataClassTitle = ""
     var statusDecision: ElevatorInspectionStatusDecision?
     var feedback: ElevatorInspectionFeedback?
 
@@ -61,9 +67,9 @@ final class ElevatorInspectionViewModel {
     /// Header-level "Außer Betrieb" status.
     ///
     /// `BaseFormController.buildDefaultElements` builds this control for every
-    /// form except TFM1, TFM3, TFM8, TFM9 and TFMQ, so TFM2 carries it. It is
-    /// a header property, not a checklist row: the flag posts as
-    /// `TFM2-0000-1` and its comment as `TFM2-0000-9B`.
+    /// form except TFM1, TFM3, TFM8, TFM9 and TFMQ, so TFM2 and TFM4 carry it.
+    /// It is a header property, not a checklist row: the flag posts as
+    /// `<form>-0000-1` and its comment as `<form>-0000-9B`.
     private(set) var isOutOfService = false
     var outOfServiceComment = ""
     var outOfServiceTransition: InspectionOutOfServiceTransition?
@@ -76,12 +82,14 @@ final class ElevatorInspectionViewModel {
 
     init(
         detail: SAPNotificationDetail,
+        form: EquipmentInspectionForm? = nil,
         offlineWorkStore: OfflineWorkStore,
         photoStore: any PhotoAttachmentStore,
         sapDataStore: SAPDataStore? = nil,
         elevatorAssetDataProvider: any ElevatorAssetDataProviding = UnavailableElevatorAssetDataProvider()
     ) {
         self.detail = detail
+        self.form = form ?? detail.equipmentInspectionForm ?? .elevator
         self.offlineWorkStore = offlineWorkStore
         self.photoStore = photoStore
         self.sapDataStore = sapDataStore
@@ -90,14 +98,20 @@ final class ElevatorInspectionViewModel {
     }
 
     /// Row identity of the header status, used for its photo scope.
-    static let outOfServiceRowID = "TFM2-0000"
-    /// `edata.select.getElementId("TFM2", "0000", "1")`.
-    static let outOfServiceValueElementID = "TFM2-0000-1"
-    /// `edata.select.getNoteIconId("TFM2", "0000")`.
-    static let outOfServiceCommentElementID = "TFM2-0000-9B"
+    var outOfServiceRowID: String { "\(form.formCode)-0000" }
+    /// `edata.select.getElementId(<form>, "0000", "1")`.
+    var outOfServiceValueElementID: String { "\(form.formCode)-0000-1" }
+    /// `edata.select.getNoteIconId(<form>, "0000")`.
+    var outOfServiceCommentElementID: String { "\(form.formCode)-0000-9B" }
+
+    /// The form cannot be inspected because its class characteristics are
+    /// missing — the legacy `showInvalidData` for every form except TFM2.
+    var isMasterDataMissing: Bool {
+        form.requiresMasterData && elevatorAssetDataState == .unavailable
+    }
 
     var isEditingDisabled: Bool {
-        isLoading || isClosedLocally
+        isLoading || isClosedLocally || isMasterDataMissing
     }
 
     /// The checklist positions are locked while the form is out of service —
@@ -113,7 +127,7 @@ final class ElevatorInspectionViewModel {
     }
 
     var hasMaterialColumn: Bool {
-        items.contains { $0.hasMaterial }
+        form.supportsMaterial && items.contains { $0.hasMaterial }
     }
 
     var isAllGoodAvailable: Bool {
@@ -156,6 +170,12 @@ final class ElevatorInspectionViewModel {
             let act = actions[item.id]
             return ElevatorInspectionLogic.isDefect(resultCode: res, actionCode: act)
         }
+    }
+
+    /// Report title: the class description, like `buildPDF` in both legacy
+    /// controllers, or the form's German name when the class has none.
+    var reportTitle: String {
+        masterDataClassTitle.isEmpty ? form.reportTitleFallback : masterDataClassTitle
     }
 
     var canCreateI2Defects: Bool {
@@ -233,12 +253,14 @@ final class ElevatorInspectionViewModel {
             let assetData = try await elevatorAssetDataProvider.loadElevatorAssetData(for: detail.summary)
             elevatorAssetCharacteristics = assetData.characteristics
             elevatorAssetValues = assetData.values
+            masterDataClassTitle = assetData.classTitle
             elevatorAssetDataState = assetData.characteristics.isEmpty ? .unavailable : .ready
         } catch is CancellationError {
             return
         } catch {
             elevatorAssetCharacteristics = []
             elevatorAssetValues = [:]
+            masterDataClassTitle = ""
             elevatorAssetDataState = .unavailable
         }
     }
@@ -368,7 +390,8 @@ final class ElevatorInspectionViewModel {
         var draft = persistedDraft ?? ElevatorInspectionDraftPayload(
             notificationID: detail.summary.id,
             performedOn: performedOn,
-            notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
+            notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
+            formCode: form.formCode
         )
         draft.performedOn = performedOn
         draft.elementValues = [:]
@@ -402,7 +425,7 @@ final class ElevatorInspectionViewModel {
             if let actID = item.actionElementID, let act = actions[item.id] {
                 elementValues[actID] = act
             }
-            if let matID = item.materialElementID, let mat = materials[item.id] {
+            if hasMaterialColumn, let matID = item.materialElementID, let mat = materials[item.id] {
                 materialFlagsMap[matID] = mat
             }
             if let comment = comments[item.id], !comment.isEmpty {
@@ -448,6 +471,8 @@ final class ElevatorInspectionViewModel {
             .joined(separator: " ")
 
         let pdfPayload = ElevatorInspectionPDFPayload(
+            formTitle: reportTitle,
+            masterDataTitle: form.reportMasterDataTitle,
             notificationID: detail.summary.id,
             notificationTitle: detail.summary.title,
             functionalLocation: detail.summary.functionalLocationID,
@@ -492,7 +517,8 @@ final class ElevatorInspectionViewModel {
             statusNumber: isOutOfService || isDef ? "2" : "1",
             isOutOfOperation: isOutOfService,
             outOfOperationComment: isOutOfService ? outOfServiceComment : nil,
-            notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
+            notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
+            formCode: form.formCode
         )
 
         do {
@@ -521,8 +547,8 @@ final class ElevatorInspectionViewModel {
         guard isOutOfService else { return }
         await addPhoto(
             jpegData: jpegData,
-            checklistItemID: Self.outOfServiceRowID,
-            sapElementID: Self.outOfServiceCommentElementID
+            checklistItemID: outOfServiceRowID,
+            sapElementID: outOfServiceCommentElementID
         )
     }
 
@@ -623,7 +649,7 @@ final class ElevatorInspectionViewModel {
                 dinGroup: nil,
                 priority: .medium,
                 shortText: item.title,
-                longText: note.isEmpty ? "Aufzugskontrolle: \(item.title)" : note,
+                longText: note.isEmpty ? "\(form.reportTitleFallback): \(item.title)" : note,
                 attachmentIDs: []
             )
 
@@ -631,7 +657,7 @@ final class ElevatorInspectionViewModel {
                 _ = try await offlineWorkStore.saveDefect(payload: defect, status: .pendingSynchronization)
                 createdCount += 1
             } catch {
-                // Independent failure does not affect completed TFM2
+                // Independent failure does not affect the completed inspection
             }
         }
 
@@ -657,7 +683,8 @@ final class ElevatorInspectionViewModel {
             photoAttachments: [],
             outgoingProcessID: nil,
             isClosedLocally: false,
-            notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
+            notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
+            formCode: form.formCode
         )
         draft.photoAttachments = attachments
         _ = try await offlineWorkStore.saveElevatorInspection(draft)

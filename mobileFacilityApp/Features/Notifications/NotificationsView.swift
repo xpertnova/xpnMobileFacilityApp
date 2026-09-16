@@ -917,9 +917,10 @@ private struct NotificationDetailScreen: View {
     let dismiss: () -> Void
 
     var body: some View {
-        if detail.isTFM2ElevatorInspection {
-            TFM2ElevatorInspectionView(
+        if let form = detail.equipmentInspectionForm {
+            EquipmentInspectionView(
                 detail: detail,
+                form: form,
                 offlineWorkStore: offlineWorkStore,
                 photoAttachmentStore: photoAttachmentStore,
                 sapDataStore: sapDataStore,

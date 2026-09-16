@@ -587,6 +587,86 @@ enum MockFacilityData {
     }
     """
 
+    /// TFM4 Steigleitern. Positions are dropdown forms like TFM2; the demo
+    /// deliberately carries a position 3 property to show that TFM4 ignores it.
+    static let tfm4PayloadJSON = """
+    {
+      "QMNUM": "4710000024",
+      "QMART": "I1",
+      "FORMNR": "TFM4",
+      "PLTXT": "Steigleiter Dachausstieg",
+      "STRNO": "UN01-ST01-BG01-TECH-470-STL1",
+      "EQUNR": "EQ-100024",
+      "EQKTX": "Steigleiter Dachausstieg Nord",
+      "EQART": "TFMLEITER",
+      "CITY1_TO": "Essen",
+      "STREET_TO": "Hauptstraße 12",
+      "TPWEH": "WE 01",
+      "TPGEB": "Gebäude A",
+      "IWERK": "1501",
+      "GEWRK": "TFM",
+      "T_PLPOD": [
+        {
+          "USR00": "HEADER",
+          "STEUS": "TFM4",
+          "VORNR": "0005",
+          "LTXA1": "Leiter und Befestigung"
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM4",
+          "VORNR": "0010",
+          "LTXA1": "Holme und Sprossen unbeschädigt und fest",
+          "LTXA2": "Auf Verformung, Risse und Korrosion prüfen.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" },
+            { "POSNR": "3", "DFVAL": "X;", "DFVAL_TXT": "Material bestellen;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM4",
+          "VORNR": "0020",
+          "LTXA1": "Wandbefestigungen und Dübel fest",
+          "LTXA2": "",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        },
+        {
+          "USR00": "HEADER",
+          "STEUS": "TFM4",
+          "VORNR": "0025",
+          "LTXA1": "Sicherheitseinrichtungen"
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM4",
+          "VORNR": "0030",
+          "LTXA1": "Rückenschutz vollständig und unbeschädigt",
+          "LTXA2": "",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM4",
+          "VORNR": "0040",
+          "LTXA1": "Steigschutzeinrichtung funktionsfähig",
+          "LTXA2": "Läufer und Schiene auf Leichtgängigkeit prüfen.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        }
+      ]
+    }
+    """
+
     static let sapNotifications: [SAPNotificationSummary] = [
         SAPNotificationSummary(
             id: "4710000012",
@@ -600,11 +680,25 @@ enum MockFacilityData {
             systemStatus: "Offen",
             userStatus: "",
             rawPayloadJSON: tfm2PayloadJSON
+        ),
+        SAPNotificationSummary(
+            id: "4710000024",
+            client: "100",
+            title: "Steigleiter Dachausstieg",
+            functionalLocationID: "UN01-ST01-BG01-TECH-470-STL1",
+            functionalLocationName: "Steigleiter Dachausstieg Nord",
+            equipmentID: "EQ-100024",
+            startDate: "2026-08-10",
+            endDate: "2026-08-20",
+            systemStatus: "Offen",
+            userStatus: "",
+            rawPayloadJSON: tfm4PayloadJSON
         )
     ]
 
     static let notifications: [MaintenanceNotification] = [
         .init(id: "4710000012", title: "Aufzugskontrolle Personenaufzug", location: "Gebäude A · Aufzug 1", dueDate: "Heute", equipment: "EQ-100010", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM2", functionalLocationName: "Gebäude A")),
+        .init(id: "4710000024", title: "Steigleiter Dachausstieg", location: "Gebäude A · Dachausstieg Nord", dueDate: "Heute", equipment: "EQ-100024", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM4", functionalLocationName: "Gebäude A")),
         .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM3", functionalLocationName: "Building A")),
         .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "C", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Building C")),
         .init(id: "005140055904", title: "MTFM_Überprüfung Alarmpläne", location: "GB10_Rauschermühle_V1 Verwaltungsgebäude", dueDate: "Tomorrow", equipment: "DE-SAF-11152-10", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 3, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "SAF", businessEntityCode: "11152", buildingCode: "GB10", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "GB10_Rauschermühle_V1 Verwaltungsgebäude")),

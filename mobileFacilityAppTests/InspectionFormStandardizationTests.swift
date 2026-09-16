@@ -390,7 +390,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
     @MainActor
     func testElevatorOutOfServiceLocksClearsAndRequiresDocumentation() async throws {
         let detail = SAPNotificationDetail(summary: try makeElevatorSummary())
-        let model = ElevatorInspectionViewModel(
+        let model = EquipmentInspectionViewModel(
             detail: detail,
             offlineWorkStore: OfflineWorkStore(
                 repository: InMemoryOfflineWorkRepository(),
@@ -458,7 +458,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
             syncError: nil
         )
 
-        let batch = try SAPTFM2InspectionUploadBuilder.build(
+        let batch = try SAPEquipmentInspectionUploadBuilder.build(
             workItem: workItem,
             source: source,
             syncUserID: "S50828",
@@ -500,7 +500,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
         )
 
         XCTAssertThrowsError(
-            try SAPTFM2InspectionUploadBuilder.build(
+            try SAPEquipmentInspectionUploadBuilder.build(
                 workItem: workItem,
                 source: source,
                 syncUserID: "S50828",
@@ -533,7 +533,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
         )
 
         XCTAssertThrowsError(
-            try SAPTFM2InspectionUploadBuilder.build(
+            try SAPEquipmentInspectionUploadBuilder.build(
                 workItem: workItem,
                 source: source,
                 syncUserID: "S50828",
@@ -549,7 +549,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
     @MainActor
     func testElevatorAsksBeforeClosingACleanInspection() async throws {
         let detail = SAPNotificationDetail(summary: try makeElevatorSummary())
-        let model = ElevatorInspectionViewModel(
+        let model = EquipmentInspectionViewModel(
             detail: detail,
             offlineWorkStore: OfflineWorkStore(
                 repository: InMemoryOfflineWorkRepository(),
@@ -587,7 +587,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
     @MainActor
     func testElevatorOutOfServiceCloseIsConfirmedAndLeavesTheNotificationOpen() async throws {
         let detail = SAPNotificationDetail(summary: try makeElevatorSummary())
-        let model = ElevatorInspectionViewModel(
+        let model = EquipmentInspectionViewModel(
             detail: detail,
             offlineWorkStore: OfflineWorkStore(
                 repository: InMemoryOfflineWorkRepository(),

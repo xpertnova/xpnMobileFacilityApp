@@ -704,7 +704,7 @@ final class ElevatorInspectionTests: XCTestCase {
         let workStore = OfflineWorkStore(repository: repo, workerID: "S50828")
         let photoStore = InMemoryPhotoAttachmentStore()
 
-        let viewModel = ElevatorInspectionViewModel(
+        let viewModel = EquipmentInspectionViewModel(
             detail: detail,
             offlineWorkStore: workStore,
             photoStore: photoStore
@@ -903,7 +903,7 @@ final class ElevatorInspectionTests: XCTestCase {
         )
 
         let photos = ["photo-1": Data([0xFF, 0xD8, 0xFF])]
-        let batch = try SAPTFM2InspectionUploadBuilder.build(
+        let batch = try SAPEquipmentInspectionUploadBuilder.build(
             workItem: workItem,
             source: sourceSummary,
             syncUserID: "S50828",

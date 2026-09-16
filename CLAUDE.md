@@ -83,7 +83,7 @@ Dependency direction: Views → ViewModels/Stores → Repositories/Services → 
 
 ### SAP integration
 
-`SAP/` holds the Fiori onboarding bridge (`SAPOnboardingHost.swift`), the notification refresh/sync service, upload builders (e.g. `SAPTFM2InspectionUploadBuilder.swift`), and CSRF token handling for OData writes. Generated SAP/OData types must stay behind this layer — they should not leak into `Features/` view code or domain models. New SAP reads/writes need a narrow protocol here, backed by a verified contract from the reference apps (see above), never guessed from UI copy.
+`SAP/` holds the Fiori onboarding bridge (`SAPOnboardingHost.swift`), the notification refresh/sync service, upload builders (e.g. `SAPEquipmentInspectionUploadBuilder.swift`), and CSRF token handling for OData writes. Generated SAP/OData types must stay behind this layer — they should not leak into `Features/` view code or domain models. New SAP reads/writes need a narrow protocol here, backed by a verified contract from the reference apps (see above), never guessed from UI copy.
 
 ### Localization
 

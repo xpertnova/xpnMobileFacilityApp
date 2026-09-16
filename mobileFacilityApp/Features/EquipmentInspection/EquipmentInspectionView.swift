@@ -1,17 +1,24 @@
 import SwiftUI
 
-struct TFM2ElevatorInspectionView: View {
+/// The one screen of every shared equipment inspection (TFM2
+/// Aufzugskontrolle, TFM4 Steigleitern). It is assembled from the shared form
+/// components — `NotificationFormHeaderBar`/`Card`, `InspectionFormTable`,
+/// `InspectionOutOfServiceControls`, `PhotoWorkspace` and
+/// `FacilityInspectionActionBar` — and takes every per-form difference from
+/// `EquipmentInspectionForm`.
+struct EquipmentInspectionView: View {
     let detail: SAPNotificationDetail
     let backDestination: AppDestination
     let dismiss: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @State private var model: ElevatorInspectionViewModel
+    @State private var model: EquipmentInspectionViewModel
     @State private var editingCommentID: String?
     @State private var photoWorkspaceItemID: String?
 
     init(
         detail: SAPNotificationDetail,
+        form: EquipmentInspectionForm? = nil,
         offlineWorkStore: OfflineWorkStore,
         photoAttachmentStore: any PhotoAttachmentStore,
         sapDataStore: SAPDataStore? = nil,
@@ -22,8 +29,9 @@ struct TFM2ElevatorInspectionView: View {
         self.detail = detail
         self.backDestination = backDestination
         self.dismiss = dismiss
-        _model = State(initialValue: ElevatorInspectionViewModel(
+        _model = State(initialValue: EquipmentInspectionViewModel(
             detail: detail,
+            form: form,
             offlineWorkStore: offlineWorkStore,
             photoStore: photoAttachmentStore,
             sapDataStore: sapDataStore,
@@ -44,7 +52,7 @@ struct TFM2ElevatorInspectionView: View {
                     ScrollView {
                         VStack(spacing: 18) {
                             metadataCard
-                            elevatorAssetDataCard
+                            masterDataCard
                             inspectionCard
                         }
                         .padding(28)
@@ -99,7 +107,7 @@ struct TFM2ElevatorInspectionView: View {
         .facilityConfirmationDialog(
             isPresented: $model.isStatusDecisionPresented,
             titleKey: "elevator.closeDialog.title",
-            messageKey: "elevator.closeDialog.message",
+            messageKey: model.form.defectCloseMessageKey,
             actions: [
                 FacilityDialogAction(titleKey: "elevator.closeDialog.leaveOpen") {
                     Task { await model.confirmStatusDecision(.leaveOpen) }
@@ -144,7 +152,7 @@ struct TFM2ElevatorInspectionView: View {
     /// Photos belong either to a checklist position or to the header status
     /// row, which is not part of `model.items`.
     private func photoWorkspace(for rowID: String) -> some View {
-        let isOutOfServiceRow = rowID == ElevatorInspectionViewModel.outOfServiceRowID
+        let isOutOfServiceRow = rowID == model.outOfServiceRowID
         let item = model.items.first { $0.id == rowID }
         let attachments = model.attachments(for: rowID)
         let subtitle = isOutOfServiceRow
@@ -166,7 +174,7 @@ struct TFM2ElevatorInspectionView: View {
             isLoading: model.isLoading,
             isSaving: model.isSaving,
             isReadOnly: isReadOnly || (!isOutOfServiceRow && model.isOutOfService),
-            maxAttachments: ElevatorInspectionViewModel.maximumPhotoCount,
+            maxAttachments: EquipmentInspectionViewModel.maximumPhotoCount,
             close: { photoWorkspaceItemID = nil },
             addPhoto: { data in
                 Task {
@@ -191,7 +199,7 @@ struct TFM2ElevatorInspectionView: View {
     }
 
     private var headerInfo: NotificationFormHeaderInfo {
-        NotificationFormHeaderInfo(detail: detail, formCode: "TFM2")
+        NotificationFormHeaderInfo(detail: detail, formCode: model.form.formCode)
     }
 
     private var header: some View {
@@ -216,24 +224,26 @@ struct TFM2ElevatorInspectionView: View {
         NotificationFormHeaderCard(info: headerInfo)
     }
 
-    /// TFM2 carries the header "Außer Betrieb" status that
-    /// `BaseFormController.buildDefaultElements` builds for it.
+    /// The header "Außer Betrieb" status that
+    /// `BaseFormController.buildDefaultElements` builds for TFM2 and TFM4.
     private var outOfServiceControls: InspectionOutOfServiceControls? {
         guard let titleKey = variant.outOfServiceTitleKey else { return nil }
         return InspectionOutOfServiceControls(
             titleKey: titleKey,
             isActive: model.isOutOfService,
-            photoCount: model.attachments(for: ElevatorInspectionViewModel.outOfServiceRowID).count,
+            photoCount: model.attachments(for: model.outOfServiceRowID).count,
             hasComment: !model.outOfServiceComment.isEmpty,
             isCommentMissing: model.isOutOfServiceCommentMissing,
             isEnabled: !isEditingDisabled && !model.isSaving,
             requestStatusChange: { model.requestOutOfServiceChange() },
-            openPhotos: { photoWorkspaceItemID = ElevatorInspectionViewModel.outOfServiceRowID },
-            editComment: { editingCommentID = ElevatorInspectionViewModel.outOfServiceRowID }
+            openPhotos: { photoWorkspaceItemID = model.outOfServiceRowID },
+            editComment: { editingCommentID = model.outOfServiceRowID }
         )
     }
 
-    private var elevatorAssetDataCard: some View {
+    /// Read-only class characteristics above the checklist
+    /// (`HeaderFormBuilder.createHeaderForm`).
+    private var masterDataCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Image(systemName: "building.2.crop.circle")
@@ -241,10 +251,10 @@ struct TFM2ElevatorInspectionView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("elevator.assetData.title")
+                    Text(LocalizedStringKey(model.form.masterDataTitleKey))
                         .font(.title3.weight(.bold))
                         .foregroundStyle(FacilityTheme.ink)
-                    Text("elevator.assetData.subtitle")
+                    Text(LocalizedStringKey(model.form.masterDataSubtitleKey))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -263,7 +273,7 @@ struct TFM2ElevatorInspectionView: View {
             case .loading:
                 HStack(spacing: 12) {
                     ProgressView()
-                    Text("elevator.assetData.loading")
+                    Text(LocalizedStringKey(model.form.masterDataLoadingKey))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -282,9 +292,9 @@ struct TFM2ElevatorInspectionView: View {
 
             case .unavailable:
                 ContentUnavailableView(
-                    "elevator.assetData.unavailable.title",
-                    systemImage: "archivebox",
-                    description: Text("elevator.assetData.unavailable.message")
+                    LocalizedStringKey(model.form.masterDataUnavailableTitleKey),
+                    systemImage: model.isMasterDataMissing ? "exclamationmark.triangle" : "archivebox",
+                    description: Text(LocalizedStringKey(model.form.masterDataUnavailableMessageKey))
                 )
                 .frame(maxWidth: .infinity, minHeight: 124)
 
@@ -340,11 +350,11 @@ struct TFM2ElevatorInspectionView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// TFM2 Aufzugskontrolle. The shared checklist configured by its form
-    /// code: SAP-driven dropdowns for result and action, the material
-    /// checkbox, and the header "Außer Betrieb" status.
+    /// The shared checklist configured by the form code: SAP-driven dropdowns
+    /// for result and action, the material checkbox where the form has one,
+    /// and the header "Außer Betrieb" status.
     private var variant: InspectionFormVariant {
-        InspectionFormVariant.forFormCode("TFM2")
+        model.form.variant
             .adjusted(
                 hasActionValues: model.items.contains { $0.hasAction },
                 hasMaterialValues: model.hasMaterialColumn
@@ -371,7 +381,7 @@ struct TFM2ElevatorInspectionView: View {
             },
             isEditable: model.arePositionsEditable,
             emptyState: InspectionFormEmptyState(
-                titleKey: "elevator.unavailable.title",
+                titleKey: model.form.checklistUnavailableTitleKey,
                 messageKey: "elevator.unavailable.message",
                 systemImage: "exclamationmark.triangle",
                 retry: { Task { await model.load() } }
@@ -413,7 +423,7 @@ struct TFM2ElevatorInspectionView: View {
     }
 
     private func commentBinding(for itemID: String) -> Binding<String> {
-        if itemID == ElevatorInspectionViewModel.outOfServiceRowID {
+        if itemID == model.outOfServiceRowID {
             return Binding(
                 get: { model.outOfServiceComment },
                 set: { newValue in
@@ -435,9 +445,8 @@ struct TFM2ElevatorInspectionView: View {
         )
     }
 
-    /// The same three-button bar every other inspection form uses. TFM2 had
-    /// its own copy with different labels; the order and treatment come from
-    /// `FacilityInspectionActionBar`.
+    /// The same three-button bar every other inspection form uses; the order
+    /// and treatment come from `FacilityInspectionActionBar`.
     private var actionBar: some View {
         FacilityInspectionActionBar(
             markEverythingOkay: { model.applyAllGood() },

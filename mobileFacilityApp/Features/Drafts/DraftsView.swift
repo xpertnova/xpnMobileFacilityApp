@@ -225,7 +225,7 @@ struct DraftsView: View {
                         open(review)
                     }
                 } else if let inspection = item.payload.elevatorInspection {
-                    SavedElevatorInspectionRow(item: item, inspection: inspection) {
+                    SavedEquipmentInspectionRow(item: item, inspection: inspection) {
                         open(inspection)
                     }
                 }
@@ -329,19 +329,22 @@ struct DraftsView: View {
     }
 }
 
-private struct SavedElevatorInspectionRow: View {
+/// Saved TFM2/TFM4 equipment inspection.
+private struct SavedEquipmentInspectionRow: View {
     let item: OfflineWorkItem
     let inspection: ElevatorInspectionDraftPayload
     let action: () -> Void
 
     private var title: String {
         let savedTitle = inspection.notificationSnapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return savedTitle.isEmpty ? String(localized: "elevator.inspection.title") : savedTitle
+        return savedTitle.isEmpty
+            ? String(localized: String.LocalizationValue(inspection.form.titleKey))
+            : savedTitle
     }
 
     var body: some View {
         LocalWorkTemplateRow(
-            icon: "🛗",
+            icon: inspection.form.draftIcon,
             title: Text(title),
             subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks"))"),
             status: inspection.isClosedLocally ? .closedLocally : .offline(item.status),
