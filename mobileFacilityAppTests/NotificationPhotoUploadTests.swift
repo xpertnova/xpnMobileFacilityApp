@@ -28,6 +28,11 @@ final class NotificationPhotoUploadTests: XCTestCase {
             XCTFail("Expected the Cordova-compatible 20-photo limit")
         }
 
+        let firstPhotoID = try XCTUnwrap(model.photoAttachments.first?.id)
+        await model.updatePhoto(id: firstPhotoID, name: "Door hinge", description: "Loose upper hinge")
+        XCTAssertEqual(model.photoAttachments.first?.name, "Door hinge")
+        XCTAssertEqual(model.photoAttachments.first?.description, "Loose upper hinge")
+
         await model.save(closed: false)
         XCTAssertEqual(workStore.savedNotificationItems.first?.status, .draft)
 
@@ -37,6 +42,8 @@ final class NotificationPhotoUploadTests: XCTestCase {
         await reopened.load()
         XCTAssertEqual(reopened.photoAttachments.count, 20)
         XCTAssertEqual(reopened.photoData.count, 20)
+        XCTAssertEqual(reopened.photoAttachments.first?.name, "Door hinge")
+        XCTAssertEqual(reopened.photoAttachments.first?.description, "Loose upper hinge")
         XCTAssertEqual(reopened.results[item.id], .no)
 
         await reopened.save(closed: true)
@@ -71,8 +78,12 @@ final class NotificationPhotoUploadTests: XCTestCase {
         )
         await model.load()
         await model.addPhoto(jpegData: Data([0xFF, 0xD8, 0xFF, 0xD9]))
+        let photoID = try XCTUnwrap(model.entries.first?.id)
+        await model.updatePhoto(id: photoID, name: "Pump overview", description: "Leak at the base")
 
         XCTAssertEqual(workStore.photoCollection(for: firstScope)?.payload.photoCollection?.attachments.count, 1)
+        XCTAssertEqual(workStore.photoCollection(for: firstScope)?.payload.photoCollection?.attachments.first?.name, "Pump overview")
+        XCTAssertEqual(workStore.photoCollection(for: firstScope)?.payload.photoCollection?.attachments.first?.description, "Leak at the base")
         XCTAssertNil(workStore.photoCollection(for: secondScope))
 
         let reopened = LocalPhotoCollectionViewModel(
@@ -83,9 +94,39 @@ final class NotificationPhotoUploadTests: XCTestCase {
         await reopened.load()
         XCTAssertEqual(reopened.entries.count, 1)
         XCTAssertEqual(reopened.photoData.count, 1)
+        XCTAssertEqual(reopened.entries.first?.name, "Pump overview")
+        XCTAssertEqual(reopened.entries.first?.description, "Leak at the base")
 
         await reopened.removePhoto(id: try XCTUnwrap(reopened.entries.first?.id))
         XCTAssertNil(workStore.photoCollection(for: firstScope))
+    }
+
+    func testOlderPhotoAttachmentsDecodeWithEmptyMetadata() throws {
+        let local = LocalPhotoAttachment(
+            localAttachmentID: "local-photo", capturedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        var localObject = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(local)) as? [String: Any])
+        localObject.removeValue(forKey: "name")
+        localObject.removeValue(forKey: "description")
+        let decodedLocal = try JSONDecoder().decode(
+            LocalPhotoAttachment.self, from: JSONSerialization.data(withJSONObject: localObject)
+        )
+        XCTAssertEqual(decodedLocal.name, "")
+        XCTAssertEqual(decodedLocal.description, "")
+
+        let notification = NotificationPhotoAttachment(
+            localAttachmentID: "local-photo", checklistItemID: "row", sapElementID: "element",
+            capturedAt: Date(timeIntervalSince1970: 1_700_000_000), sapDocumentID: "document"
+        )
+        var notificationObject = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(notification)) as? [String: Any])
+        notificationObject.removeValue(forKey: "name")
+        notificationObject.removeValue(forKey: "description")
+        let decodedNotification = try JSONDecoder().decode(
+            NotificationPhotoAttachment.self,
+            from: JSONSerialization.data(withJSONObject: notificationObject)
+        )
+        XCTAssertEqual(decodedNotification.name, "")
+        XCTAssertEqual(decodedNotification.description, "")
     }
 
     func testLegacyInspectionIDsKeepCadenceOffCommentAndPhotoElement() throws {

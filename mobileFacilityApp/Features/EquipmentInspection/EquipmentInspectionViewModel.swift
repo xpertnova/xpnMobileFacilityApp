@@ -604,6 +604,23 @@ final class EquipmentInspectionViewModel {
         }
     }
 
+    func updatePhoto(id: String, name: String, description: String) async {
+        guard !isEditingDisabled, !isSaving,
+              photoAttachments.contains(where: { $0.id == id }) else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        let updated = photoAttachments.map {
+            $0.id == id ? $0.updatingMetadata(name: name, description: description) : $0
+        }
+        do {
+            try await persistPhotoChanges(updated)
+            photoAttachments = updated
+        } catch {
+            feedback = .photoFailed
+        }
+    }
+
     func cancel() async {
         await discardStagedPhotos()
     }
