@@ -189,7 +189,7 @@ enum SAPTFM2InspectionUploadBuilder {
             "OBJKY": inspection.notificationID, "DMS_CONTENTTYPE": "D_TFM_Wartung",
             "DMS_DOCID": "TFM006"
         ]) { _, value in value }
-        documents.append(SAPNotificationOutgoingDocument(metadata: pdfMetadata, jpegData: effectivePDF))
+        documents.append(SAPNotificationOutgoingDocument(metadata: pdfMetadata, data: effectivePDF))
 
         // 2. Photo Attachments
         for attachment in inspection.photoAttachments {
@@ -213,7 +213,7 @@ enum SAPTFM2InspectionUploadBuilder {
                 "OBJKY": inspection.notificationID, "DMS_CONTENTTYPE": "D_TFM_Wartung",
                 "DMS_DOCID": "TFM006"
             ]) { _, value in value }
-            documents.append(SAPNotificationOutgoingDocument(metadata: photoMetadata, jpegData: data))
+            documents.append(SAPNotificationOutgoingDocument(metadata: photoMetadata, data: data))
         }
 
         return SAPNotificationOutgoingBatch(
