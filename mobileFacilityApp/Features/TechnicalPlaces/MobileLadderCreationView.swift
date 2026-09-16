@@ -149,27 +149,30 @@ private enum DisassembledTransition: Hashable, Identifiable {
         }
     }
 
+    /// TFM5 shares the notification header with TFM1/TFM2/TFM3 the way the
+    /// legacy `CreateNewForm` view embedded the same `FormHeader` fragment.
+    /// A ladder that has not been queued yet has no `QMNUM`/`EQUNR`, so those
+    /// rows stay empty until `MobileLadderIdentifierFactory` assigns the local
+    /// `NEU` identifiers.
+    private var headerInfo: NotificationFormHeaderInfo {
+        let context = model.draft.context
+        return NotificationFormHeaderInfo(
+            title: String(localized: "mobileLadder.title"),
+            notificationID: model.draft.legacyIdentifiers?.notificationNumber ?? "",
+            formCode: context?.legacyContext.template.formCode.uppercased() ?? "TFM5",
+            technicalPlace: context?.legacyContext.functionalLocation ?? "",
+            address: context.map(formattedAddress) ?? "",
+            equipmentID: model.draft.legacyIdentifiers?.equipmentNumber ?? ""
+        )
+    }
+
     private var header: some View {
-        HStack(alignment: .top, spacing: 20) {
-            VStack(alignment: .leading, spacing: 7) {
-                Button(action: close) {
-                    Label("common.back", systemImage: "chevron.left")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(FacilityTheme.blue)
-                .frame(minHeight: 44, alignment: .leading)
-
-                Text("mobileLadder.title")
-                    .font(.system(size: 29, weight: .bold))
-                    .foregroundStyle(FacilityTheme.ink)
-            }
-
-            Spacer(minLength: 12)
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 18)
-        .background(FacilityTheme.surface)
+        NotificationFormHeaderBar(
+            info: headerInfo,
+            backTitleKey: "common.back",
+            isClosedLocally: model.draft.isClosedLocally == true,
+            back: close
+        )
     }
 
     @ViewBuilder
@@ -193,6 +196,9 @@ private enum DisassembledTransition: Hashable, Identifiable {
     private var formContent: some View {
         ScrollView {
             VStack(spacing: 18) {
+                if model.draft.context != nil {
+                    NotificationFormHeaderCard(info: headerInfo)
+                }
                 addressCard
                 masterDataCard
                 inspectionCard
@@ -270,33 +276,8 @@ private enum DisassembledTransition: Hashable, Identifiable {
                     onSelect: model.selectTrade
                 )
             }
-
-            if let context = model.draft.context {
-                Divider()
-                HStack(alignment: .firstTextBaseline, spacing: 30) {
-                    metadataValue(
-                        "notifications.detail.technicalPlace",
-                        context.legacyContext.functionalLocation,
-                        monospaced: true
-                    )
-                    metadataValue("externalCompany.address", formattedAddress(context))
-                }
-            }
         }
         .facilityCard(padding: 22)
-    }
-
-    private func metadataValue(_ title: LocalizedStringKey, _ value: String, monospaced: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(monospaced ? .subheadline.monospaced() : .body)
-                .foregroundStyle(FacilityTheme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func formattedAddress(_ context: MobileLadderCreationContext) -> String {

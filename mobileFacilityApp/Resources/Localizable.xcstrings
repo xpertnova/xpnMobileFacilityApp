@@ -8863,6 +8863,7 @@
       }
     },
     "mobileLadder.title" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16081,9 +16082,6 @@
           }
         }
       }
-    },
-    "TFM2" : {
-
     },
     "vorschlag.history" : {
       "localizations" : {
