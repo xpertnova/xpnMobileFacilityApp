@@ -27,13 +27,27 @@ struct ElevatorAssetCharacteristic: Codable, Equatable, Hashable, Identifiable, 
     let isRequired: Bool
     let isNumeric: Bool
     let allowsMultipleValues: Bool
+    /// Every known spelling of a value, including BAPI descriptions and
+    /// yes/no synonyms, used to show a stored value as text.
     let options: [ElevatorInspectionValueOption]
+    /// The `T_CHARVAL` value list the header dropdown offers, in legacy order.
+    var selectableOptions: [ElevatorInspectionValueOption] = []
+    /// `ATFOR` (`CHAR`, `NUM`, `DATE`, …).
+    var format: String = ""
+    /// `ANZST` — number of characters or digits.
+    var digits: Int = 0
+    /// `ANZDZ` — decimal places.
+    var decimals: Int = 0
+    /// `ATSCH` — number template such as `____.__`.
+    var template: String = ""
+    /// `ATKLE == "X"` — text is kept as typed instead of upper-cased.
+    var isCaseSensitive: Bool = false
 
     var id: String { name }
 }
 
 /// The cached master-data classification associated with a shared equipment
-/// inspection (TFM2 elevator, TFM4 fixed ladder).
+/// inspection (TFM2 elevator, TFM4 fixed ladder, TFM6 hold-open system).
 struct ElevatorAssetData: Equatable, Sendable {
     let equipmentType: String
     let className: String
@@ -42,8 +56,18 @@ struct ElevatorAssetData: Equatable, Sendable {
     var classTitle: String = ""
     let characteristics: [ElevatorAssetCharacteristic]
     let values: [String: String]
+    /// Cached master record the header was read from. `nil` when there is
+    /// nothing to write back to (demo data without a record, for example).
+    var masterRecord: EquipmentMasterRecord?
 
     static let empty = Self(equipmentType: "", className: "", characteristics: [], values: [:])
+
+    /// `HeaderFormBuilder._isEditable`: passenger and freight elevators keep
+    /// their characteristics read-only; every other equipment type can be
+    /// maintained during the inspection.
+    var isEditable: Bool {
+        !["TFMPERS", "TFMLAST"].contains(equipmentType.uppercased())
+    }
 }
 
 /// Narrow, read-only boundary for the legacy T0263/T0265/T0266 cache data.
@@ -64,8 +88,10 @@ struct UnavailableElevatorAssetDataProvider: ElevatorAssetDataProviding {
 /// Isolated, deterministic source used only by the app's Demo composition.
 struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
     func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
-        if notification.equipmentInspectionForm == .fixedLadder {
-            return Self.fixedLadderData
+        switch notification.equipmentInspectionForm {
+        case .fixedLadder: return Self.fixedLadderData
+        case .holdOpenSystem: return Self.holdOpenSystemData
+        case .elevator, nil: break
         }
         let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
         let passengerLift = ElevatorInspectionValueOption(
@@ -138,27 +164,34 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
     }
 
     private static var fixedLadderData: ElevatorAssetData {
-        let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
+        let yesNo = [
+            ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes")),
+            ElevatorInspectionValueOption(code: "N", text: String(localized: "holdOpenSystem.masterData.demo.no"))
+        ]
         let characteristics = [
             ElevatorAssetCharacteristic(
                 position: 1, name: "DEMO_LADDER_HEIGHT",
                 title: String(localized: "fixedLadder.masterData.demo.height"), unit: "m",
-                isRequired: true, isNumeric: true, allowsMultipleValues: false, options: []
+                isRequired: true, isNumeric: true, allowsMultipleValues: false, options: [],
+                format: "NUM", digits: 5, decimals: 2, template: "___.__"
             ),
             ElevatorAssetCharacteristic(
                 position: 2, name: "DEMO_LADDER_MATERIAL",
                 title: String(localized: "fixedLadder.masterData.demo.material"), unit: "",
-                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [],
+                format: "CHAR", digits: 30
             ),
             ElevatorAssetCharacteristic(
                 position: 3, name: "DEMO_LADDER_FALL_PROTECTION",
                 title: String(localized: "fixedLadder.masterData.demo.fallProtection"), unit: "",
-                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [yes]
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: yesNo,
+                selectableOptions: yesNo, format: "CHAR"
             ),
             ElevatorAssetCharacteristic(
                 position: 4, name: "DEMO_LADDER_BACK_PROTECTION",
                 title: String(localized: "fixedLadder.masterData.demo.backProtection"), unit: "",
-                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [yes]
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: yesNo,
+                selectableOptions: yesNo, format: "CHAR"
             )
         ]
         return ElevatorAssetData(
@@ -172,6 +205,91 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
                 "DEMO_LADDER_FALL_PROTECTION": "X",
                 "DEMO_LADDER_BACK_PROTECTION": "X"
             ]
+        )
+    }
+}
+
+extension DemoElevatorAssetDataProvider {
+    /// TFM6 header shaped like a Feststellanlage class: a date, value lists
+    /// that start with "Pflege durch Admin" / "nicht bekannt", and one value
+    /// list without a stored value.
+    fileprivate static var holdOpenSystemData: ElevatorAssetData {
+        let unknown = ElevatorInspectionValueOption(code: "NICHT VORHN.", text: EquipmentMasterDataCatalog.unknownText)
+        let admin = ElevatorInspectionValueOption(
+            code: EquipmentMasterDataCatalog.adminKey,
+            text: EquipmentMasterDataCatalog.adminText
+        )
+        func list(_ entries: [(String, String)]) -> [ElevatorInspectionValueOption] {
+            [admin, unknown] + entries.map { ElevatorInspectionValueOption(code: $0.0, text: $0.1) }
+        }
+        let manufacturers = list([("HERST_A", "Hersteller A"), ("HERST_B", "Hersteller B")])
+        let types = list([("RSZ1", "RSZ1"), ("RSZ2", "RSZ2")])
+        let approvals = list([("Z-6.5-1001", "Z-6.5-1001"), ("Z-6.5-1002", "Z-6.5-1002")])
+        let yesNo = [
+            ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes")),
+            ElevatorInspectionValueOption(code: "N", text: String(localized: "holdOpenSystem.masterData.demo.no"))
+        ]
+        let characteristics = [
+            ElevatorAssetCharacteristic(
+                position: 1, name: "DEMO_FSA_BUILD_DATE",
+                title: String(localized: "holdOpenSystem.masterData.demo.buildDate"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [],
+                format: "DATE", digits: 8
+            ),
+            ElevatorAssetCharacteristic(
+                position: 2, name: "DEMO_FSA_MANUFACTURER",
+                title: String(localized: "holdOpenSystem.masterData.demo.manufacturer"), unit: "",
+                isRequired: true, isNumeric: false, allowsMultipleValues: false, options: manufacturers,
+                selectableOptions: manufacturers, format: "CHAR", digits: 30
+            ),
+            ElevatorAssetCharacteristic(
+                position: 3, name: "DEMO_FSA_MANUAL_RELEASE",
+                title: String(localized: "holdOpenSystem.masterData.demo.manualRelease"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: yesNo,
+                selectableOptions: yesNo, format: "CHAR", digits: 1
+            ),
+            ElevatorAssetCharacteristic(
+                position: 4, name: "DEMO_FSA_TYPE",
+                title: String(localized: "holdOpenSystem.masterData.demo.type"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: types,
+                selectableOptions: types, format: "CHAR", digits: 30
+            ),
+            ElevatorAssetCharacteristic(
+                position: 5, name: "DEMO_FSA_APPROVAL",
+                title: String(localized: "holdOpenSystem.masterData.demo.approval"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: approvals,
+                selectableOptions: approvals, format: "CHAR", digits: 30
+            )
+        ]
+        let values = [
+            "DEMO_FSA_BUILD_DATE": "19931209",
+            "DEMO_FSA_MANUFACTURER": "HERST_A",
+            "DEMO_FSA_MANUAL_RELEASE": "",
+            "DEMO_FSA_TYPE": "RSZ1",
+            "DEMO_FSA_APPROVAL": "Z-6.5-1001"
+        ]
+        let record: [String: Any] = [
+            "EQUNR_TO": "EQ-100036",
+            "EQART_TO": "TFMFSA",
+            "T_CLASS_EQ": [[
+                "CLASS": "TFMFSA",
+                "T_CLOBJDAT": values.map { ["ATNAM": $0.key, "AUSP1": $0.value] }
+            ]]
+        ]
+        let recordJSON = (try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return ElevatorAssetData(
+            equipmentType: "TFMFSA",
+            className: "TFMFSA",
+            classTitle: String(localized: "holdOpenSystem.inspection.title"),
+            characteristics: characteristics,
+            values: values,
+            masterRecord: EquipmentMasterRecord(
+                equipmentID: "EQ-100036",
+                functionalLocationID: "UN01-ST01-BG01-TECH-480-FSA1",
+                className: "TFMFSA",
+                payloadJSON: recordJSON
+            )
         )
     }
 }
@@ -198,12 +316,21 @@ enum ElevatorAssetDataDecoder {
         } ?? classValues.first
 
         let rawValues = matchingClass.map { dictionaries(named: "T_CLOBJDAT", in: $0) } ?? []
-        let values = rawValues.reduce(into: [String: String]()) { result, row in
+        // `_getHeaderValue` joins the unique, non-empty values of a
+        // characteristic with ";", which is how multi-value fields arrive.
+        let groupedValues = rawValues.reduce(into: [String: [String]]()) { result, row in
             let name = string(named: "ATNAM", in: row)
             guard !name.isEmpty else { return }
-            let value = string(named: "AUSP1", in: row).ifEmpty(string(named: "ATWRT", in: row))
-            result[name] = value
+            var value = string(named: "AUSP1", in: row).ifEmpty(string(named: "ATWRT", in: row))
+            let unit = string(named: "UNIT_T_EXT", in: row).ifEmpty(string(named: "MSEHI", in: row))
+            if !unit.isEmpty, value.hasSuffix(unit) {
+                value = String(value.dropLast(unit.count)).trimmingCharacters(in: .whitespaces)
+            }
+            var existing = result[name] ?? []
+            if !value.isEmpty, !existing.contains(value) { existing.append(value) }
+            result[name] = existing
         }
+        let values = groupedValues.mapValues { $0.joined(separator: ";") }
 
         let bapiCharRows = matchingClass.map { dictionaries(named: "T_BAPI_CHAR", in: $0) } ?? []
         let rawUnitsByName: [String: String] = rawValues.reduce(into: [:]) { result, row in
@@ -241,6 +368,7 @@ enum ElevatorAssetDataDecoder {
                     .ifEmpty(code)
                 return ElevatorInspectionValueOption(code: code, text: title)
             }
+            let selectableOptions = EquipmentMasterDataCatalog.ordered(options)
 
             // Map BAPI value descriptions (e.g., "ROPE" -> "Seil", "PASSENGER ELEVATOR" -> "Personenaufzug")
             let bapiForChar = bapiCharValRows.filter {
@@ -283,7 +411,13 @@ enum ElevatorAssetDataDecoder {
                 isRequired: string(named: "ATERF", in: row).ifEmpty(string(named: "PFLICHT", in: row)).uppercased() == "X",
                 isNumeric: string(named: "ATFOR", in: row).uppercased() == "NUM",
                 allowsMultipleValues: !options.isEmpty && string(named: "ATEIN", in: row).uppercased() != "X",
-                options: options
+                options: options,
+                selectableOptions: selectableOptions,
+                format: string(named: "ATFOR", in: row),
+                digits: Int(string(named: "ANZST", in: row)) ?? 0,
+                decimals: Int(string(named: "ANZDZ", in: row)) ?? 0,
+                template: string(named: "ATSCH", in: row),
+                isCaseSensitive: string(named: "ATKLE", in: row).uppercased() == "X"
             )
         }
         guard !characteristics.isEmpty else { return nil }
@@ -384,7 +518,7 @@ struct ElevatorDefectPosition: Identifiable, Equatable, Sendable {
     let comment: String
 }
 
-/// Offline draft payload of a shared equipment inspection (TFM2, TFM4).
+/// Offline draft payload of a shared equipment inspection (TFM2, TFM4, TFM6).
 ///
 /// The type and its `.elevatorInspection` work-item case keep their original
 /// names because both are persisted in the offline queue.
@@ -408,6 +542,9 @@ struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
     var isOutOfOperation: Bool?
     var outOfOperationComment: String?
     var notificationSnapshot: OfflineNotificationSnapshot?
+    /// Class-characteristics header. `nil` for drafts saved before the header
+    /// became editable.
+    var masterData: EquipmentMasterDataDraft?
 
     init(
         notificationID: String,
@@ -426,9 +563,11 @@ struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
         isOutOfOperation: Bool? = nil,
         outOfOperationComment: String? = nil,
         notificationSnapshot: OfflineNotificationSnapshot? = nil,
-        formCode: String? = nil
+        formCode: String? = nil,
+        masterData: EquipmentMasterDataDraft? = nil
     ) {
         self.notificationID = notificationID
+        self.masterData = masterData
         self.formCode = formCode
         self.performedOn = performedOn
         self.elementValues = elementValues

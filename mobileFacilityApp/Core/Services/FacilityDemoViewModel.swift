@@ -667,6 +667,87 @@ enum MockFacilityData {
     }
     """
 
+    /// TFM6 Feststellanlage. It runs on the TFM2 `Aufzugskontrolle` screen,
+    /// so positions carry the position 3 material flag.
+    static let tfm6PayloadJSON = """
+    {
+      "QMNUM": "4710000036",
+      "QMART": "I1",
+      "FORMNR": "TFM6",
+      "PLTXT": "Feststellanlage Brandschutztür",
+      "STRNO": "UN01-ST01-BG01-TECH-480-FSA1",
+      "EQUNR": "EQ-100036",
+      "EQKTX": "Feststellanlage Flur EG Ost",
+      "EQART": "TFMFSA",
+      "CITY1_TO": "Essen",
+      "STREET_TO": "Hauptstraße 12",
+      "TPWEH": "WE 01",
+      "TPGEB": "Gebäude A",
+      "IWERK": "1501",
+      "GEWRK": "TFM",
+      "T_PLPOD": [
+        {
+          "USR00": "HEADER",
+          "STEUS": "TFM6",
+          "VORNR": "0005",
+          "LTXA1": "Feststellvorrichtung"
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM6",
+          "VORNR": "0010",
+          "LTXA1": "Haftmagnet und Gegenplatte unbeschädigt und sauber",
+          "LTXA2": "Auf Verschmutzung, Verformung und festen Sitz prüfen.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" },
+            { "POSNR": "3", "DFVAL": "X;", "DFVAL_TXT": "Material bestellen;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM6",
+          "VORNR": "0020",
+          "LTXA1": "Tür schließt nach Auslösung selbsttätig",
+          "LTXA2": "",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        },
+        {
+          "USR00": "HEADER",
+          "STEUS": "TFM6",
+          "VORNR": "0025",
+          "LTXA1": "Auslösevorrichtung"
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM6",
+          "VORNR": "0030",
+          "LTXA1": "Rauchschalter ausgelöst und Tür freigegeben",
+          "LTXA2": "Mit Prüfaerosol auslösen.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" },
+            { "POSNR": "3", "DFVAL": "X;", "DFVAL_TXT": "Material bestellen;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM6",
+          "VORNR": "0040",
+          "LTXA1": "Handauslösetaster gekennzeichnet und funktionsfähig",
+          "LTXA2": "",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        }
+      ]
+    }
+    """
+
     static let sapNotifications: [SAPNotificationSummary] = [
         SAPNotificationSummary(
             id: "4710000012",
@@ -693,12 +774,26 @@ enum MockFacilityData {
             systemStatus: "Offen",
             userStatus: "",
             rawPayloadJSON: tfm4PayloadJSON
+        ),
+        SAPNotificationSummary(
+            id: "4710000036",
+            client: "100",
+            title: "Feststellanlage Brandschutztür",
+            functionalLocationID: "UN01-ST01-BG01-TECH-480-FSA1",
+            functionalLocationName: "Feststellanlage Flur EG Ost",
+            equipmentID: "EQ-100036",
+            startDate: "2026-08-10",
+            endDate: "2026-08-20",
+            systemStatus: "Offen",
+            userStatus: "",
+            rawPayloadJSON: tfm6PayloadJSON
         )
     ]
 
     static let notifications: [MaintenanceNotification] = [
         .init(id: "4710000012", title: "Aufzugskontrolle Personenaufzug", location: "Gebäude A · Aufzug 1", dueDate: "Heute", equipment: "EQ-100010", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM2", functionalLocationName: "Gebäude A")),
         .init(id: "4710000024", title: "Steigleiter Dachausstieg", location: "Gebäude A · Dachausstieg Nord", dueDate: "Heute", equipment: "EQ-100024", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM4", functionalLocationName: "Gebäude A")),
+        .init(id: "4710000036", title: "Feststellanlage Brandschutztür", location: "Gebäude A · Flur EG Ost", dueDate: "Heute", equipment: "EQ-100036", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM6", functionalLocationName: "Gebäude A")),
         .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM3", functionalLocationName: "Building A")),
         .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "C", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Building C")),
         .init(id: "005140055904", title: "MTFM_Überprüfung Alarmpläne", location: "GB10_Rauschermühle_V1 Verwaltungsgebäude", dueDate: "Tomorrow", equipment: "DE-SAF-11152-10", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 3, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "SAF", businessEntityCode: "11152", buildingCode: "GB10", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "GB10_Rauschermühle_V1 Verwaltungsgebäude")),

@@ -22,7 +22,7 @@ enum ElevatorAssetDataState: Equatable {
 }
 
 /// State and business rules of every shared equipment inspection (TFM2
-/// Aufzugskontrolle, TFM4 Steigleitern). Everything that differs per form code
+/// Aufzugskontrolle, TFM4 Steigleitern, TFM6 Feststellanlage). Everything that differs per form code
 /// comes from `form`; see `EquipmentInspectionForm`.
 @MainActor
 @Observable
@@ -52,6 +52,19 @@ final class EquipmentInspectionViewModel {
     private(set) var elevatorAssetValues: [String: String] = [:]
     /// Class description (`TXTBZ`) of the loaded characteristics.
     private(set) var masterDataClassTitle = ""
+    /// Header value per characteristic (`ATNAM`) in the transport format of
+    /// its control; see `EquipmentMasterDataRules`.
+    private(set) var masterDataValues: [String: String] = [:]
+    /// `Vorschlag` text per characteristic that selects "Pflege durch Admin".
+    private(set) var masterDataProposals: [String: String] = [:]
+    /// Characteristics that failed `validateMasterData` on the last close.
+    private(set) var masterDataValidationErrors: Set<String> = []
+    /// Characteristic whose proposal editor should be shown.
+    var proposalCharacteristicID: String?
+    private var originalMasterDataValues: [String: String] = [:]
+    private var masterRecord: EquipmentMasterRecord?
+    /// `HeaderFormBuilder._isEditable` for the loaded record.
+    private(set) var isMasterDataRecordEditable = false
     var statusDecision: ElevatorInspectionStatusDecision?
     var feedback: ElevatorInspectionFeedback?
 
@@ -119,6 +132,12 @@ final class EquipmentInspectionViewModel {
     /// `setValues4AnwStatus` sets from the status.
     var arePositionsEditable: Bool {
         !isEditingDisabled && !isOutOfService
+    }
+
+    /// The header accepts input: the record's equipment type is maintainable
+    /// (`_isEditable`) and the form itself can be edited.
+    var isMasterDataEditable: Bool {
+        !isEditingDisabled && isMasterDataRecordEditable
     }
 
     var isOutOfServiceCommentMissing: Bool {
@@ -203,6 +222,7 @@ final class EquipmentInspectionViewModel {
         }
 
         persistedDraft = draft
+        restoreMasterData(from: draft.masterData)
         performedOn = draft.performedOn
         outgoingProcessID = draft.outgoingProcessID
         isClosedLocally = draft.isClosedLocally
@@ -254,6 +274,11 @@ final class EquipmentInspectionViewModel {
             elevatorAssetCharacteristics = assetData.characteristics
             elevatorAssetValues = assetData.values
             masterDataClassTitle = assetData.classTitle
+            masterRecord = assetData.masterRecord
+            isMasterDataRecordEditable = assetData.isEditable
+            originalMasterDataValues = EquipmentMasterDataRules.initialValues(for: assetData)
+            masterDataValues = originalMasterDataValues
+            restoreMasterData(from: persistedDraft?.masterData)
             elevatorAssetDataState = assetData.characteristics.isEmpty ? .unavailable : .ready
         } catch is CancellationError {
             return
@@ -261,25 +286,210 @@ final class EquipmentInspectionViewModel {
             elevatorAssetCharacteristics = []
             elevatorAssetValues = [:]
             masterDataClassTitle = ""
+            masterRecord = nil
+            isMasterDataRecordEditable = false
+            originalMasterDataValues = [:]
+            masterDataValues = [:]
             elevatorAssetDataState = .unavailable
         }
     }
 
     func elevatorAssetDisplayValue(for characteristic: ElevatorAssetCharacteristic) -> String {
-        let rawValue = elevatorAssetValues[characteristic.id]?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !rawValue.isEmpty else { return "—" }
+        let value = EquipmentMasterDataRules.displayValue(
+            for: characteristic,
+            value: masterDataValues[characteristic.name] ?? ""
+        )
+        return value.isEmpty ? "—" : value
+    }
 
-        let rawValues = characteristic.allowsMultipleValues
-            ? rawValue.split(separator: ";").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            : [rawValue]
-        return rawValues.map { value in
-            characteristic.options.first {
-                $0.code.caseInsensitiveCompare(value) == .orderedSame
-                    || $0.text.caseInsensitiveCompare(value) == .orderedSame
-            }?.text ?? value
+    // MARK: - Class-characteristics header
+
+    /// `_setIDNUMMERFalse` and `_isEditable` combined, independent of whether
+    /// the form is currently locked.
+    func isCharacteristicMaintainable(_ characteristic: ElevatorAssetCharacteristic) -> Bool {
+        isMasterDataRecordEditable && !characteristic.isLockedIdentifier
+    }
+
+    func canEditCharacteristic(_ characteristic: ElevatorAssetCharacteristic) -> Bool {
+        !isEditingDisabled && !isSaving && isCharacteristicMaintainable(characteristic)
+    }
+
+    func masterDataValue(for characteristic: ElevatorAssetCharacteristic) -> String {
+        masterDataValues[characteristic.name] ?? ""
+    }
+
+    func masterDataSelection(for characteristic: ElevatorAssetCharacteristic) -> Set<String> {
+        EquipmentMasterDataRules.selectedCodes(for: characteristic, value: masterDataValue(for: characteristic))
+    }
+
+    func masterDataDate(for characteristic: ElevatorAssetCharacteristic) -> Date? {
+        EquipmentMasterDataRules.date(fromSAP: masterDataValue(for: characteristic))
+    }
+
+    func isMasterDataInvalid(_ characteristic: ElevatorAssetCharacteristic) -> Bool {
+        masterDataValidationErrors.contains(characteristic.name)
+    }
+
+    /// Applies a dropdown pick the way `onChangeHeader` does. Picking
+    /// "Pflege durch Admin" asks for a proposal; leaving it drops the proposal
+    /// (`deleteVorschlag`). A multi-value field toggles the picked entry.
+    func selectMasterDataOption(_ code: String, for characteristic: ElevatorAssetCharacteristic) {
+        guard canEditCharacteristic(characteristic) else { return }
+        let wasAdmin = EquipmentMasterDataRules.selectsAdmin(characteristic, value: masterDataValue(for: characteristic))
+
+        let newValue: String
+        if characteristic.control == .multiSelect {
+            var codes = masterDataSelection(for: characteristic)
+            if codes.contains(code) { codes.remove(code) } else { codes.insert(code) }
+            newValue = characteristic.selectableOptions.map(\.code).filter(codes.contains).joined(separator: ";")
+        } else {
+            newValue = code
         }
-        .joined(separator: ", ")
+        setMasterDataValue(newValue, for: characteristic)
+
+        let isAdmin = EquipmentMasterDataRules.selectsAdmin(characteristic, value: newValue)
+        if isAdmin && !wasAdmin {
+            proposalCharacteristicID = characteristic.name
+        } else if !isAdmin && wasAdmin {
+            masterDataProposals[characteristic.name] = nil
+        }
+    }
+
+    func setMasterDataText(_ text: String, for characteristic: ElevatorAssetCharacteristic) {
+        guard canEditCharacteristic(characteristic) else { return }
+        setMasterDataValue(EquipmentMasterDataRules.normalizedText(text, for: characteristic), for: characteristic)
+    }
+
+    func setMasterDataNumber(_ text: String, for characteristic: ElevatorAssetCharacteristic) {
+        guard canEditCharacteristic(characteristic) else { return }
+        setMasterDataValue(EquipmentMasterDataRules.normalizedNumber(text), for: characteristic)
+    }
+
+    func setMasterDataDate(_ date: Date?, for characteristic: ElevatorAssetCharacteristic) {
+        guard canEditCharacteristic(characteristic) else { return }
+        setMasterDataValue(date.map(EquipmentMasterDataRules.sapDate) ?? "", for: characteristic)
+    }
+
+    /// The proposal button is enabled while "Pflege durch Admin" is selected
+    /// (`_setInitialMasterData`, `onChangeHeader`).
+    func isProposalAvailable(for characteristic: ElevatorAssetCharacteristic) -> Bool {
+        canEditCharacteristic(characteristic)
+            && EquipmentMasterDataRules.selectsAdmin(characteristic, value: masterDataValue(for: characteristic))
+    }
+
+    func proposal(for characteristic: ElevatorAssetCharacteristic) -> String {
+        masterDataProposals[characteristic.name] ?? ""
+    }
+
+    /// The last proposal for the same field of the same object that is still
+    /// on this device. The legacy `getVorschlag` reads the unsent `TO_T0211`
+    /// rows for the element and `EQUNR`/`STRNO`; the history box shows only
+    /// the most recent one. `insertVorschlag` writes a proposal as soon as the
+    /// popover is saved, so this inspection's own proposal counts even before
+    /// the draft is saved.
+    func lastProposal(for characteristic: ElevatorAssetCharacteristic) -> String? {
+        let current = proposal(for: characteristic)
+        if !current.isEmpty { return current }
+        let equipmentID = detail.summary.equipmentID
+        let locationID = detail.summary.functionalLocationID
+        return offlineWorkStore.items
+            .sorted { $0.updatedAt > $1.updatedAt }
+            .lazy
+            .compactMap { item -> String? in
+                guard let masterData = item.payload.elevatorInspection?.masterData,
+                      equipmentID.isEmpty
+                        ? masterData.functionalLocationID == locationID
+                        : masterData.equipmentID == equipmentID,
+                      let value = masterData.proposals[characteristic.name]?
+                        .trimmingCharacters(in: .whitespacesAndNewlines),
+                      !value.isEmpty
+                else { return nil }
+                return value
+            }
+            .first
+    }
+
+    /// `onPressVorschlagSave`: a text stores the proposal, an empty text
+    /// removes an existing one.
+    func saveProposal(_ text: String, for characteristic: ElevatorAssetCharacteristic) {
+        let value = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        masterDataProposals[characteristic.name] = value.isEmpty ? nil : value
+        if !value.isEmpty {
+            masterDataValidationErrors.remove(characteristic.name)
+        }
+        proposalCharacteristicID = nil
+    }
+
+    private func setMasterDataValue(_ value: String, for characteristic: ElevatorAssetCharacteristic) {
+        masterDataValues[characteristic.name] = value
+        masterDataValidationErrors.remove(characteristic.name)
+    }
+
+    private func restoreMasterData(from draft: EquipmentMasterDataDraft?) {
+        guard let draft else { return }
+        for characteristic in elevatorAssetCharacteristics {
+            if let value = draft.values[characteristic.name] {
+                masterDataValues[characteristic.name] = value
+            }
+        }
+        masterDataProposals = draft.proposals
+    }
+
+    /// `validateMasterData`, which `validateFormValues` runs whether or not
+    /// the form is out of service.
+    private func validateMasterData() -> Bool {
+        guard elevatorAssetDataState == .ready else {
+            masterDataValidationErrors.removeAll()
+            return true
+        }
+        masterDataValidationErrors = EquipmentMasterDataRules.invalidCharacteristicIDs(
+            characteristics: elevatorAssetCharacteristics,
+            values: masterDataValues,
+            proposals: masterDataProposals,
+            isEditable: isCharacteristicMaintainable
+        )
+        return masterDataValidationErrors.isEmpty
+    }
+
+    /// Header state for the offline draft. On a closed inspection it also
+    /// carries the rewritten master record when the characteristics changed.
+    private func masterDataDraft(closed: Bool) -> EquipmentMasterDataDraft? {
+        guard elevatorAssetDataState == .ready else { return persistedDraft?.masterData }
+        let characteristics = elevatorAssetCharacteristics
+        let proposals = masterDataProposals.filter { name, value in
+            guard !value.isEmpty, let characteristic = characteristics.first(where: { $0.name == name }) else {
+                return false
+            }
+            return EquipmentMasterDataRules.selectsAdmin(characteristic, value: masterDataValues[name] ?? "")
+        }
+        let updatedPayload: String?
+        if closed, isMasterDataRecordEditable, let masterRecord {
+            updatedPayload = EquipmentMasterDataRules.updatedMasterPayloadJSON(
+                record: masterRecord,
+                characteristics: characteristics,
+                original: originalMasterDataValues,
+                current: masterDataValues,
+                client: detail.summary.client
+            )
+        } else {
+            updatedPayload = nil
+        }
+        let equipmentID = masterRecord?.equipmentID ?? detail.summary.equipmentID
+        return EquipmentMasterDataDraft(
+            values: masterDataValues,
+            proposals: proposals,
+            headerValues: characteristics.map {
+                EquipmentMasterDataHeaderValue(
+                    elementID: $0.name,
+                    label: $0.title,
+                    value: masterDataValues[$0.name] ?? ""
+                )
+            },
+            equipmentID: equipmentID,
+            functionalLocationID: masterRecord?.functionalLocationID
+                ?? (equipmentID.isEmpty ? detail.summary.functionalLocationID : ""),
+            updatedMasterPayloadJSON: updatedPayload
+        )
     }
 
     func applyAllGood() {
@@ -296,11 +506,13 @@ final class EquipmentInspectionViewModel {
     func handleCloseTapped() {
         guard !isSaving, !isEditingDisabled else { return }
 
+        let isMasterDataValid = validateMasterData()
+
         // An out-of-service form closes on its documented status alone; the
         // positions are cleared and are not validated
         // (`HeaderFormBuilder.validateFormValues`).
         if isOutOfService {
-            guard !isOutOfServiceCommentMissing else {
+            guard !isOutOfServiceCommentMissing, isMasterDataValid else {
                 feedback = .incomplete
                 return
             }
@@ -312,7 +524,7 @@ final class EquipmentInspectionViewModel {
         // Validate
         let missing = ElevatorInspectionLogic.unansweredItemIDs(items: items, elementValues: results)
 
-        if !missing.isEmpty {
+        if !missing.isEmpty || !isMasterDataValid {
             validationErrors = missing
             feedback = .incomplete
             return
@@ -400,6 +612,7 @@ final class EquipmentInspectionViewModel {
         draft.photoAttachments = []
         draft.isOutOfOperation = isOutOfService
         draft.outOfOperationComment = isOutOfService ? outOfServiceComment : nil
+        draft.masterData = masterDataDraft(closed: false)
         _ = try await offlineWorkStore.saveElevatorInspection(draft)
         persistedDraft = draft
         originalAttachmentIDs = []
@@ -494,7 +707,7 @@ final class EquipmentInspectionViewModel {
             notes: comments,
             hasMaterialColumn: hasMaterialColumn,
             assetCharacteristics: elevatorAssetCharacteristics,
-            assetValues: elevatorAssetValues
+            assetValues: masterDataValues
         )
 
         if let artifact = try? ElevatorInspectionPDFRenderer.render(pdfPayload) {
@@ -518,7 +731,8 @@ final class EquipmentInspectionViewModel {
             isOutOfOperation: isOutOfService,
             outOfOperationComment: isOutOfService ? outOfServiceComment : nil,
             notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
-            formCode: form.formCode
+            formCode: form.formCode,
+            masterData: masterDataDraft(closed: closed)
         )
 
         do {

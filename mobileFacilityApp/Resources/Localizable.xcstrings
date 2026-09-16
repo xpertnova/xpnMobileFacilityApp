@@ -3716,6 +3716,7 @@
       }
     },
     "elevator.assetData.required" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6753,6 +6754,244 @@
         }
       }
     },
+    "holdOpenSystem.closeDialog.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Prüfung der Feststellanlage wurden Mängel erfasst. Soll die Meldung offen bleiben oder abgeschlossen werden?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defects were recorded for this hold-open system inspection. Should the notification remain open or be closed?"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.inspection.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feststellanlage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold-Open System"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.demo.approval" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zulassungsnummer"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Approval number"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.demo.buildDate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baujahr"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Year of construction"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.demo.manualRelease" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manuelle Handschaltung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manual release"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.demo.manufacturer" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hersteller"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manufacturer"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.demo.no" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nein"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.demo.type" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typ"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merkmale der Feststellanlage werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading hold-open system data …"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.subtitle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technische Merkmale der Feststellanlage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical characteristics of this hold-open system"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feststellanlage Merkmale"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold-open system data"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.unavailable.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Feststellanlage sind keine zwischengespeicherten Klassenmerkmale verfügbar. Die Prüfung ist erst nach dem Synchronisieren der Stammdaten möglich."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No cached class characteristics are available for this hold-open system. The inspection can be performed once master data has been synchronized."
+          }
+        }
+      }
+    },
+    "holdOpenSystem.masterData.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klassenmerkmale nicht gefunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Class characteristics not found"
+          }
+        }
+      }
+    },
+    "holdOpenSystem.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung der Feststellanlage nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hold-Open System Inspection Unavailable"
+          }
+        }
+      }
+    },
     "inspection.action.closeNotification" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6923,6 +7162,107 @@
         }
       }
     },
+    "inspection.masterData.choose" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte auswählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a value"
+          }
+        }
+      }
+    },
+    "inspection.masterData.date.clear" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Löschen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear"
+          }
+        }
+      }
+    },
+    "inspection.masterData.date.done" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        }
+      }
+    },
+    "inspection.masterData.datePlaceholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tt.mm.jjjj"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "dd.mm.yyyy"
+          }
+        }
+      }
+    },
+    "inspection.masterData.proposal.edit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschlag bearbeiten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit proposal"
+          }
+        }
+      }
+    },
+    "inspection.masterData.proposal.save" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
+          }
+        }
+      }
+    },
     "inspection.outOfService" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6935,7 +7275,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Out of service"
+            "value" : "Out of operation"
           }
         }
       }
@@ -16814,13 +17154,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "History"
+            "value" : "Vorgeschlagene Werte"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "History"
+            "value" : "Proposal values"
           }
         }
       }
@@ -16836,7 +17176,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "New proposal"
+            "value" : "New proposal values"
           }
         }
       }
@@ -16859,7 +17199,6 @@
       }
     },
     "vorschlagPopover.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
