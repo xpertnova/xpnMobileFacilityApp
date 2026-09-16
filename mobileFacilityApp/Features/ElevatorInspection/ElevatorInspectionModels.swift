@@ -283,6 +283,10 @@ struct ElevatorInspectionItem: Identifiable, Equatable, Sendable {
     let actionOptions: [ElevatorInspectionValueOption]
     let materialElementID: String?
     let commentElementID: String
+    /// `LTXA1` of the preceding `USR00 == "HEADER"` / `"U1"` row, rendered as
+    /// a group band above this position — the legacy
+    /// `Aufzugskontrolle.getGroupHeaderListItem`.
+    var groupTitle: String = ""
 
     var hasAction: Bool { actionElementID != nil && !actionOptions.isEmpty }
     var hasMaterial: Bool { materialElementID != nil }
@@ -497,14 +501,21 @@ enum ElevatorInspectionDecoder {
     static func decodeItems(fromRows rows: [[String: Any]]) -> [ElevatorInspectionItem] {
         var result: [ElevatorInspectionItem] = []
         var itemNumber = 1
+        var currentGroupTitle = ""
 
         for row in rows {
             let rowType = stringValue(value(named: "USR00", in: row)).uppercased()
             let fallbackType = stringValue(value(named: "DNAME", in: row)).uppercased()
             let normalizedType = rowType.isEmpty ? fallbackType : rowType
 
-            // Exclude header, subheader, and standalone photo rows
-            guard !["HEADER", "U1", "FOTO"].contains(normalizedType) else { continue }
+            // Header and subheader rows are group bands, not positions. They
+            // carry no controls and do not advance the position number.
+            if ["HEADER", "U1"].contains(normalizedType) {
+                currentGroupTitle = stringValue(value(named: "LTXA1", in: row))
+                continue
+            }
+            // Exclude standalone photo rows
+            guard normalizedType != "FOTO" else { continue }
 
             let title = stringValue(value(named: "LTXA1", in: row))
             let operation = stringValue(value(named: "VORNR", in: row))
@@ -551,7 +562,8 @@ enum ElevatorInspectionDecoder {
                 actionElementID: actionElementID,
                 actionOptions: actionOptions,
                 materialElementID: materialElementID,
-                commentElementID: commentElementID
+                commentElementID: commentElementID,
+                groupTitle: currentGroupTitle
             ))
             itemNumber += 1
         }

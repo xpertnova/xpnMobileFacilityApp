@@ -50,9 +50,23 @@ final class ElevatorInspectionViewModel {
     var feedback: ElevatorInspectionFeedback?
 
     var isStatusDecisionPresented = false
+    /// Shown when closing needs a plain yes/no confirmation, which is every
+    /// case except a defective inspection — that one asks for a status
+    /// instead.
+    var isCloseConfirmationPresented = false
     var isI2DefectSelectionPresented = false
     var selectedI2DefectIDs: Set<String> = []
     var validationErrors: Set<String> = []
+
+    /// Header-level "Außer Betrieb" status.
+    ///
+    /// `BaseFormController.buildDefaultElements` builds this control for every
+    /// form except TFM1, TFM3, TFM8, TFM9 and TFMQ, so TFM2 carries it. It is
+    /// a header property, not a checklist row: the flag posts as
+    /// `TFM2-0000-1` and its comment as `TFM2-0000-9B`.
+    private(set) var isOutOfService = false
+    var outOfServiceComment = ""
+    var outOfServiceTransition: InspectionOutOfServiceTransition?
 
     private var originalAttachmentIDs = Set<String>()
     private var removedOriginalAttachmentIDs = Set<String>()
@@ -75,8 +89,27 @@ final class ElevatorInspectionViewModel {
         self.items = ElevatorInspectionDecoder.decodeItems(from: detail.summary.rawPayloadJSON)
     }
 
+    /// Row identity of the header status, used for its photo scope.
+    static let outOfServiceRowID = "TFM2-0000"
+    /// `edata.select.getElementId("TFM2", "0000", "1")`.
+    static let outOfServiceValueElementID = "TFM2-0000-1"
+    /// `edata.select.getNoteIconId("TFM2", "0000")`.
+    static let outOfServiceCommentElementID = "TFM2-0000-9B"
+
     var isEditingDisabled: Bool {
         isLoading || isClosedLocally
+    }
+
+    /// The checklist positions are locked while the form is out of service —
+    /// the legacy client binds them to `posTable>/posElementBlocked`, which
+    /// `setValues4AnwStatus` sets from the status.
+    var arePositionsEditable: Bool {
+        !isEditingDisabled && !isOutOfService
+    }
+
+    var isOutOfServiceCommentMissing: Bool {
+        guard isOutOfService else { return false }
+        return !InspectionFormRules.outOfServiceIssues(comment: outOfServiceComment).isEmpty
     }
 
     var hasMaterialColumn: Bool {
@@ -84,13 +117,18 @@ final class ElevatorInspectionViewModel {
     }
 
     var isAllGoodAvailable: Bool {
-        !items.isEmpty && items.allSatisfy { item in
+        !isOutOfService && !items.isEmpty && items.allSatisfy { item in
             item.resultOptions.contains { $0.code == "1" }
         }
     }
 
     var isChecklistValid: Bool {
-        !items.isEmpty && items.allSatisfy { item in
+        // `HeaderFormBuilder.validateFormValues` skips every position while
+        // the status is set and validates only its comment.
+        if isOutOfService {
+            return !isOutOfServiceCommentMissing
+        }
+        return !items.isEmpty && items.allSatisfy { item in
             if let val = results[item.id], !val.isEmpty {
                 return true
             }
@@ -99,6 +137,11 @@ final class ElevatorInspectionViewModel {
     }
 
     var hasDefect: Bool {
+        guard !isOutOfService else { return false }
+        return _hasPositionDefect
+    }
+
+    private var _hasPositionDefect: Bool {
         items.contains { item in
             let res = results[item.id] ?? ""
             let act = actions[item.id]
@@ -107,7 +150,8 @@ final class ElevatorInspectionViewModel {
     }
 
     var deficientItems: [ElevatorInspectionItem] {
-        items.filter { item in
+        guard !isOutOfService else { return [] }
+        return items.filter { item in
             let res = results[item.id] ?? ""
             let act = actions[item.id]
             return ElevatorInspectionLogic.isDefect(resultCode: res, actionCode: act)
@@ -173,6 +217,9 @@ final class ElevatorInspectionViewModel {
             }
         }
 
+        isOutOfService = draft.isOutOfOperation ?? false
+        outOfServiceComment = draft.outOfOperationComment ?? ""
+
         if draft.closingSystemStatus == "MIAR" {
             statusDecision = .leaveOpen
         } else if draft.closingSystemStatus == "MMAB" {
@@ -214,7 +261,7 @@ final class ElevatorInspectionViewModel {
     }
 
     func applyAllGood() {
-        guard !isEditingDisabled, isAllGoodAvailable else { return }
+        guard arePositionsEditable, isAllGoodAvailable else { return }
         for item in items {
             // Set only empty/unanswered result controls to "1"
             if results[item.id] == nil || results[item.id]?.isEmpty == true {
@@ -226,6 +273,19 @@ final class ElevatorInspectionViewModel {
 
     func handleCloseTapped() {
         guard !isSaving, !isEditingDisabled else { return }
+
+        // An out-of-service form closes on its documented status alone; the
+        // positions are cleared and are not validated
+        // (`HeaderFormBuilder.validateFormValues`).
+        if isOutOfService {
+            guard !isOutOfServiceCommentMissing else {
+                feedback = .incomplete
+                return
+            }
+            validationErrors.removeAll()
+            isCloseConfirmationPresented = true
+            return
+        }
 
         // Validate
         let missing = ElevatorInspectionLogic.unansweredItemIDs(items: items, elementValues: results)
@@ -241,11 +301,14 @@ final class ElevatorInspectionViewModel {
         if hasDefect {
             isStatusDecisionPresented = true
         } else {
-            // Normal notification: close with MMAB
-            Task {
-                await save(closed: true, statusDecision: .close)
-            }
+            isCloseConfirmationPresented = true
         }
+    }
+
+    /// Closes after the plain confirmation. An out-of-service form stays open
+    /// for the follow-up (`MIAR`); a clean inspection closes (`MMAB`).
+    func confirmClose() async {
+        await save(closed: true, statusDecision: isOutOfService ? .leaveOpen : .close)
     }
 
     func confirmStatusDecision(_ decision: ElevatorInspectionStatusDecision) async {
@@ -259,8 +322,65 @@ final class ElevatorInspectionViewModel {
         }
     }
 
-    func cancelStatusDecision() {
-        isStatusDecisionPresented = false
+    /// Requests a change of the header status. Both directions are confirmed
+    /// because either one discards documentation.
+    func requestOutOfServiceChange() {
+        guard !isEditingDisabled, !isSaving else { return }
+        outOfServiceTransition = isOutOfService ? .disable : .enable
+    }
+
+    /// Applies a confirmed status change.
+    ///
+    /// `onSelectOutofOrder` clears the `T0283` position values and calls
+    /// `deleteDocsForVorgang`, so every result, action, material flag, comment
+    /// and photo recorded so far is discarded in both directions.
+    func confirmOutOfServiceChange(to isActive: Bool) async {
+        outOfServiceTransition = nil
+        guard !isEditingDisabled, !isSaving else { return }
+
+        isOutOfService = isActive
+        results.removeAll()
+        actions.removeAll()
+        materials.removeAll()
+        comments.removeAll()
+        validationErrors.removeAll()
+        outOfServiceComment = ""
+
+        isSaving = true
+        defer { isSaving = false }
+        let discarded = photoAttachments
+        do {
+            try await persistStatusChange()
+            photoAttachments = []
+            photoData.removeAll()
+            for attachment in discarded {
+                try? await photoStore.delete(id: attachment.localAttachmentID)
+            }
+        } catch {
+            feedback = .saveFailed
+        }
+    }
+
+    /// Writes the cleared checklist and the new header status to the offline
+    /// draft so a status change survives leaving the form without an explicit
+    /// temporary save.
+    private func persistStatusChange() async throws {
+        var draft = persistedDraft ?? ElevatorInspectionDraftPayload(
+            notificationID: detail.summary.id,
+            performedOn: performedOn,
+            notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
+        )
+        draft.performedOn = performedOn
+        draft.elementValues = [:]
+        draft.comments = [:]
+        draft.materialFlags = [:]
+        draft.photoAttachments = []
+        draft.isOutOfOperation = isOutOfService
+        draft.outOfOperationComment = isOutOfService ? outOfServiceComment : nil
+        _ = try await offlineWorkStore.saveElevatorInspection(draft)
+        persistedDraft = draft
+        originalAttachmentIDs = []
+        removedOriginalAttachmentIDs.removeAll()
     }
 
     func save(closed: Bool, statusDecision: ElevatorInspectionStatusDecision? = nil) async {
@@ -293,7 +413,10 @@ final class ElevatorInspectionViewModel {
         let isDef = hasDefect
         let sysStatus: String
         if closed {
-            if let statusDecision {
+            if isOutOfService {
+                // An out-of-service object stays open for the follow-up.
+                sysStatus = ElevatorInspectionStatusDecision.leaveOpen.systemStatus
+            } else if let statusDecision {
                 sysStatus = statusDecision.systemStatus
             } else {
                 sysStatus = isDef ? "MIAR" : "MMAB"
@@ -304,7 +427,7 @@ final class ElevatorInspectionViewModel {
 
         let closingUSTXT = ElevatorInspectionLogic.updatedUserStatus(
             current: detail.summary.userStatus,
-            hasDefect: isDef
+            hasDefect: isOutOfService || isDef
         )
 
         // Generate PDF report
@@ -366,7 +489,9 @@ final class ElevatorInspectionViewModel {
             isClosedLocally: closed,
             closingSystemStatus: sysStatus,
             closingUserStatus: closingUSTXT,
-            statusNumber: isDef ? "2" : "1",
+            statusNumber: isOutOfService || isDef ? "2" : "1",
+            isOutOfOperation: isOutOfService,
+            outOfOperationComment: isOutOfService ? outOfServiceComment : nil,
             notificationSnapshot: OfflineNotificationSnapshot(detail: detail)
         )
 
@@ -387,6 +512,21 @@ final class ElevatorInspectionViewModel {
     }
 
     func addPhoto(jpegData: Data, to item: ElevatorInspectionItem) async {
+        await addPhoto(jpegData: jpegData, checklistItemID: item.id, sapElementID: item.commentElementID)
+    }
+
+    /// Documents the header status. The legacy camera icon on the out-of-order
+    /// box is bound to the same `T0282` element as its note.
+    func addOutOfServicePhoto(jpegData: Data) async {
+        guard isOutOfService else { return }
+        await addPhoto(
+            jpegData: jpegData,
+            checklistItemID: Self.outOfServiceRowID,
+            sapElementID: Self.outOfServiceCommentElementID
+        )
+    }
+
+    private func addPhoto(jpegData: Data, checklistItemID: String, sapElementID: String) async {
         guard !isEditingDisabled, !isSaving else { return }
         guard photoAttachments.count < Self.maximumPhotoCount else {
             feedback = .photoLimitReached
@@ -400,8 +540,8 @@ final class ElevatorInspectionViewModel {
             let localID = try await photoStore.saveJPEG(jpegData)
             let attachment = NotificationPhotoAttachment(
                 localAttachmentID: localID,
-                checklistItemID: item.id,
-                sapElementID: item.commentElementID,
+                checklistItemID: checklistItemID,
+                sapElementID: sapElementID,
                 capturedAt: .now,
                 sapDocumentID: UUID().uuidString.uppercased()
             )

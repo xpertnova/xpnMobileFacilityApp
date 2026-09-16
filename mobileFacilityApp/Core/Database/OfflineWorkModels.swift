@@ -203,19 +203,24 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
         let information: String
         let resultElementID: String?
         let commentElementID: String?
+        /// Optional so a draft written before checklist group bands existed
+        /// still decodes; a missing key simply means "no group".
+        let groupTitle: String?
 
         init(
             id: String,
             title: String,
             information: String,
             resultElementID: String? = nil,
-            commentElementID: String? = nil
+            commentElementID: String? = nil,
+            groupTitle: String? = nil
         ) {
             self.id = id
             self.title = title
             self.information = information
             self.resultElementID = resultElementID
             self.commentElementID = commentElementID
+            self.groupTitle = groupTitle
         }
     }
 

@@ -119,16 +119,13 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 secondaryButton: .cancel(Text("common.cancel"))
             )
         }
-        .alert(
-            "notifications.detail.closeConfirmation.title",
-            isPresented: $isCloseConfirmationPresented
+        .facilityConfirmationDialog(
+            isPresented: $isCloseConfirmationPresented,
+            titleKey: "notifications.detail.closeConfirmation.title",
+            messageKey: "notifications.detail.closeConfirmation.message",
+            confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
-            Button("notifications.detail.closeConfirmation.confirm", role: .destructive) {
-                Task { _ = await model.close() }
-            }
-            Button("common.cancel", role: .cancel) { }
-        } message: {
-            Text("notifications.detail.closeConfirmation.message")
+            Task { _ = await model.close() }
         }
         .alert(
             "vorschlagPopover.title",
@@ -320,29 +317,14 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 textField("mobileLadder.field.inventoryNumber", text: $model.draft.inventoryNumber, required: false)
                 textField("mobileLadder.field.designation", text: $model.draft.designation, required: true)
             }
-
-            Divider()
-
-            HStack(spacing: 28) {
-                DatePicker(
-                    "mobileLadder.field.performedOn",
-                    selection: $model.draft.performedOn,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.compact)
-
-                Spacer(minLength: 12)
-
-                disassembledControls
-            }
         }
         .facilityCard(padding: 22)
     }
 
-    private var disassembledControls: some View {
-        TechnicalPlaceStatusControls(
-            title: "mobileLadder.field.disassembled",
-            isStatusActive: model.draft.isDisassembled,
+    private var disassembledControls: InspectionOutOfServiceControls {
+        InspectionOutOfServiceControls(
+            titleKey: "mobileLadder.field.disassembled",
+            isActive: model.draft.isDisassembled,
             photoCount: model.photoCount(for: MobileLadderDraftPayload.disassembledStatusRowID),
             hasComment: !(model.draft.disassembledComment ?? "").isEmpty,
             isEnabled: !model.isSaving,
@@ -489,58 +471,60 @@ private enum DisassembledTransition: Hashable, Identifiable {
         }
     }
 
+    /// TFM5 Mobile Leiter. The shared checklist configured by its form code:
+    /// SAP code dropdowns for result and action, no material column.
+    private var variant: InspectionFormVariant {
+        InspectionFormVariant.forFormCode("TFM5")
+    }
+
     private var inspectionCard: some View {
-        @Bindable var model = model
-        return VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("notifications.detail.numberColumn")
-                    .frame(width: 42, alignment: .leading)
-                Color.clear.frame(width: 28, height: 1)
-                Text("notifications.detail.inspectionPoint")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("mobileLadder.column.result")
-                    .frame(width: 160, alignment: .leading)
-                Text("mobileLadder.column.action")
-                    .frame(width: 160, alignment: .leading)
-                Text("notifications.detail.photo")
-                    .frame(width: 52)
-                Text("notifications.detail.comment")
-                    .frame(width: 58)
-            }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
-
-            Divider()
-
-            if model.draft.inspectionItems.isEmpty {
-                ContentUnavailableView(
-                    "mobileLadder.address.notSelected",
-                    systemImage: "list.bullet.clipboard",
-                    description: Text("mobileLadder.address.subtitle")
-                )
-                .frame(maxWidth: .infinity, minHeight: 150)
-            } else {
-                ForEach($model.draft.inspectionItems) { $item in
-                    MobileLadderInspectionRow(
-                        item: $item,
-                        photoCount: model.photoCount(for: item.id),
-                        isEditingEnabled: !model.isReadOnly && !model.draft.isDisassembled && !model.isSaving,
-                        openPhotos: { openInspectionPhotos(item) },
-                        editComment: { editingCommentID = item.id }
-                    )
-                    if item.id != model.draft.inspectionItems.last?.id {
-                        Divider().padding(.leading, 22)
+        let isEditable = !model.isReadOnly && !model.draft.isDisassembled && !model.isSaving
+        return InspectionFormTable(
+            variant: variant,
+            items: model.draft.inspectionItems.map(\.inspectionFormItem),
+            state: { item in
+                var state = model.draft.inspectionItems
+                    .first { $0.id == item.id }?
+                    .inspectionFormState ?? InspectionFormItemState()
+                state.photoCount = model.photoCount(for: item.id)
+                return state
+            },
+            isEditable: isEditable,
+            emptyState: InspectionFormEmptyState(
+                titleKey: "mobileLadder.address.notSelected",
+                messageKey: "mobileLadder.address.subtitle"
+            ),
+            performedOn: $model.draft.performedOn,
+            isPerformedOnDisabled: model.isReadOnly || model.isSaving,
+            outOfService: disassembledControls,
+            actions: InspectionFormActions(
+                selectResult: { item, option in
+                    guard isEditable,
+                          let index = model.draft.inspectionItems.firstIndex(where: { $0.id == item.id })
+                    else { return }
+                    model.draft.inspectionItems[index].result =
+                        MobileLadderInspectionResult(rawValue: option.code)
+                    // `BaseFormController.onBefundChange` clears an action the
+                    // new result no longer permits.
+                    if option.code == "1" {
+                        model.draft.inspectionItems[index].action = nil
                     }
-                }
-            }
-        }
-        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.06))
-        }
+                },
+                selectAction: { item, option in
+                    guard isEditable,
+                          let index = model.draft.inspectionItems.firstIndex(where: { $0.id == item.id })
+                    else { return }
+                    model.draft.inspectionItems[index].action =
+                        MobileLadderInspectionAction(rawValue: option.code)
+                },
+                openPhotos: { item in
+                    guard let ladderItem = model.draft.inspectionItems.first(where: { $0.id == item.id })
+                    else { return }
+                    openInspectionPhotos(ladderItem)
+                },
+                editComment: { editingCommentID = $0.id }
+            )
+        )
     }
 
     @ViewBuilder
@@ -672,225 +656,6 @@ private struct DigitsOnlyTextField: View {
 
     private static func digits(in value: String) -> String {
         String(value.filter(\.isNumber))
-    }
-}
-
-private struct MobileLadderInspectionRow: View {
-    @Binding var item: MobileLadderInspectionItem
-    let photoCount: Int
-    let isEditingEnabled: Bool
-    let openPhotos: () -> Void
-    let editComment: () -> Void
-    @State private var expandedPicker: MobileLadderInspectionCodePickerKind?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(item.number, format: .number)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .leading)
-
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(FacilityTheme.red)
-                .frame(width: 28, height: 52)
-                .opacity(item.result == nil ? 1 : 0)
-                .accessibilityHidden(item.result != nil)
-
-            HStack(spacing: 10) {
-                NotificationInfoButton(information: item.information)
-
-                Text(item.title)
-                    .font(.body)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            MobileLadderInspectionCodePicker(
-                picker: .result,
-                selection: item.result.map(\.code),
-                optionsHeight: 250,
-                isEnabled: isEditingEnabled,
-                accessibilityLabel: "mobileLadder.column.result",
-                expandedPicker: $expandedPicker
-            ) {
-                ForEach(MobileLadderInspectionResult.allCases) { result in
-                    MobileLadderInspectionCodeOption(
-                        code: result.code,
-                        title: String(localized: String.LocalizationValue(result.titleKey))
-                    ) {
-                        item.result = result
-                        expandedPicker = nil
-                    }
-                }
-            }
-            .frame(width: 160)
-
-            MobileLadderInspectionCodePicker(
-                picker: .action,
-                selection: item.action.map(\.code),
-                optionsHeight: 150,
-                isEnabled: isEditingEnabled,
-                accessibilityLabel: "mobileLadder.column.action",
-                expandedPicker: $expandedPicker
-            ) {
-                ForEach(MobileLadderInspectionAction.allCases) { action in
-                    MobileLadderInspectionCodeOption(
-                        code: action.code,
-                        title: String(localized: String.LocalizationValue(action.titleKey))
-                    ) {
-                        item.action = action
-                        expandedPicker = nil
-                    }
-                }
-            }
-            .frame(width: 160)
-
-            Button(action: openPhotos) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: photoCount == 0 ? "camera" : "camera.fill")
-                        .foregroundStyle(photoCount == 0 ? FacilityTheme.ink : FacilityTheme.blue)
-                        .frame(width: 44, height: 44)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(.gray.opacity(0.25))
-                        }
-                    if photoCount > 0 {
-                        Text(photoCount, format: .number)
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(FacilityTheme.blue, in: Circle())
-                            .offset(x: 5, y: -5)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .disabled(!isEditingEnabled)
-            .frame(width: 52)
-
-            NotificationCommentButton(
-                hasComment: !item.comment.isEmpty,
-                isReadOnly: !isEditingEnabled,
-                action: editComment
-            )
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 10)
-        .frame(minHeight: 68)
-        // Keep the active row above its neighbours while its anchored popover
-        // is visible, matching the inspection selectors elsewhere in MTFM.
-        .zIndex(expandedPicker == nil ? 0 : 1)
-    }
-
-}
-
-/// The original Mobile Ladder inspection selector. It is intentionally shared
-/// with other SAP-driven inspection forms so all result/action dropdowns keep
-/// the same anchored-popover interaction and visual treatment.
-enum MobileLadderInspectionCodePickerKind {
-    case result, action
-}
-
-struct MobileLadderInspectionCodePicker<Options: View>: View {
-    let picker: MobileLadderInspectionCodePickerKind
-    let selection: String?
-    let optionsHeight: CGFloat
-    let isEnabled: Bool
-    let accessibilityLabel: LocalizedStringKey
-    @Binding var expandedPicker: MobileLadderInspectionCodePickerKind?
-    let options: () -> Options
-
-    init(
-        picker: MobileLadderInspectionCodePickerKind,
-        selection: String?,
-        optionsHeight: CGFloat,
-        isEnabled: Bool,
-        accessibilityLabel: LocalizedStringKey,
-        expandedPicker: Binding<MobileLadderInspectionCodePickerKind?>,
-        @ViewBuilder options: @escaping () -> Options
-    ) {
-        self.picker = picker
-        self.selection = selection
-        self.optionsHeight = optionsHeight
-        self.isEnabled = isEnabled
-        self.accessibilityLabel = accessibilityLabel
-        _expandedPicker = expandedPicker
-        self.options = options
-    }
-
-    var body: some View {
-        let isExpanded = expandedPicker == picker
-        Button {
-            expandedPicker = isExpanded ? nil : picker
-        } label: {
-            HStack(spacing: 0) {
-                Text(selection ?? "")
-                    .font(.body)
-                    .monospacedDigit()
-                    .foregroundStyle(FacilityTheme.ink)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.leading, 18)
-
-                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isExpanded ? .white : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(isExpanded ? FacilityTheme.blue : .clear)
-                    .accessibilityHidden(true)
-            }
-            .background(FacilityTheme.surface)
-            .overlay {
-                Rectangle().stroke(isExpanded ? FacilityTheme.blue : .secondary.opacity(0.42))
-            }
-            .frame(width: 120, height: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.45)
-        .accessibilityLabel(Text(accessibilityLabel))
-        .popover(isPresented: pickerPresentationBinding) {
-            ScrollView {
-                LazyVStack(spacing: 0) { options() }
-            }
-            .frame(width: 360, height: optionsHeight, alignment: .top)
-            .background(FacilityTheme.surface)
-            .presentationCompactAdaptation(.popover)
-        }
-    }
-
-    private var pickerPresentationBinding: Binding<Bool> {
-        Binding(
-            get: { expandedPicker == picker },
-            set: { isPresented in
-                if !isPresented, expandedPicker == picker { expandedPicker = nil }
-            }
-        )
-    }
-}
-
-struct MobileLadderInspectionCodeOption: View {
-    let code: String
-    let title: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Text(code).monospacedDigit().frame(width: 46, alignment: .leading)
-                Text(verbatim: title).frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .font(.body)
-            .foregroundStyle(FacilityTheme.ink)
-            .padding(.horizontal, 20)
-            .frame(maxWidth: .infinity, minHeight: 50)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
     }
 }
 

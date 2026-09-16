@@ -345,6 +345,12 @@ struct SAPNotificationDetail: Equatable, Sendable {
         let information: String
         let resultElementID: String
         let commentElementID: String
+        /// `LTXA1` of the preceding `USR00 == "HEADER"` / `"U1"` row.
+        ///
+        /// The legacy table renders those rows as `GroupHeaderListItem` bands
+        /// between the positions (`BaseFormController` line 103 onwards), so
+        /// the text belongs to the checklist, not to the position itself.
+        var groupTitle: String = ""
     }
 
     let summary: SAPNotificationSummary
@@ -421,11 +427,16 @@ struct SAPNotificationDetail: Equatable, Sendable {
             formCode = ""
         }
 
+        var currentGroupTitle = ""
         inspectionItems = rows.enumerated().compactMap { index, row in
             let rowType = Self.stringValue(named: "USR00", in: row)
             let fallbackRowType = Self.stringValue(named: "DNAME", in: row)
             let normalizedRowType = (rowType.isEmpty ? fallbackRowType : rowType).uppercased()
-            guard !["HEADER", "U1", "FOTO"].contains(normalizedRowType) else { return nil }
+            if ["HEADER", "U1"].contains(normalizedRowType) {
+                currentGroupTitle = Self.stringValue(named: "LTXA1", in: row)
+                return nil
+            }
+            guard normalizedRowType != "FOTO" else { return nil }
             let title = Self.stringValue(named: "LTXA1", in: row)
             guard !title.isEmpty else { return nil }
             let operation = Self.stringValue(named: "VORNR", in: row)
@@ -463,7 +474,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
                 title: title,
                 information: Self.stringValue(named: "LTXA2", in: row),
                 resultElementID: resultElementID,
-                commentElementID: commentElementID
+                commentElementID: commentElementID,
+                groupTitle: currentGroupTitle
             )
         }
     }
@@ -491,7 +503,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
                 title: $0.title,
                 information: $0.information,
                 resultElementID: $0.resultElementID ?? "",
-                commentElementID: $0.commentElementID ?? ""
+                commentElementID: $0.commentElementID ?? "",
+                groupTitle: $0.groupTitle ?? ""
             )
         }
     }
@@ -531,7 +544,8 @@ extension OfflineNotificationSnapshot {
                 title: $0.title,
                 information: $0.information,
                 resultElementID: $0.resultElementID,
-                commentElementID: $0.commentElementID
+                commentElementID: $0.commentElementID,
+                groupTitle: $0.groupTitle.isEmpty ? nil : $0.groupTitle
             )
         }
     }

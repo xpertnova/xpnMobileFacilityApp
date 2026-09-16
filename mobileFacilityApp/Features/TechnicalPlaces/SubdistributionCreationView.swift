@@ -123,30 +123,34 @@ struct SubdistributionCreationView: View {
         } message: {
             Text("subdistribution.save.message")
         }
-        .alert(
-            "notifications.detail.closeConfirmation.title",
-            isPresented: $isCloseConfirmationPresented
+        .facilityConfirmationDialog(
+            isPresented: $isCloseConfirmationPresented,
+            titleKey: "notifications.detail.closeConfirmation.title",
+            messageKey: "notifications.detail.closeConfirmation.message",
+            confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
-            Button("notifications.detail.closeConfirmation.confirm", role: .destructive) {
-                continueClosingNotification()
-            }
-            Button("common.cancel", role: .cancel) { }
-        } message: {
-            Text("notifications.detail.closeConfirmation.message")
+            continueClosingNotification()
         }
-        .alert("subdistribution.defect.title", isPresented: $isDefectResolutionPresented) {
-            Button("subdistribution.defect.leaveOpen") {
-                model.selectDefectCloseAction(.leaveOpen)
-                Task { _ = await model.close() }
-            }
-            Button("subdistribution.defect.close", role: .destructive) {
-                model.selectDefectCloseAction(.close)
-                Task { _ = await model.close() }
-            }
-            Button("common.cancel", role: .cancel) { }
-        } message: {
-            Text("subdistribution.defect.message")
-        }
+        // Second step of the same close flow, so it keeps the same framed
+        // dialog rather than dropping back to a system alert.
+        .facilityConfirmationDialog(
+            isPresented: $isDefectResolutionPresented,
+            titleKey: "subdistribution.defect.title",
+            messageKey: "subdistribution.defect.message",
+            actions: [
+                FacilityDialogAction(titleKey: "subdistribution.defect.leaveOpen") {
+                    model.selectDefectCloseAction(.leaveOpen)
+                    Task { _ = await model.close() }
+                },
+                FacilityDialogAction(
+                    titleKey: "subdistribution.defect.close",
+                    emphasis: .primary
+                ) {
+                    model.selectDefectCloseAction(.close)
+                    Task { _ = await model.close() }
+                }
+            ]
+        )
     }
 
     private var header: some View {
@@ -294,28 +298,24 @@ struct SubdistributionCreationView: View {
                 }
             }
             .disabled(areMasterDataFieldsDisabled)
-            Divider()
-            HStack(spacing: 24) {
-                DatePicker("subdistribution.performedOn", selection: $model.draft.performedOn, displayedComponents: .date)
-                    .datePickerStyle(.compact)
-                    .disabled(!model.isContextSelected || model.isSaving)
-                Spacer(minLength: 12)
-                outOfOperationControls
-            }
         }
         .facilityCard(padding: 22)
     }
 
-    private var outOfOperationControls: some View {
+    private var outOfOperationControls: InspectionOutOfServiceControls {
         let canChangeStatus = model.isContextSelected && !model.isSaving
         let isOutOfOperation = model.draft.isOutOfOperation
         let statusPhotoCount = model.photoCount(for: SubdistributionDraftPayload.statusRowID)
 
-        return TechnicalPlaceStatusControls(
-            title: "subdistribution.outOfOperation",
-            isStatusActive: isOutOfOperation,
+        return InspectionOutOfServiceControls(
+            titleKey: "subdistribution.outOfOperation",
+            isActive: isOutOfOperation,
             photoCount: statusPhotoCount,
             hasComment: !(model.draft.outOfOperationComment ?? "").isEmpty,
+            isCommentMissing: isOutOfOperation
+                && !InspectionFormRules.outOfServiceIssues(
+                    comment: model.draft.outOfOperationComment
+                ).isEmpty,
             isEnabled: canChangeStatus,
             requestStatusChange: {
                 outOfOperationTransition = isOutOfOperation ? .disable : .enable
@@ -359,39 +359,61 @@ struct SubdistributionCreationView: View {
         }
     }
 
+    /// TFM7 FI-Schutzschalter. The shared checklist configured by its form
+    /// code: SAP code dropdowns for result and action, no material column.
+    private var variant: InspectionFormVariant {
+        InspectionFormVariant.forFormCode("TFM7")
+    }
+
     private var inspectionCard: some View {
-        @Bindable var model = model
-        return VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("notifications.detail.numberColumn").frame(width: 36, alignment: .leading)
-                Color.clear.frame(width: 28, height: 1)
-                Text("notifications.detail.inspectionPoint").frame(maxWidth: .infinity, alignment: .leading)
-                Text("subdistribution.column.result").frame(width: 142, alignment: .leading)
-                Text("subdistribution.column.action").frame(width: 142, alignment: .leading)
-                Text("notifications.detail.photo").frame(width: 44)
-                Text("notifications.detail.comment").frame(width: 44)
-            }
-            .font(.subheadline.weight(.bold)).foregroundStyle(.secondary).padding(.horizontal, 22).padding(.vertical, 14)
-            Divider()
-            if model.draft.inspectionItems.isEmpty {
-                ContentUnavailableView("subdistribution.context.notSelected", systemImage: "list.bullet.clipboard", description: Text("subdistribution.context.subtitle"))
-                    .frame(maxWidth: .infinity, minHeight: 150)
-            } else {
-                ForEach($model.draft.inspectionItems) { $item in
-                    SubdistributionInspectionRow(
-                        item: $item, photoCount: model.photoCount(for: item.id),
-                        isIncomplete: model.isInspectionItemIncomplete(item),
-                        isEditingEnabled: !model.isReadOnly && !model.draft.isOutOfOperation && !model.isSaving,
-                        openPhotos: { openInspectionPhotos(item) }, editComment: { editingCommentID = item.id },
-                        resultsChanged: { model.draft.defectCloseAction = nil }
-                    )
-                    if item.id != model.draft.inspectionItems.last?.id { Divider().padding(.leading, 22) }
+        let isEditable = !model.isReadOnly && !model.draft.isOutOfOperation && !model.isSaving
+        return InspectionFormTable(
+            variant: variant,
+            items: model.draft.inspectionItems.map(\.inspectionFormItem),
+            state: { item in
+                guard let source = model.draft.inspectionItems.first(where: { $0.id == item.id }) else {
+                    return InspectionFormItemState()
                 }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.black.opacity(0.06)) }
+                var state = source.inspectionFormState
+                state.photoCount = model.photoCount(for: item.id)
+                state.isFlagged = model.isInspectionItemIncomplete(source)
+                return state
+            },
+            isEditable: isEditable,
+            emptyState: InspectionFormEmptyState(
+                titleKey: "subdistribution.context.notSelected",
+                messageKey: "subdistribution.context.subtitle"
+            ),
+            performedOn: $model.draft.performedOn,
+            isPerformedOnDisabled: !model.isContextSelected || model.isSaving,
+            outOfService: outOfOperationControls,
+            actions: InspectionFormActions(
+                selectResult: { item, option in
+                    guard isEditable,
+                          let index = model.draft.inspectionItems.firstIndex(where: { $0.id == item.id })
+                    else { return }
+                    model.draft.inspectionItems[index].result = option.code
+                    // `BaseFormController.onBefundChange` clears an action the
+                    // new result no longer permits.
+                    if option.code == "1" {
+                        model.draft.inspectionItems[index].action = nil
+                    }
+                    model.draft.defectCloseAction = nil
+                },
+                selectAction: { item, option in
+                    guard isEditable,
+                          let index = model.draft.inspectionItems.firstIndex(where: { $0.id == item.id })
+                    else { return }
+                    model.draft.inspectionItems[index].action = option.code
+                },
+                openPhotos: { item in
+                    guard let source = model.draft.inspectionItems.first(where: { $0.id == item.id })
+                    else { return }
+                    openInspectionPhotos(source)
+                },
+                editComment: { editingCommentID = $0.id }
+            )
+        )
     }
 
     @ViewBuilder
@@ -473,81 +495,3 @@ struct SubdistributionCreationView: View {
     }
 }
 
-private struct SubdistributionInspectionRow: View {
-    @Binding var item: SubdistributionInspectionItem
-    let photoCount: Int
-    let isIncomplete: Bool
-    let isEditingEnabled: Bool
-    let openPhotos: () -> Void
-    let editComment: () -> Void
-    let resultsChanged: () -> Void
-    @State private var expandedPicker: MobileLadderInspectionCodePickerKind?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(item.number, format: .number).font(.body.weight(.semibold)).foregroundStyle(.secondary).frame(width: 36, alignment: .leading)
-            Image(systemName: "exclamationmark.triangle")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(FacilityTheme.red)
-                .frame(width: 28, height: 52)
-                .opacity(isIncomplete ? 1 : 0)
-                .accessibilityLabel(Text("subdistribution.validation.incompleteItem"))
-                .accessibilityHidden(!isIncomplete)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: item.title).foregroundStyle(FacilityTheme.ink)
-                if !item.information.isEmpty { Text(verbatim: item.information).font(.caption).foregroundStyle(.secondary) }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            if item.requiresResult {
-                MobileLadderInspectionCodePicker(
-                    picker: .result,
-                    selection: item.result,
-                    optionsHeight: 250,
-                    isEnabled: isEditingEnabled,
-                    accessibilityLabel: "subdistribution.column.result",
-                    expandedPicker: $expandedPicker
-                ) {
-                    ForEach(item.resultValues) { option in
-                        MobileLadderInspectionCodeOption(code: option.value, title: option.title) {
-                            item.result = option.value
-                            resultsChanged()
-                            expandedPicker = nil
-                        }
-                    }
-                }
-                .frame(width: 142, alignment: .leading)
-                MobileLadderInspectionCodePicker(
-                    picker: .action,
-                    selection: item.action,
-                    optionsHeight: 150,
-                    isEnabled: isEditingEnabled,
-                    accessibilityLabel: "subdistribution.column.action",
-                    expandedPicker: $expandedPicker
-                ) {
-                    ForEach(item.actionValues) { option in
-                        MobileLadderInspectionCodeOption(code: option.value, title: option.title) {
-                            item.action = option.value
-                            expandedPicker = nil
-                        }
-                    }
-                }
-                .frame(width: 142, alignment: .leading)
-            } else {
-                Color.clear.frame(width: 142, height: 44); Color.clear.frame(width: 142, height: 44)
-            }
-            Button(action: openPhotos) {
-                Image(systemName: photoCount == 0 ? "camera" : "camera.fill").foregroundStyle(photoCount == 0 ? FacilityTheme.ink : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)) }
-            }.buttonStyle(.plain).disabled(!isEditingEnabled).accessibilityLabel(Text("notifications.detail.photo"))
-            Button(action: editComment) {
-                Image(systemName: item.comment.isEmpty ? "pencil" : "note.text").foregroundStyle(item.comment.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)) }
-            }.buttonStyle(.plain).disabled(!isEditingEnabled).accessibilityLabel(Text("notifications.detail.comment"))
-        }
-        .padding(.horizontal, 22).padding(.vertical, 10).frame(minHeight: 68)
-        .zIndex(expandedPicker == nil ? 0 : 1)
-    }
-}

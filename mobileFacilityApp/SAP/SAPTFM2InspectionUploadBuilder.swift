@@ -59,19 +59,40 @@ enum SAPTFM2InspectionUploadBuilder {
             throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
         }
 
-        // Validate that all items have a Befund result
-        for item in items {
-            guard let result = inspection.elementValues[item.resultElementID], !result.isEmpty else {
+        // `BaseFormController.buildDefaultElements` builds the "Außer Betrieb"
+        // status for TFM2. While it is set, `setValues4AnwStatus` clears every
+        // position and `validateFormValues` validates only the status comment.
+        let isOutOfOperation = inspection.isOutOfOperation ?? false
+        let outOfOperationComment = inspection.outOfOperationComment ?? ""
+
+        if isOutOfOperation {
+            guard !outOfOperationComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+            }
+        } else {
+            // Validate that all items have a Befund result
+            for item in items {
+                guard let result = inspection.elementValues[item.resultElementID], !result.isEmpty else {
+                    throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+                }
             }
         }
 
-        let hasDefect = ElevatorInspectionLogic.hasAnyDefect(
+        let hasDefect = !isOutOfOperation && ElevatorInspectionLogic.hasAnyDefect(
             items: items,
             elementValues: inspection.elementValues
         )
 
-        let finalStatus = inspection.closingSystemStatus.isEmpty ? (hasDefect ? "MIAR" : "MMAB") : inspection.closingSystemStatus
+        let applicationStatus = isOutOfOperation ? "aBet" : "iBet"
+        let finalStatus: String
+        if isOutOfOperation {
+            // An out-of-service object stays open for the follow-up.
+            finalStatus = "MIAR"
+        } else {
+            finalStatus = inspection.closingSystemStatus.isEmpty
+                ? (hasDefect ? "MIAR" : "MMAB")
+                : inspection.closingSystemStatus
+        }
 
         let formNumber = "TFM2"
         let createdDate = basicDate(now)
@@ -81,12 +102,12 @@ enum SAPTFM2InspectionUploadBuilder {
 
         notificationData["STTXT"] = finalStatus
         let currentUSTXT = stringValue(value(named: "USTXT", in: notificationData)) ?? ""
-        let updatedUSTXT = updatedUserStatus(currentUSTXT, hasDefect: hasDefect)
+        let updatedUSTXT = updatedUserStatus(currentUSTXT, hasDefect: isOutOfOperation || hasDefect)
         notificationData["USTXT"] = updatedUSTXT
         notificationData["AENAM"] = userID
         notificationData["AEDAT"] = performedDate
         notificationData["FORMNR"] = formNumber
-        notificationData["STATUSNR"] = hasDefect ? "2" : "1"
+        notificationData["STATUSNR"] = isOutOfOperation || hasDefect ? "2" : "1"
         notificationData["FELDWERT"] = ""
 
         let allowedHeaderColumns = Set(
@@ -109,7 +130,7 @@ enum SAPTFM2InspectionUploadBuilder {
         header["MODIFIEDDATE"] = createdDate
         header["MODIFIEDTIME"] = createdTime
         header["FORMNR"] = formNumber
-        header["STATUSNR"] = hasDefect ? "2" : "1"
+        header["STATUSNR"] = isOutOfOperation || hasDefect ? "2" : "1"
         header["STTXT"] = finalStatus
         header["USTXT"] = updatedUSTXT
         header["AEDAT"] = performedDate
@@ -157,14 +178,17 @@ enum SAPTFM2InspectionUploadBuilder {
             ))
         }
 
-        // Trailing elements
-        for elementID in ["\(formNumber)-0000-1", "\(formNumber)-0000-9B"] {
-            values.append(valueRow(
-                client: source.client, processID: processID, notificationID: inspection.notificationID,
-                elementID: elementID, value: "", userID: userID,
-                date: createdDate, time: createdTime
-            ))
-        }
+        // Header elements: the "Außer Betrieb" flag and its comment.
+        values.append(valueRow(
+            client: source.client, processID: processID, notificationID: inspection.notificationID,
+            elementID: "\(formNumber)-0000-1", value: applicationStatus, userID: userID,
+            date: createdDate, time: createdTime
+        ))
+        values.append(valueRow(
+            client: source.client, processID: processID, notificationID: inspection.notificationID,
+            elementID: "\(formNumber)-0000-9B", value: outOfOperationComment, userID: userID,
+            date: createdDate, time: createdTime
+        ))
 
         // T_0282 documents: 1 PDF + up to 20 photos
         var documents: [SAPNotificationOutgoingDocument] = []

@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// Represents the active picker column in an inspection row.
-enum InspectionPickerField: Hashable, Sendable {
-    case result
-    case action
-}
-
 /// Option model for inspection code dropdowns (used across Mobile Ladder and Elevator Inspections).
 struct InspectionCodeOption: Identifiable, Equatable, Sendable {
     let id: String
@@ -28,7 +22,10 @@ struct InspectionCodeOption: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Reusable inspection code picker matching the Mobile Ladder design across MTFM.
+/// The anchored SAP code list used by the dropdown inspection forms.
+///
+/// `InspectionResultControl` is the entry point every form goes through; this
+/// is the presentation it selects for a `.dropdown` variant.
 struct InspectionCodePicker: View {
     @Binding var isExpanded: Bool
     let selection: String?
@@ -56,12 +53,12 @@ struct InspectionCodePicker: View {
                     .foregroundStyle(FacilityTheme.ink)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .padding(.leading, 18)
+                    .padding(.leading, 14)
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(isExpanded ? .white : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 38, height: 44)
                     .background(isExpanded ? FacilityTheme.blue : .clear)
                     .accessibilityHidden(true)
             }
@@ -70,7 +67,9 @@ struct InspectionCodePicker: View {
                 Rectangle()
                     .stroke(isExpanded ? FacilityTheme.blue : .secondary.opacity(0.42))
             }
-            .frame(width: 120, height: 44)
+            // The control fills the column it is given rather than sitting
+            // centred in it, so the column label lines up with its left edge.
+            .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
