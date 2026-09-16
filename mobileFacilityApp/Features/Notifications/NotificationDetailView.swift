@@ -14,6 +14,7 @@ struct NotificationDetailView: View {
         detail: SAPNotificationDetail,
         offlineWorkStore: OfflineWorkStore,
         photoAttachmentStore: any PhotoAttachmentStore,
+        sapDataStore: SAPDataStore? = nil,
         backDestination: AppDestination,
         dismiss: @escaping () -> Void
     ) {
@@ -23,7 +24,8 @@ struct NotificationDetailView: View {
         _model = State(initialValue: NotificationReviewViewModel(
             detail: detail,
             offlineWorkStore: offlineWorkStore,
-            photoStore: photoAttachmentStore
+            photoStore: photoAttachmentStore,
+            sapDataStore: sapDataStore
         ))
     }
 
@@ -69,8 +71,11 @@ struct NotificationDetailView: View {
                 title: Text("notifications.detail.action.title"),
                 message: Text(feedback.messageKey),
                 dismissButton: .default(Text("notifications.detail.commentEditor.done")) {
-                    if case .closedLocally = feedback {
+                    switch feedback {
+                    case .closedLocally, .i2NotificationsQueued:
                         dismiss()
+                    default:
+                        break
                     }
                 }
             )
@@ -83,6 +88,20 @@ struct NotificationDetailView: View {
         ) {
             Task { await model.save(closed: true) }
         }
+        .i2DefectSelectionDialog(
+            model.i2Selection,
+            accept: {
+                Task {
+                    if !(await model.acceptI2Selection()) {
+                        dismiss()
+                    }
+                }
+            },
+            cancel: {
+                model.cancelI2Selection()
+                dismiss()
+            }
+        )
     }
 
     private var photoWorkspaceItem: SAPNotificationDetail.InspectionItem? {
@@ -181,6 +200,7 @@ struct NotificationDetailView: View {
                 ? Binding(get: { model.performedOn }, set: { model.performedOn = $0 })
                 : nil,
             isPerformedOnDisabled: isEditingDisabled,
+            existingI2Notifications: model.existingI2Notifications,
             actions: InspectionFormActions(
                 selectResult: { item, option in
                     guard !isEditingDisabled,
@@ -261,6 +281,7 @@ private extension NotificationReviewViewModel.Feedback {
         case .photoLimitReached: "notifications.detail.photo.limit"
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
+        case .i2NotificationsQueued: "i2.selection.success"
         }
     }
 }

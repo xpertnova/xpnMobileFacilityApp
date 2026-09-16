@@ -127,6 +127,27 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         return try await provider.loadMobileLadderCreationData(for: workerID)
     }
 
+    /// The downloaded I2 notifications of the notification's technical
+    /// object. Empty when the repository has none or cannot read them; the
+    /// per-position lookup is informational and never blocks a form.
+    func loadI2Notifications(for detail: SAPNotificationDetail) async -> [SAPI2NotificationSummary] {
+        guard let reader = repository as? any I2NotificationReading else { return [] }
+        let notification = detail.summary
+        let payload = notification.rawPayloadJSON.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        // `select.getItemMeldung` filters by the I1's `TPLNR`; I2 rows carry
+        // the parent `STRNO` there, which is also the fallback for a
+        // notification reopened from its offline snapshot.
+        let locationID = (payload["TPLNR"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? notification.functionalLocationID
+        let object = I2NotificationObjectReference(
+            client: notification.client,
+            equipmentID: notification.equipmentID.isEmpty ? detail.equipmentID : notification.equipmentID,
+            functionalLocationID: locationID
+        )
+        return (try? await reader.loadI2Notifications(for: object)) ?? []
+    }
+
     func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
         guard let provider = repository as? any ElevatorAssetDataProviding else {
             throw SAPReadError.serviceUnavailable

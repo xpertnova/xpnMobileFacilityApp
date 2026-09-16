@@ -759,11 +759,37 @@ protocol SAPNotificationOutgoingStore: Sendable {
         documents: [LegacySAPRow],
         equipment: [LegacySAPRow],
         functionalLocations: [LegacySAPRow],
-        proposals: [LegacySAPRow]
+        proposals: [LegacySAPRow],
+        i2Notifications: [LegacySAPRow],
+        i2Documents: [LegacySAPRow]
     ) async throws
 }
 
 extension SAPNotificationOutgoingStore {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow]
+    ) async throws {
+        try await replaceNotificationOutgoingRows(
+            processIDs: processIDs,
+            equipmentIDs: equipmentIDs,
+            headers: headers,
+            values: values,
+            documents: documents,
+            equipment: equipment,
+            functionalLocations: functionalLocations,
+            proposals: proposals,
+            i2Notifications: [],
+            i2Documents: []
+        )
+    }
+
     func replaceNotificationOutgoingRows(
         processIDs: [String],
         equipmentIDs: [String],
@@ -780,7 +806,9 @@ extension SAPNotificationOutgoingStore {
             documents: documents,
             equipment: equipment,
             functionalLocations: [],
-            proposals: []
+            proposals: [],
+            i2Notifications: [],
+            i2Documents: []
         )
     }
 }
@@ -864,13 +892,28 @@ enum SAPReadError: LocalizedError, Sendable {
     }
 }
 
-actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
+actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationReading {
     private var dataByWorkerID: [String: SAPCachedData] = [:]
+    /// I2 notifications keyed by equipment, or by functional location for
+    /// objects without equipment.
+    private let i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]]
 
-    init(seed: SAPCachedData? = nil, workerID: String = "demo") {
+    init(
+        seed: SAPCachedData? = nil,
+        workerID: String = "demo",
+        i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]] = [:]
+    ) {
         if let seed {
             dataByWorkerID[workerID] = seed
         }
+        self.i2NotificationsByObjectID = i2NotificationsByObjectID
+    }
+
+    func loadI2Notifications(
+        for object: I2NotificationObjectReference
+    ) async throws -> [SAPI2NotificationSummary] {
+        let objectID = object.equipmentID.isEmpty ? object.functionalLocationID : object.equipmentID
+        return i2NotificationsByObjectID[objectID] ?? []
     }
 
     func load(for localWorkerID: String) async throws -> SAPCachedData {

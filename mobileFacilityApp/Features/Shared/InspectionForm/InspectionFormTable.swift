@@ -141,6 +141,9 @@ struct InspectionFormTable: View {
     var isPerformedOnDisabled: Bool = false
     /// Header status shown on the right of the toolbar band.
     var outOfService: InspectionOutOfServiceControls?
+    /// I2 notifications SAP already holds for the inspected object. Each row
+    /// shows the ones that belong to its position.
+    var existingI2Notifications: [SAPI2NotificationSummary] = []
     let actions: InspectionFormActions
 
     /// A checklist with the action and material columns is wide enough that it
@@ -205,12 +208,25 @@ struct InspectionFormTable: View {
                 state: state(item),
                 variant: variant,
                 isEditable: isEditable,
+                existingI2Notifications: existingI2Notifications(for: item),
                 actions: actions
             )
             if index < items.count - 1 {
                 Divider().padding(.leading, InspectionFormMetrics.rowHorizontalPadding)
             }
         }
+    }
+
+    /// `_hasI2Meldung4Position`: TFM1 and TFM3 also compare the group header,
+    /// which are exactly the segmented forms.
+    private func existingI2Notifications(for item: InspectionFormItem) -> [SAPI2NotificationSummary] {
+        guard !existingI2Notifications.isEmpty else { return [] }
+        return I2NotificationRules.notifications(
+            existingI2Notifications,
+            forPositionTitle: item.title,
+            groupTitle: item.groupTitle,
+            matchesGroupHeader: variant.resultStyle == .segmented
+        )
     }
 
     /// The legacy `TableFormHeader` toolbar: execution date on the left,
@@ -338,6 +354,7 @@ struct InspectionFormRow: View {
     let state: InspectionFormItemState
     let variant: InspectionFormVariant
     let isEditable: Bool
+    var existingI2Notifications: [SAPI2NotificationSummary] = []
     let actions: InspectionFormActions
 
     @State private var expandedField: InspectionResultControl.Field?
@@ -392,6 +409,16 @@ struct InspectionFormRow: View {
                     .foregroundStyle(FacilityTheme.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+
+                // The legacy wrench cell, kept inside the position column so
+                // the shared column geometry does not change.
+                if !existingI2Notifications.isEmpty {
+                    I2NotificationButton(
+                        notifications: existingI2Notifications,
+                        positionTitle: item.title,
+                        groupTitle: item.groupTitle
+                    )
+                }
             }
             .frame(
                 minWidth: InspectionFormMetrics.itemColumnMinimum,

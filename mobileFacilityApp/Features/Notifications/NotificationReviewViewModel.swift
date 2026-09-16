@@ -15,6 +15,8 @@ final class NotificationReviewViewModel {
         case photoLimitReached
         case cameraUnavailable
         case cameraPermissionDenied
+        /// The chosen I2 notifications were stored with the closed review.
+        case i2NotificationsQueued
 
         var id: String { String(describing: self) }
     }
@@ -22,6 +24,7 @@ final class NotificationReviewViewModel {
     private let detail: SAPNotificationDetail
     private let offlineWorkStore: OfflineWorkStore
     private let photoStore: any PhotoAttachmentStore
+    private let sapDataStore: SAPDataStore?
     private var originalAttachmentIDs = Set<String>()
     private var removedOriginalAttachmentIDs = Set<String>()
     private var persistedDraft: NotificationReviewDraftPayload?
@@ -36,15 +39,22 @@ final class NotificationReviewViewModel {
     private(set) var isClosedLocally = false
     var feedback: Feedback?
     private var outgoingProcessID: String?
+    /// The defect dialog shown after closing, for users with I2 permission.
+    let i2Selection = I2DefectSelection()
+    /// I2 notifications SAP already holds for this technical object.
+    private(set) var existingI2Notifications: [SAPI2NotificationSummary] = []
+    private var canCreateI2 = false
 
     init(
         detail: SAPNotificationDetail,
         offlineWorkStore: OfflineWorkStore,
-        photoStore: any PhotoAttachmentStore
+        photoStore: any PhotoAttachmentStore,
+        sapDataStore: SAPDataStore? = nil
     ) {
         self.detail = detail
         self.offlineWorkStore = offlineWorkStore
         self.photoStore = photoStore
+        self.sapDataStore = sapDataStore
     }
 
     var canClose: Bool {
@@ -73,6 +83,10 @@ final class NotificationReviewViewModel {
         defer { isLoading = false }
         await discardStagedPhotos()
         await offlineWorkStore.load()
+        if let sapDataStore {
+            canCreateI2 = await sapDataStore.loadUserProfile()?.canCreateI2 ?? false
+            existingI2Notifications = await sapDataStore.loadI2Notifications(for: detail)
+        }
         guard let draft = offlineWorkStore.notificationReview(notificationID: detail.summary.id) else { return }
 
         persistedDraft = draft
@@ -199,10 +213,40 @@ final class NotificationReviewViewModel {
             outgoingProcessID = processID
             isClosedLocally = closed
             persistedDraft = draft
-            feedback = closed ? .closedLocally : .savedLocally
+            // `Rundgang._afterSetMeldung` offers the deficient positions for
+            // I2 notifications instead of finishing the form.
+            let offersI2 = closed && canCreateI2 && i2Selection.present(
+                I2NotificationRules.segmentedCandidates(detail: detail, results: results, comments: comments)
+            )
+            if !offersI2 {
+                feedback = closed ? .closedLocally : .savedLocally
+            }
         } catch {
             feedback = .saveFailed
         }
+    }
+
+    /// Stores the notifications chosen in the defect dialog with the closed
+    /// review. Returns `false` when nothing was chosen, so the form can be
+    /// left straight away as `onDefectPosItemAccept` does.
+    func acceptI2Selection() async -> Bool {
+        let requests = i2Selection.accept()
+        guard !requests.isEmpty, var draft = persistedDraft, draft.isClosedLocally else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        draft.i2Requests = requests
+        do {
+            _ = try await offlineWorkStore.saveNotificationReview(draft)
+            persistedDraft = draft
+            feedback = .i2NotificationsQueued
+        } catch {
+            feedback = .saveFailed
+        }
+        return true
+    }
+
+    func cancelI2Selection() {
+        i2Selection.cancel()
     }
 
     private func discardStagedPhotos() async {

@@ -481,14 +481,19 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             )
             SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO rows staged with request ID")
 
-            for (index, document) in notificationBatch.documents.enumerated() {
+            // `synchronizeDocTo` uploads the `TO_T0282` documents as `I1`,
+            // then the `TO_T0285` copies of the I2 notifications as `I2`.
+            let outgoingDocuments = notificationBatch.documents.map { (document: $0, notificationType: "I1") }
+                + notificationBatch.i2Documents.map { (document: $0, notificationType: "I2") }
+            for (index, entry) in outgoingDocuments.enumerated() {
                 await progress(.uploadingOutgoingDocuments(
                     current: index + 1,
-                    total: notificationBatch.documents.count
+                    total: outgoingDocuments.count
                 ))
                 try await submitOutgoingDocument(
                     requestID: toRequestID,
-                    document: document,
+                    document: entry.document,
+                    notificationType: entry.notificationType,
                     connection: synchronizationConnection
                 )
             }
@@ -647,6 +652,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     private func submitOutgoingDocument(
         requestID: String,
         document: SAPNotificationOutgoingDocument,
+        notificationType: String,
         connection: SAPReadConnection
     ) async throws {
         var row = document.metadata
@@ -660,7 +666,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             parameters: Self.parameters([
                 "PARAMETER1": sapWorkerID,
                 "PARAMETER2": requestID,
-                "PARAMETER3": "I1"
+                "PARAMETER3": notificationType
             ]),
             document: row,
             connection: connection,
@@ -1000,6 +1006,29 @@ enum SAPLegacyDataExchangeCodec {
 
     static func cachedNotificationPayload(fromFeldwert feldwert: String) -> [String: Any]? {
         notificationData(fromFeldwert: feldwert)
+    }
+
+    /// The long text of a downloaded I2 notification. Its `FELDWERT` holds
+    /// the `TLINE` list itself; `select.formatLongText(..., true)` joins every
+    /// `TDLINE` without a separator and accepts a plain string as well.
+    static func longText(fromFeldwert feldwert: String) -> String {
+        switch feldwertValue(from: feldwert) {
+        case let text as String:
+            return text
+        case let lines as [Any]:
+            return lines.compactMap { line -> String? in
+                // Not trimmed: the lines are joined without a separator, so a
+                // blank at a line boundary is the only space between words.
+                guard let line = line as? [String: Any],
+                      let text = value(named: "TDLINE", in: line) as? String,
+                      !text.isEmpty
+                else { return nil }
+                return text
+            }
+            .joined()
+        default:
+            return ""
+        }
     }
 
     static func decodedFeldwertObject(_ feldwert: String) -> [String: Any]? {

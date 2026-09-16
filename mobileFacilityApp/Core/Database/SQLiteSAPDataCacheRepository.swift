@@ -18,7 +18,7 @@ private actor LegacyIncomingSynchronizationRegistry {
 
 private let legacyIncomingSynchronizationRegistry = LegacyIncomingSynchronizationRegistry()
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, I2NotificationReading, I2NotificationTemplateProviding, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -144,6 +144,60 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return try Self.rows(in: "USER", on: database)
             .compactMap(SAPLegacyDataExchangeCodec.userProfile(from:))
             .first
+    }
+
+    func loadI2Notifications(
+        for object: I2NotificationObjectReference
+    ) async throws -> [SAPI2NotificationSummary] {
+        try validateWorker(localWorkerID ?? "")
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        guard !object.isEmpty else { return [] }
+        let schema = try Self.schema(named: "FROM_T0271")
+        var conditions = ["QMART = 'I2'"]
+        var bindings: [String?] = []
+        if !object.client.isEmpty {
+            conditions.append("MANDT = ?")
+            bindings.append(object.client)
+        }
+        if !object.equipmentID.isEmpty {
+            conditions.append("EQUNR = ?")
+            bindings.append(object.equipmentID)
+        } else {
+            conditions.append("TPLNR = ?")
+            bindings.append(object.functionalLocationID)
+        }
+        let columns = ["QMNUM", "QMTXT", "QMNAM", "STRMN", "STRUR", "REFNUM", "STTXT", "FELDWERT"]
+        return try Self.query(
+            on: database,
+            "SELECT \(columns.joined(separator: ", ")) FROM \(schema.name) "
+                + "WHERE \(conditions.joined(separator: " AND ")) ORDER BY STRMN, STRUR, QMNUM",
+            bindings: bindings
+        ) { statement in
+            SAPI2NotificationSummary(
+                id: Self.string(at: 0, from: statement),
+                shortText: Self.string(at: 1, from: statement),
+                reporter: Self.string(at: 2, from: statement),
+                startDate: Self.string(at: 3, from: statement),
+                startTime: Self.string(at: 4, from: statement),
+                referenceID: Self.string(at: 5, from: statement),
+                systemStatus: Self.string(at: 6, from: statement),
+                longText: SAPLegacyDataExchangeCodec.longText(fromFeldwert: Self.string(at: 7, from: statement))
+            )
+        }
+    }
+
+    func loadNewNotificationTemplateJSON() async throws -> String? {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let schema = try Self.schema(named: "FROM_T0268")
+        let feldwert = try Self.query(
+            on: database,
+            "SELECT FELDWERT FROM \(schema.name) WHERE LKEY = 'MELDUNG' AND LPAR = 'MELDUNG'"
+        ) { Self.string(at: 0, from: $0) }.first
+        guard let feldwert,
+              let template = SAPLegacyDataExchangeCodec.decodedFeldwertObject(feldwert),
+              let data = try? JSONSerialization.data(withJSONObject: template, options: [.sortedKeys])
+        else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
@@ -892,7 +946,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         documents: [LegacySAPRow],
         equipment: [LegacySAPRow],
         functionalLocations: [LegacySAPRow],
-        proposals: [LegacySAPRow]
+        proposals: [LegacySAPRow],
+        i2Notifications: [LegacySAPRow],
+        i2Documents: [LegacySAPRow]
     ) async throws {
         guard let database else { throw SAPReadError.serviceUnavailable }
         let headerSchema = try Self.schema(named: "TO_T0281")
@@ -901,10 +957,24 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let equipmentSchema = try Self.schema(named: "TO_T0266")
         let locationSchema = try Self.schema(named: "TO_T0265")
         let proposalSchema = try Self.schema(named: "TO_T0211")
+        let i2NotificationSchema = try Self.schema(named: "TO_T0284")
+        let i2DocumentSchema = try Self.schema(named: "TO_T0285")
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
+            // `TO_T0284` has no process number. Its temporary `QMNUM` is kept
+            // in the draft, so a retried upload replaces its own rows.
+            for notificationID in Set(i2Notifications.compactMap { $0["QMNUM"] ?? nil }) where !notificationID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(i2NotificationSchema.name) WHERE QMNUM = ?",
+                    bindings: [notificationID]
+                )
+            }
             for processID in Set(processIDs) where !processID.isEmpty {
-                for table in [headerSchema.name, valueSchema.name, documentSchema.name, proposalSchema.name] {
+                for table in [
+                    headerSchema.name, valueSchema.name, documentSchema.name,
+                    proposalSchema.name, i2DocumentSchema.name
+                ] {
                     try Self.execute(
                         on: database,
                         "DELETE FROM \(table) WHERE VORGANGSNR = ?",
@@ -933,6 +1003,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             for row in equipment { try Self.insert(row: row, into: equipmentSchema, on: database) }
             for row in functionalLocations { try Self.insert(row: row, into: locationSchema, on: database) }
             for row in proposals { try Self.insert(row: row, into: proposalSchema, on: database) }
+            for row in i2Notifications { try Self.insert(row: row, into: i2NotificationSchema, on: database) }
+            for row in i2Documents { try Self.insert(row: row, into: i2DocumentSchema, on: database) }
             try Self.execute(on: database, "COMMIT")
         } catch {
             try? Self.execute(on: database, "ROLLBACK")

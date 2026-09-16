@@ -93,10 +93,8 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
         case .fixedLadder: return Self.fixedLadderData
         case .holdOpenSystem: return Self.holdOpenSystemData
         case .roofSystem: return Self.roofSystemData
+        case .subdistribution: return Self.subdistributionData
         case .elevator, nil: break
-        }
-        if notification.equipmentInspectionForm == .subdistribution {
-            return Self.subdistributionData
         }
         let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
         let passengerLift = ElevatorInspectionValueOption(
@@ -601,20 +599,6 @@ enum ElevatorInspectionStatusDecision: String, Codable, CaseIterable, Identifiab
     }
 }
 
-/// Defect position representation for the I2 defect handoff flow.
-struct ElevatorDefectPosition: Identifiable, Equatable, Sendable {
-    let id: String
-    let itemNr: Int
-    let operation: String
-    let title: String
-    let longText: String
-    let resultCode: String
-    let resultText: String
-    let actionCode: String
-    let actionText: String
-    let comment: String
-}
-
 /// Offline draft payload of a shared equipment inspection (TFM2, TFM4, TFM6).
 ///
 /// The type and its `.elevatorInspection` work-item case keep their original
@@ -642,6 +626,9 @@ struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
     /// Class-characteristics header. `nil` for drafts saved before the header
     /// became editable.
     var masterData: EquipmentMasterDataDraft?
+    /// I2 notifications chosen in the defect dialog after closing. `nil` for
+    /// drafts saved before I2 creation existed.
+    var i2Requests: [I2NotificationRequest]?
 
     init(
         notificationID: String,
@@ -661,10 +648,12 @@ struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
         outOfOperationComment: String? = nil,
         notificationSnapshot: OfflineNotificationSnapshot? = nil,
         formCode: String? = nil,
-        masterData: EquipmentMasterDataDraft? = nil
+        masterData: EquipmentMasterDataDraft? = nil,
+        i2Requests: [I2NotificationRequest]? = nil
     ) {
         self.notificationID = notificationID
         self.masterData = masterData
+        self.i2Requests = i2Requests
         self.formCode = formCode
         self.performedOn = performedOn
         self.elementValues = elementValues
