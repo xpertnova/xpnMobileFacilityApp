@@ -32,10 +32,14 @@ struct ElevatorAssetCharacteristic: Codable, Equatable, Hashable, Identifiable, 
     var id: String { name }
 }
 
-/// The cached master-data classification associated with a TFM2 notification.
+/// The cached master-data classification associated with a shared equipment
+/// inspection (TFM2 elevator, TFM4 fixed ladder).
 struct ElevatorAssetData: Equatable, Sendable {
     let equipmentType: String
     let className: String
+    /// Class description (`TXTBZ`). The legacy report uses it as the form
+    /// title (`klassenMerkmale.TXTBZ` in `buildPDF`).
+    var classTitle: String = ""
     let characteristics: [ElevatorAssetCharacteristic]
     let values: [String: String]
 
@@ -43,6 +47,10 @@ struct ElevatorAssetData: Equatable, Sendable {
 }
 
 /// Narrow, read-only boundary for the legacy T0263/T0265/T0266 cache data.
+///
+/// Implementations resolve the class for the notification's
+/// `equipmentInspectionForm`, so one provider serves every shared equipment
+/// inspection.
 protocol ElevatorAssetDataProviding: Sendable {
     func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData
 }
@@ -56,6 +64,9 @@ struct UnavailableElevatorAssetDataProvider: ElevatorAssetDataProviding {
 /// Isolated, deterministic source used only by the app's Demo composition.
 struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
     func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
+        if notification.equipmentInspectionForm == .fixedLadder {
+            return Self.fixedLadderData
+        }
         let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
         let passengerLift = ElevatorInspectionValueOption(
             code: "PERS",
@@ -122,6 +133,44 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
                 "DEMO_ELEVATOR_TYPE": "PERS",
                 "DEMO_ELEVATOR_CAPACITY": "630",
                 "DEMO_ELEVATOR_TRAVEL_HEIGHT": "165.0"
+            ]
+        )
+    }
+
+    private static var fixedLadderData: ElevatorAssetData {
+        let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
+        let characteristics = [
+            ElevatorAssetCharacteristic(
+                position: 1, name: "DEMO_LADDER_HEIGHT",
+                title: String(localized: "fixedLadder.masterData.demo.height"), unit: "m",
+                isRequired: true, isNumeric: true, allowsMultipleValues: false, options: []
+            ),
+            ElevatorAssetCharacteristic(
+                position: 2, name: "DEMO_LADDER_MATERIAL",
+                title: String(localized: "fixedLadder.masterData.demo.material"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []
+            ),
+            ElevatorAssetCharacteristic(
+                position: 3, name: "DEMO_LADDER_FALL_PROTECTION",
+                title: String(localized: "fixedLadder.masterData.demo.fallProtection"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [yes]
+            ),
+            ElevatorAssetCharacteristic(
+                position: 4, name: "DEMO_LADDER_BACK_PROTECTION",
+                title: String(localized: "fixedLadder.masterData.demo.backProtection"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [yes]
+            )
+        ]
+        return ElevatorAssetData(
+            equipmentType: "TFMLEITER",
+            className: "TFMLEITER",
+            classTitle: String(localized: "fixedLadder.inspection.title"),
+            characteristics: characteristics,
+            values: [
+                "DEMO_LADDER_HEIGHT": "12.5",
+                "DEMO_LADDER_MATERIAL": String(localized: "fixedLadder.masterData.demo.steel"),
+                "DEMO_LADDER_FALL_PROTECTION": "X",
+                "DEMO_LADDER_BACK_PROTECTION": "X"
             ]
         )
     }
@@ -241,6 +290,7 @@ enum ElevatorAssetDataDecoder {
         return ElevatorAssetData(
             equipmentType: equipmentType,
             className: className,
+            classTitle: string(named: "TXTBZ", in: classDefinition),
             characteristics: characteristics.sorted { $0.position < $1.position },
             values: values
         )
@@ -303,7 +353,7 @@ struct ElevatorInspectionItem: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Status choices for a deficient TFM2 notification when closing.
+/// Status choices for a deficient equipment inspection when closing.
 enum ElevatorInspectionStatusDecision: String, Codable, CaseIterable, Identifiable, Sendable {
     case leaveOpen = "MIAR"
     case close = "MMAB"
@@ -334,9 +384,15 @@ struct ElevatorDefectPosition: Identifiable, Equatable, Sendable {
     let comment: String
 }
 
-/// Dedicated offline draft payload for TFM2 elevator inspections.
+/// Offline draft payload of a shared equipment inspection (TFM2, TFM4).
+///
+/// The type and its `.elevatorInspection` work-item case keep their original
+/// names because both are persisted in the offline queue.
 struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
     var notificationID: String
+    /// `EquipmentInspectionForm` code. `nil` for drafts saved before TFM4
+    /// existed, which were always TFM2.
+    var formCode: String?
     var performedOn: Date
     var elementValues: [String: String]
     var comments: [String: String]
@@ -369,9 +425,11 @@ struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
         statusNumber: String = "1",
         isOutOfOperation: Bool? = nil,
         outOfOperationComment: String? = nil,
-        notificationSnapshot: OfflineNotificationSnapshot? = nil
+        notificationSnapshot: OfflineNotificationSnapshot? = nil,
+        formCode: String? = nil
     ) {
         self.notificationID = notificationID
+        self.formCode = formCode
         self.performedOn = performedOn
         self.elementValues = elementValues
         self.comments = comments
@@ -390,7 +448,8 @@ struct ElevatorInspectionDraftPayload: Codable, Equatable, Sendable {
     }
 }
 
-/// Cordova-equivalent business logic rules for TFM2 Aufzugskontrolle.
+/// Cordova-equivalent business logic rules shared by TFM2 and TFM4
+/// (`BaseFormController` / `HeaderFormBuilder`).
 enum ElevatorInspectionLogic {
     /// Determines whether a position's result/action combination constitutes a defect.
     /// Cordova rules:
@@ -619,37 +678,10 @@ enum ElevatorInspectionDecoder {
     }
 }
 
-extension SAPNotificationSummary {
-    var isTFM2ElevatorInspection: Bool {
-        if rawPayloadJSON.contains("\"FORMNR\":\"TFM2\"") || rawPayloadJSON.contains("\"FORMNR\": \"TFM2\"") {
-            return true
-        }
-        if rawPayloadJSON.contains("\"STEUS\":\"TFM2\"") || rawPayloadJSON.contains("\"STEUS\": \"TFM2\"") {
-            return true
-        }
-        guard let data = rawPayloadJSON.data(using: .utf8),
-              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return false
-        }
-        if let formnr = dict["FORMNR"] as? String, formnr.uppercased() == "TFM2" {
-            return true
-        }
-        if let rows = dict["T_PLPOD"] as? [[String: Any]],
-           rows.contains(where: { ($0["STEUS"] as? String)?.uppercased() == "TFM2" }) {
-            return true
-        }
-        if let feldwert = dict["FELDWERT"] as? String,
-           let planData = decodeSAPNotificationPayload(fromFeldwert: feldwert),
-           let rows = planData["T_PLPOD"] as? [[String: Any]],
-           rows.contains(where: { ($0["STEUS"] as? String)?.uppercased() == "TFM2" }) {
-            return true
-        }
-        return false
-    }
-}
-
-extension SAPNotificationDetail {
-    var isTFM2ElevatorInspection: Bool {
-        summary.isTFM2ElevatorInspection
+extension ElevatorInspectionDraftPayload {
+    /// The form this draft belongs to. Drafts without a stored code predate
+    /// TFM4 and are TFM2.
+    var form: EquipmentInspectionForm {
+        formCode.flatMap(EquipmentInspectionForm.init(formCode:)) ?? .elevator
     }
 }

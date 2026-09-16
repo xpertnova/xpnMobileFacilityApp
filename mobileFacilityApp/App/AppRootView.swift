@@ -3,9 +3,9 @@ import SwiftUI
 struct AppRootView: View {
     let productionOfflineWorkRepository: any OfflineWorkRepository
     let productionPhotoAttachmentStore: any PhotoAttachmentStore
-    @State private var phase: AppPhase = .launching
+    @State private var phase: AppPhase = Self.debugStartsInDemoMode ? .demo : .launching
     @State private var onboarding = SAPOnboardingState()
-    @State private var demo: FacilityDemoViewModel?
+    @State private var demo: FacilityDemoViewModel? = Self.debugStartsInDemoMode ? Self.makeDemoWorkspace() : nil
     @State private var authenticationWorkspace: FacilityDemoViewModel?
     @State private var productionWorkspace: FacilityDemoViewModel?
     @State private var productionSession: FacilityUserSession?
@@ -146,6 +146,18 @@ struct AppRootView: View {
         )
         #else
         nil
+        #endif
+    }
+
+    /// Debug-only shortcut straight into the demo workspace, skipping SAP
+    /// onboarding. It builds exactly the same mock-only workspace as picking
+    /// Demo during onboarding, so demo isolation is unchanged. Logout still
+    /// returns to onboarding.
+    private static var debugStartsInDemoMode: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-StartInDemoMode")
+        #else
+        false
         #endif
     }
 

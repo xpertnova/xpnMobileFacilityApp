@@ -72,9 +72,10 @@ struct FacilityShellView: View {
                         .transition(.opacity)
 
                     if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
-                        if selectedOfflineNotificationDetail.isTFM2ElevatorInspection {
-                            TFM2ElevatorInspectionView(
+                        if let form = selectedOfflineNotificationDetail.equipmentInspectionForm {
+                            EquipmentInspectionView(
                                 detail: selectedOfflineNotificationDetail,
+                                form: form,
                                 offlineWorkStore: demo.offlineWorkStore,
                                 photoAttachmentStore: demo.photoAttachmentStore,
                                 sapDataStore: demo.sapDataStore,

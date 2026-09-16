@@ -292,7 +292,7 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                         structuralFilter: .empty, limit: 20, offset: 0
                     )
                     guard let source = page.notifications.first(where: { $0.id == inspection.notificationID }) else {
-                        throw SAPTFM2InspectionUploadError.missingSourceNotification(inspection.notificationID)
+                        throw SAPEquipmentInspectionUploadError.missingSourceNotification(inspection.notificationID)
                     }
                     var photos: [String: Data] = [:]
                     for attachment in inspection.photoAttachments {
@@ -301,8 +301,9 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                     var pdfData = inspection.pdfBytes ?? Data()
                     if pdfData.isEmpty {
                         let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
+                        let form = inspection.form
                         let items = ElevatorInspectionDecoder.decodeItems(from: source.rawPayloadJSON)
-                        let hasMat = items.contains { $0.hasMaterial }
+                        let hasMat = form.supportsMaterial && items.contains { $0.hasMaterial }
                         var res: [String: String] = [:]
                         var acts: [String: String] = [:]
                         var mats: [String: Bool] = [:]
@@ -314,6 +315,8 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                             notes[itm.id] = inspection.comments[itm.commentElementID] ?? inspection.comments[itm.id] ?? ""
                         }
                         let payload = ElevatorInspectionPDFPayload(
+                            formTitle: form.reportTitleFallback,
+                            masterDataTitle: form.reportMasterDataTitle,
                             notificationID: inspection.notificationID,
                             notificationTitle: source.title,
                             functionalLocation: source.functionalLocationID,
@@ -337,7 +340,7 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                         )
                         pdfData = (try? ElevatorInspectionPDFRenderer.render(payload).data) ?? Data()
                     }
-                    batches.append(try SAPTFM2InspectionUploadBuilder.build(
+                    batches.append(try SAPEquipmentInspectionUploadBuilder.build(
                         workItem: item, source: source, syncUserID: syncUserID,
                         photoData: photos, pdfData: pdfData
                     ))

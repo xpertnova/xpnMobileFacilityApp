@@ -2,7 +2,14 @@ import Foundation
 import UIKit
 import PDFKit
 
+/// Report of a shared equipment inspection (TFM2, TFM4) — the legacy
+/// `buildPDF` of `Aufzugskontrolle` and `MasterDataForm`, which differ only in
+/// the title, the master-data heading and the material column.
 struct ElevatorInspectionPDFPayload: Sendable, Equatable {
+    /// `formName` of the legacy doc header (`klassenMerkmale.TXTBZ`).
+    let formTitle: String
+    /// Heading of the master-data block.
+    let masterDataTitle: String
     let notificationID: String
     let notificationTitle: String
     let functionalLocation: String
@@ -27,6 +34,8 @@ struct ElevatorInspectionPDFPayload: Sendable, Equatable {
     let assetValues: [String: String]
 
     init(
+        formTitle: String = EquipmentInspectionForm.elevator.reportTitleFallback,
+        masterDataTitle: String = EquipmentInspectionForm.elevator.reportMasterDataTitle,
         notificationID: String,
         notificationTitle: String,
         functionalLocation: String,
@@ -50,6 +59,8 @@ struct ElevatorInspectionPDFPayload: Sendable, Equatable {
         assetCharacteristics: [ElevatorAssetCharacteristic] = [],
         assetValues: [String: String] = [:]
     ) {
+        self.formTitle = formTitle
+        self.masterDataTitle = masterDataTitle
         self.notificationID = notificationID
         self.notificationTitle = notificationTitle
         self.functionalLocation = functionalLocation
@@ -188,13 +199,13 @@ enum ElevatorInspectionPDFRenderer {
         // Col 1: Organization
         drawText(orgName, in: rect1.insetBy(dx: 4, dy: 16), font: fontTitle, alignment: .center)
 
-        // Col 2: Formular / Dokumentenart / Aufzugskontrolle
+        // Col 2: Formular / Dokumentenart / form title
         let row2a = CGRect(x: rect2.minX, y: rect2.minY, width: rect2.width, height: 25)
         let row2b = CGRect(x: rect2.minX, y: row2a.maxY, width: rect2.width, height: 25)
         strokeLine(from: CGPoint(x: rect2.minX, y: row2a.maxY), to: CGPoint(x: rect2.maxX, y: row2a.maxY), in: cg)
         drawText("Formular", in: row2a.insetBy(dx: 4, dy: 2), font: fontHeader, alignment: .center)
         drawText("Dokumentenart", in: row2a.insetBy(dx: 4, dy: 14), font: fontSub, color: .gray, alignment: .center)
-        drawText("Aufzugskontrolle", in: row2b.insetBy(dx: 4, dy: 6), font: fontTitle, alignment: .center)
+        drawText(payload.formTitle, in: row2b.insetBy(dx: 4, dy: 6), font: fontTitle, alignment: .center)
 
         // Col 3: Datum / OrgUnit
         let row3a = CGRect(x: rect3.minX, y: rect3.minY, width: rect3.width, height: 25)
@@ -282,7 +293,7 @@ enum ElevatorInspectionPDFRenderer {
         let titleHeight: CGFloat = 18
         let titleRect = CGRect(x: margin, y: currentY, width: contentWidth, height: titleHeight)
         strokeRect(titleRect, in: cg)
-        drawText("Aufzug Merkmale", in: titleRect.insetBy(dx: 4, dy: 3), font: fontBoldBody)
+        drawText(payload.masterDataTitle, in: titleRect.insetBy(dx: 4, dy: 3), font: fontBoldBody)
         currentY += titleHeight
 
         let labelWidth = contentWidth * 0.45
@@ -405,7 +416,9 @@ enum ElevatorInspectionPDFRenderer {
     // MARK: - 4. Erläuterungstabelle (addErlaeuterungTableAK)
     private static func drawErlaeuterungTable(_ payload: ElevatorInspectionPDFPayload, in cg: CGContext, startY: CGFloat) -> CGFloat {
         var currentY = startY
-        let colWidth = contentWidth / 3
+        // `MasterDataForm.buildPDF` (TFM4) leaves the material legend out.
+        let showsMaterial = payload.hasMaterialColumn
+        let colWidth = contentWidth / (showsMaterial ? 3 : 2)
 
         let headerHeight: CGFloat = 16
         let rHead1 = CGRect(x: margin, y: currentY, width: colWidth, height: headerHeight)
@@ -414,11 +427,12 @@ enum ElevatorInspectionPDFRenderer {
 
         strokeRect(rHead1, in: cg)
         strokeRect(rHead2, in: cg)
-        strokeRect(rHead3, in: cg)
-
         drawText("Befundkennziffer", in: rHead1.insetBy(dx: 4, dy: 3), font: fontBoldBody)
         drawText("Arbeitskennziffer", in: rHead2.insetBy(dx: 4, dy: 3), font: fontBoldBody)
-        drawText("Material bestellen", in: rHead3.insetBy(dx: 4, dy: 3), font: fontBoldBody)
+        if showsMaterial {
+            strokeRect(rHead3, in: cg)
+            drawText("Material bestellen", in: rHead3.insetBy(dx: 4, dy: 3), font: fontBoldBody)
+        }
 
         currentY += headerHeight
 
@@ -467,11 +481,12 @@ enum ElevatorInspectionPDFRenderer {
 
         strokeRect(rBody1, in: cg)
         strokeRect(rBody2, in: cg)
-        strokeRect(rBody3, in: cg)
-
         drawText(col1Text, in: rBody1.insetBy(dx: 4, dy: 4), font: fontSmall)
         drawText(col2Text, in: rBody2.insetBy(dx: 4, dy: 4), font: fontSmall)
-        drawText(materialText, in: rBody3.insetBy(dx: 4, dy: 4), font: fontSmall)
+        if showsMaterial {
+            strokeRect(rBody3, in: cg)
+            drawText(materialText, in: rBody3.insetBy(dx: 4, dy: 4), font: fontSmall)
+        }
 
         return currentY + bodyHeight + 12
     }

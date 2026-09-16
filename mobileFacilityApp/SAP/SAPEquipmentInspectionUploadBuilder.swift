@@ -1,6 +1,6 @@
 import Foundation
 
-enum SAPTFM2InspectionUploadError: LocalizedError {
+enum SAPEquipmentInspectionUploadError: LocalizedError {
     case invalidInspection(String)
     case missingSourceNotification(String)
     case missingPhoto(String)
@@ -9,7 +9,7 @@ enum SAPTFM2InspectionUploadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .invalidInspection(id):
-            return "Ungültige Aufzugskontrolle für Meldung \(id)."
+            return "Ungültige Prüfung für Meldung \(id)."
         case let .missingSourceNotification(id):
             return "Quellmeldung \(id) nicht gefunden."
         case let .missingPhoto(id):
@@ -20,7 +20,11 @@ enum SAPTFM2InspectionUploadError: LocalizedError {
     }
 }
 
-enum SAPTFM2InspectionUploadBuilder {
+/// Builds the outgoing `TO_T0281`/`TO_T0283`/`TO_T0282` batch of a closed
+/// shared equipment inspection (TFM2, TFM4). The form code, the material
+/// column and the document mapping come from the draft's
+/// `EquipmentInspectionForm`.
+enum SAPEquipmentInspectionUploadBuilder {
     static func build(
         workItem: OfflineWorkItem,
         source: SAPNotificationSummary,
@@ -36,12 +40,12 @@ enum SAPTFM2InspectionUploadBuilder {
               let sourceData = source.rawPayloadJSON.data(using: .utf8),
               var notificationData = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any]
         else {
-            throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+            throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
         }
 
         let effectivePDF = pdfData ?? inspection.pdfBytes ?? Data()
         guard !effectivePDF.isEmpty else {
-            throw SAPTFM2InspectionUploadError.missingPDF(inspection.notificationID)
+            throw SAPEquipmentInspectionUploadError.missingPDF(inspection.notificationID)
         }
 
         if value(named: "T_PLPOD", in: notificationData) == nil,
@@ -51,29 +55,29 @@ enum SAPTFM2InspectionUploadBuilder {
         }
 
         guard (stringValue(value(named: "QMART", in: notificationData)) ?? "").uppercased() == "I1" else {
-            throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+            throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
         }
 
         let items = ElevatorInspectionDecoder.decodeItems(from: source.rawPayloadJSON)
         guard !items.isEmpty else {
-            throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+            throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
         }
 
         // `BaseFormController.buildDefaultElements` builds the "Außer Betrieb"
-        // status for TFM2. While it is set, `setValues4AnwStatus` clears every
+        // status for TFM2 and TFM4. While it is set, `setValues4AnwStatus` clears every
         // position and `validateFormValues` validates only the status comment.
         let isOutOfOperation = inspection.isOutOfOperation ?? false
         let outOfOperationComment = inspection.outOfOperationComment ?? ""
 
         if isOutOfOperation {
             guard !outOfOperationComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+                throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
             }
         } else {
             // Validate that all items have a Befund result
             for item in items {
                 guard let result = inspection.elementValues[item.resultElementID], !result.isEmpty else {
-                    throw SAPTFM2InspectionUploadError.invalidInspection(source.id)
+                    throw SAPEquipmentInspectionUploadError.invalidInspection(source.id)
                 }
             }
         }
@@ -94,7 +98,8 @@ enum SAPTFM2InspectionUploadBuilder {
                 : inspection.closingSystemStatus
         }
 
-        let formNumber = "TFM2"
+        let form = inspection.form
+        let formNumber = form.formCode
         let createdDate = basicDate(now)
         let createdTime = basicTime(now)
         let performedDate = basicDate(inspection.performedOn)
@@ -158,8 +163,8 @@ enum SAPTFM2InspectionUploadBuilder {
                 ))
             }
 
-            // Property 3 (Material, if position exists)
-            if item.hasMaterial, let materialID = item.materialElementID {
+            // Property 3 (Material, if position exists and the form posts it)
+            if form.supportsMaterial, item.hasMaterial, let materialID = item.materialElementID {
                 let isChecked = inspection.materialFlags[materialID] ?? inspection.materialFlags[item.id] ?? false
                 let materialVal = isChecked ? "X" : ""
                 values.append(valueRow(
@@ -203,22 +208,22 @@ enum SAPTFM2InspectionUploadBuilder {
         )
         pdfMetadata.merge([
             "MANDT": source.client, "REQID": "", "VORGANGSNR": processID,
-            "DOCID": pdfDocID, "ELEMENTNR": "TFM2-pdf",
+            "DOCID": pdfDocID, "ELEMENTNR": "\(formNumber)-pdf",
             "DOKNR": "", "QMNUM": inspection.notificationID,
             "CREATEDBY": userID, "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
             "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime, "MODIFIEDBY": userID,
             "DOC_TYPE": "PDF", "DOC_MIMETYPE": "application/pdf",
             "NAME": "Bericht_\(cleanID).pdf", "DESCRIPTION": "",
             "FELDWERT": "", "DOKAR": "FMD", "DOKOB": "SMQMEL",
-            "OBJKY": inspection.notificationID, "DMS_CONTENTTYPE": "D_TFM_Wartung",
-            "DMS_DOCID": "TFM006"
+            "OBJKY": inspection.notificationID, "DMS_CONTENTTYPE": form.documentClass,
+            "DMS_DOCID": form.documentValueList
         ]) { _, value in value }
         documents.append(SAPNotificationOutgoingDocument(metadata: pdfMetadata, data: effectivePDF))
 
         // 2. Photo Attachments
         for attachment in inspection.photoAttachments {
             guard let data = photoData[attachment.localAttachmentID], !data.isEmpty else {
-                throw SAPTFM2InspectionUploadError.missingPhoto(attachment.localAttachmentID)
+                throw SAPEquipmentInspectionUploadError.missingPhoto(attachment.localAttachmentID)
             }
             let captureDate = basicDate(attachment.capturedAt)
             let captureTime = basicTime(attachment.capturedAt)
@@ -234,8 +239,8 @@ enum SAPTFM2InspectionUploadBuilder {
                 "DOC_TYPE": "JPG", "DOC_MIMETYPE": "image/jpeg",
                 "NAME": photoName(attachment.capturedAt), "DESCRIPTION": "",
                 "FELDWERT": "", "DOKAR": "FMD", "DOKOB": "SMQMEL",
-                "OBJKY": inspection.notificationID, "DMS_CONTENTTYPE": "D_TFM_Wartung",
-                "DMS_DOCID": "TFM006"
+                "OBJKY": inspection.notificationID, "DMS_CONTENTTYPE": form.documentClass,
+                "DMS_DOCID": form.documentValueList
             ]) { _, value in value }
             documents.append(SAPNotificationOutgoingDocument(metadata: photoMetadata, data: data))
         }
