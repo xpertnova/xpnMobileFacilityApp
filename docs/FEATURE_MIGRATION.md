@@ -108,12 +108,14 @@ those differences, and it is traced to the legacy controllers:
   `TFM1`, `TFM3`, `TFM8`, `TFM9` and `TFMQ`. It is a header property, not a
   checklist row: it posts as `<FORM>-0000-1` with its comment in
   `<FORM>-0000-9B`, it locks and clears the positions while it is set, and it
-  cannot be closed without a comment.
+  cannot be closed without a comment. Forms without it (TFM8 Dachanlagen on the
+  shared equipment inspection) still post both elements, with empty values,
+  because `select.getItemMeldung` creates the rows but nothing sets them.
 - Result semantics live in `InspectionFormRules`, traced from
   `HeaderFormBuilder.checkInputConstraints` and the `checkInputConstraints`
   overrides in `Rundgang`/`WartungsPlan`. A new offline-capable inspection
   form adds a variant and reuses those rules; it does not restate them.
-- The class-characteristics header above the checklist (TFM2, TFM4, TFM6) is
+- The class-characteristics header above the checklist (TFM2, TFM4, TFM6, TFM8) is
   one component, `EquipmentMasterDataFields`, with its rules in
   `EquipmentMasterDataRules`. Traced from `HeaderFormBuilder._buildHeaderForm`:
   one labelled row per characteristic, a dropdown for a `T_CHARVAL` list

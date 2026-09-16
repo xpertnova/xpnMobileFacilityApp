@@ -22,7 +22,7 @@ enum ElevatorAssetDataState: Equatable {
 }
 
 /// State and business rules of every shared equipment inspection (TFM2
-/// Aufzugskontrolle, TFM4 Steigleitern, TFM6 Feststellanlage). Everything that differs per form code
+/// Aufzugskontrolle, TFM4 Steigleitern, TFM6 Feststellanlage, TFM8 Dachanlagen). Everything that differs per form code
 /// comes from `form`; see `EquipmentInspectionForm`.
 @MainActor
 @Observable
@@ -80,7 +80,8 @@ final class EquipmentInspectionViewModel {
     /// Header-level "Außer Betrieb" status.
     ///
     /// `BaseFormController.buildDefaultElements` builds this control for every
-    /// form except TFM1, TFM3, TFM8, TFM9 and TFMQ, so TFM2 and TFM4 carry it.
+    /// form except TFM1, TFM3, TFM8, TFM9 and TFMQ, so TFM2, TFM4 and TFM6
+    /// carry it and TFM8 never does (`form.supportsOutOfService`).
     /// It is a header property, not a checklist row: the flag posts as
     /// `<form>-0000-1` and its comment as `<form>-0000-9B`.
     private(set) var isOutOfService = false
@@ -257,8 +258,8 @@ final class EquipmentInspectionViewModel {
             }
         }
 
-        isOutOfService = draft.isOutOfOperation ?? false
-        outOfServiceComment = draft.outOfOperationComment ?? ""
+        isOutOfService = form.supportsOutOfService && (draft.isOutOfOperation ?? false)
+        outOfServiceComment = isOutOfService ? draft.outOfOperationComment ?? "" : ""
 
         if draft.closingSystemStatus == "MIAR" {
             statusDecision = .leaveOpen
@@ -559,7 +560,7 @@ final class EquipmentInspectionViewModel {
     /// Requests a change of the header status. Both directions are confirmed
     /// because either one discards documentation.
     func requestOutOfServiceChange() {
-        guard !isEditingDisabled, !isSaving else { return }
+        guard form.supportsOutOfService, !isEditingDisabled, !isSaving else { return }
         outOfServiceTransition = isOutOfService ? .disable : .enable
     }
 
@@ -570,7 +571,7 @@ final class EquipmentInspectionViewModel {
     /// and photo recorded so far is discarded in both directions.
     func confirmOutOfServiceChange(to isActive: Bool) async {
         outOfServiceTransition = nil
-        guard !isEditingDisabled, !isSaving else { return }
+        guard form.supportsOutOfService, !isEditingDisabled, !isSaving else { return }
 
         isOutOfService = isActive
         results.removeAll()

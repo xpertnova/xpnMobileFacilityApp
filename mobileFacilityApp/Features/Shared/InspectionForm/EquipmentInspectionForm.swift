@@ -5,14 +5,14 @@ import Foundation
 ///
 /// Traced from the legacy Cordova client. `Aufzugskontrolle.controller.js`
 /// (TFM2, and TFM6 Feststellanlage, which `App.controller.navToForm` routes to
-/// the same controller) and `MasterDataForm.controller.js` (TFM4 Steigleitern)
-/// all extend `BaseFormController` and
+/// the same controller) and `MasterDataForm.controller.js` (TFM4 Steigleitern,
+/// TFM8 Dachanlagen) all extend `BaseFormController` and
 /// `HeaderFormBuilder`: the same class-characteristics header, the same
 /// `T_PROPS`-driven dropdown positions, the same "Außer Betrieb" status, the
 /// same close rules (`MIAR`/`MMAB`, `Mnot`) and the same document class
 /// `D_TFM_Wartung` / `TFM006`. Only what this type describes differs per form.
 ///
-/// Adding the next form code (TFM7, TFM8, …) means adding a case here once its
+/// Adding the next form code means adding a case here once its
 /// legacy differences are verified — never a copy of the screen.
 enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     /// Aufzugskontrolle.
@@ -21,6 +21,8 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     case fixedLadder = "TFM4"
     /// Feststellanlage (equipment type `TFMFSA`).
     case holdOpenSystem = "TFM6"
+    /// Dachanlagen (equipment type `TFMDACH`).
+    case roofSystem = "TFM8"
 
     init?(formCode: String) {
         self.init(rawValue: formCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
@@ -33,11 +35,21 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         InspectionFormVariant.forFormCode(rawValue)
     }
 
+    /// `true` when the form carries the header "Außer Betrieb" status.
+    ///
+    /// `BaseFormController.buildDefaultElements` returns before building the
+    /// out-of-order box for TFM8, so a roof system can never be set out of
+    /// service and its `<form>-0000-1` element keeps an empty value.
+    var supportsOutOfService: Bool {
+        variant.supportsOutOfService
+    }
+
     /// `true` when the form may post the `T_PROPS` position 3 material flag.
     ///
     /// `MasterDataForm.getSelect` has the position 3 branch commented out and
     /// its `buildPDF` passes `hasMaterial = false`, so TFM4 never shows or
-    /// posts a material value even when SAP delivers the property. TFM6 runs
+    /// posts a material value even when SAP delivers the property; the same
+    /// applies to TFM8, which `navToForm` also routes to `MasterDataForm`. TFM6 runs
     /// on `Aufzugskontrolle`, whose `getCheckBox` binds the position 3 `CBOX`.
     var supportsMaterial: Bool {
         variant.hasMaterialColumn
@@ -46,13 +58,14 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     // MARK: - Master data (HeaderFormBuilder)
 
     /// Equipment types (`EQART`) whose cached class characteristics belong to
-    /// this form. `constEqartSteusMap` maps `TFMLEITER` to TFM4 and `TFMFSA`
-    /// to TFM6; TFM2 covers the passenger, freight and related elevator types.
+    /// this form. `constEqartSteusMap` maps `TFMLEITER` to TFM4, `TFMFSA`
+    /// to TFM6 and `TFMDACH` to TFM8; TFM2 covers the passenger, freight and related elevator types.
     var equipmentTypes: Set<String> {
         switch self {
         case .elevator: ["TFMPERS", "TFMLAST", "TFMBEFAHR", "TFMKLGUT"]
         case .fixedLadder: ["TFMLEITER"]
         case .holdOpenSystem: ["TFMFSA"]
+        case .roofSystem: ["TFMDACH"]
         }
     }
 
@@ -61,7 +74,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     var fallbackClassName: String? {
         switch self {
         case .elevator: "TFMAUFZUG"
-        case .fixedLadder, .holdOpenSystem: nil
+        case .fixedLadder, .holdOpenSystem, .roofSystem: nil
         }
     }
 
@@ -83,6 +96,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.inspection.title"
         case .fixedLadder: "fixedLadder.inspection.title"
         case .holdOpenSystem: "holdOpenSystem.inspection.title"
+        case .roofSystem: "roofSystem.inspection.title"
         }
     }
 
@@ -92,6 +106,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "🛗"
         case .fixedLadder: "🪜"
         case .holdOpenSystem: "🚪"
+        case .roofSystem: "🏠"
         }
     }
 
@@ -100,6 +115,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.title"
         case .fixedLadder: "fixedLadder.masterData.title"
         case .holdOpenSystem: "holdOpenSystem.masterData.title"
+        case .roofSystem: "roofSystem.masterData.title"
         }
     }
 
@@ -108,6 +124,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.subtitle"
         case .fixedLadder: "fixedLadder.masterData.subtitle"
         case .holdOpenSystem: "holdOpenSystem.masterData.subtitle"
+        case .roofSystem: "roofSystem.masterData.subtitle"
         }
     }
 
@@ -116,6 +133,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.loading"
         case .fixedLadder: "fixedLadder.masterData.loading"
         case .holdOpenSystem: "holdOpenSystem.masterData.loading"
+        case .roofSystem: "roofSystem.masterData.loading"
         }
     }
 
@@ -124,6 +142,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.unavailable.title"
         case .fixedLadder: "fixedLadder.masterData.unavailable.title"
         case .holdOpenSystem: "holdOpenSystem.masterData.unavailable.title"
+        case .roofSystem: "roofSystem.masterData.unavailable.title"
         }
     }
 
@@ -132,6 +151,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.unavailable.message"
         case .fixedLadder: "fixedLadder.masterData.unavailable.message"
         case .holdOpenSystem: "holdOpenSystem.masterData.unavailable.message"
+        case .roofSystem: "roofSystem.masterData.unavailable.message"
         }
     }
 
@@ -140,6 +160,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.unavailable.title"
         case .fixedLadder: "fixedLadder.unavailable.title"
         case .holdOpenSystem: "holdOpenSystem.unavailable.title"
+        case .roofSystem: "roofSystem.unavailable.title"
         }
     }
 
@@ -148,6 +169,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.closeDialog.message"
         case .fixedLadder: "fixedLadder.closeDialog.message"
         case .holdOpenSystem: "holdOpenSystem.closeDialog.message"
+        case .roofSystem: "roofSystem.closeDialog.message"
         }
     }
 
@@ -157,13 +179,14 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     /// The PDF is an SAP document and is always German, like the legacy
     /// `PdfBuilder` output. `Aufzugskontrolle.buildPDF` falls back to
     /// "Aufzugskontrolle"; `MasterDataForm.buildPDF` always uses `TXTBZ`.
-    /// TFM6 cannot open without class characteristics, so its fallback only
+    /// TFM4, TFM6 and TFM8 cannot open without class characteristics, so their fallback only
     /// covers a class definition with an empty `TXTBZ`.
     var reportTitleFallback: String {
         switch self {
         case .elevator: "Aufzugskontrolle"
         case .fixedLadder: "Steigleitern"
         case .holdOpenSystem: "Feststellanlage"
+        case .roofSystem: "Dachanlagen"
         }
     }
 
@@ -173,11 +196,12 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "Aufzug Merkmale"
         case .fixedLadder: "Steigleiter Merkmale"
         case .holdOpenSystem: "Feststellanlage Merkmale"
+        case .roofSystem: "Dachanlage Merkmale"
         }
     }
 
     /// `docClass` / `valueList` of the legacy controller. Both
-    /// `Aufzugskontrolle` (TFM2, TFM6) and `MasterDataForm` declare `D_TFM_Wartung` /
+    /// `Aufzugskontrolle` (TFM2, TFM6) and `MasterDataForm` (TFM4, TFM8) declare `D_TFM_Wartung` /
     /// `TFM006`.
     var documentClass: String { "D_TFM_Wartung" }
     var documentValueList: String { "TFM006" }
