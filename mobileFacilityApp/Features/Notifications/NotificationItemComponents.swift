@@ -106,18 +106,43 @@ struct NotificationInfoPopoverContent: View {
 struct NotificationCommentEditorOverlay: View {
     @Binding var comment: String
     let dismiss: () -> Void
+    @State private var initialComment: String
     @FocusState private var isEditorFocused: Bool
+
+    init(comment: Binding<String>, dismiss: @escaping () -> Void) {
+        _comment = comment
+        self.dismiss = dismiss
+        _initialComment = State(initialValue: comment.wrappedValue)
+    }
 
     var body: some View {
         ZStack {
             Color.black.opacity(0.14)
                 .ignoresSafeArea()
-                .onTapGesture(perform: dismiss)
+                .onTapGesture(perform: cancel)
 
             VStack(alignment: .leading, spacing: 16) {
-                Text("notifications.detail.commentEditor.title")
-                    .font(.headline)
-                    .foregroundStyle(FacilityTheme.ink)
+                HStack(spacing: 8) {
+                    Button(action: cancel) {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.bold))
+                            .foregroundStyle(FacilityTheme.ink)
+                            .frame(width: 44, height: 44)
+                            .background(.white, in: Circle())
+                            .overlay {
+                                Circle()
+                                    .stroke(.gray.opacity(0.28))
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("common.cancel"))
+
+                    Text("notifications.detail.commentEditor.title")
+                        .font(.headline)
+                        .foregroundStyle(FacilityTheme.ink)
+
+                    Spacer(minLength: 0)
+                }
 
                 ZStack(alignment: .topLeading) {
                     if comment.isEmpty {
@@ -137,7 +162,11 @@ struct NotificationCommentEditorOverlay: View {
                         .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
                 }
                 .frame(height: 190)
-                .background(Color(white: 0.89), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(.gray.opacity(0.32))
+                }
 
                 HStack {
                     Spacer()
@@ -149,10 +178,19 @@ struct NotificationCommentEditorOverlay: View {
             .padding(22)
             .frame(maxWidth: 460)
             .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(.gray.opacity(0.24))
+            }
             .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
             .padding(28)
         }
         .onAppear { isEditorFocused = true }
+    }
+
+    private func cancel() {
+        comment = initialComment
+        dismiss()
     }
 }
 

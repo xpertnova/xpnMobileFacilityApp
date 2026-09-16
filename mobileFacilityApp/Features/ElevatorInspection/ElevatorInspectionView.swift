@@ -62,7 +62,7 @@ struct TFM2ElevatorInspectionView: View {
         )
         .overlay {
             if let editingCommentID {
-                ElevatorCommentEditorOverlay(
+                NotificationCommentEditorOverlay(
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
                 )
@@ -578,59 +578,6 @@ private extension ElevatorInspectionFeedback {
     }
 }
 
-private struct ElevatorCommentEditorOverlay: View {
-    @Binding var comment: String
-    let dismiss: () -> Void
-    @FocusState private var isEditorFocused: Bool
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.14)
-                .ignoresSafeArea()
-                .onTapGesture(perform: dismiss)
-
-            VStack(alignment: .leading, spacing: 16) {
-                Text("notifications.detail.commentEditor.title")
-                    .font(.headline)
-                    .foregroundStyle(FacilityTheme.ink)
-
-                ZStack(alignment: .topLeading) {
-                    if comment.isEmpty {
-                        Text("notifications.detail.commentEditor.placeholder")
-                            .font(.body)
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 18)
-                            .allowsHitTesting(false)
-                    }
-
-                    TextEditor(text: $comment)
-                        .font(.body)
-                        .scrollContentBackground(.hidden)
-                        .padding(10)
-                        .focused($isEditorFocused)
-                        .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
-                }
-                .frame(height: 190)
-                .background(Color(white: 0.89), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                HStack {
-                    Spacer()
-                    Button("notifications.detail.commentEditor.done", action: dismiss)
-                        .buttonStyle(.borderedProminent)
-                        .tint(FacilityTheme.accent)
-                }
-            }
-            .padding(22)
-            .frame(maxWidth: 460)
-            .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
-            .padding(28)
-        }
-        .onAppear { isEditorFocused = true }
-    }
-}
-
 private struct ElevatorInspectionItemRow: View {
     let item: ElevatorInspectionItem
     let number: Int
@@ -648,7 +595,6 @@ private struct ElevatorInspectionItemRow: View {
     let comment: String
     let editComment: () -> Void
 
-    @State private var isShowingInformation = false
     @State private var expandedPicker: InspectionPickerField?
 
     private var isDefect: Bool {
@@ -684,30 +630,9 @@ private struct ElevatorInspectionItemRow: View {
             }
             .frame(width: 28, height: 44)
 
-            // Info button & title
+            // Info frame and title match the shared Rundgang checklist treatment.
             HStack(spacing: 10) {
-                if item.information.isEmpty {
-                    Image(systemName: "info.circle")
-                        .foregroundStyle(.tertiary)
-                        .frame(width: 44, height: 44)
-                } else {
-                    Button {
-                        isShowingInformation = true
-                    } label: {
-                        Image(systemName: "info.circle.fill")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(FacilityTheme.blue)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("notifications.detail.showInformation"))
-                    .popover(isPresented: $isShowingInformation) {
-                        Text(item.information)
-                            .font(.body)
-                            .padding(20)
-                            .frame(width: 360, alignment: .leading)
-                    }
-                }
+                NotificationInfoButton(information: item.information)
 
                 Text(item.title)
                     .font(.body)
@@ -752,18 +677,11 @@ private struct ElevatorInspectionItemRow: View {
             .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), attachments.count)))
             .frame(width: 52)
 
-            // Comment button
-            Button(action: editComment) {
-                Image(systemName: comment.isEmpty ? "pencil" : "note.text")
-                    .foregroundStyle(comment.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly)
-            .accessibilityLabel(Text("notifications.detail.comment"))
-            .frame(width: 58)
+            NotificationCommentButton(
+                hasComment: !comment.isEmpty,
+                isReadOnly: isReadOnly,
+                action: editComment
+            )
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 10)

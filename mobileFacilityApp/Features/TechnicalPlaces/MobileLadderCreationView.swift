@@ -91,7 +91,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 }
 
                 if let editingCommentID {
-                    FacilityCommentEditorOverlay(
+                    NotificationCommentEditorOverlay(
                         comment: commentBinding(for: editingCommentID),
                         dismiss: { self.editingCommentID = nil }
                     )
@@ -700,7 +700,6 @@ private struct MobileLadderInspectionRow: View {
     let isEditingEnabled: Bool
     let openPhotos: () -> Void
     let editComment: () -> Void
-    @State private var isShowingInformation = false
     @State private var expandedPicker: MobileLadderInspectionCodePickerKind?
 
     var body: some View {
@@ -718,20 +717,7 @@ private struct MobileLadderInspectionRow: View {
                 .accessibilityHidden(item.result != nil)
 
             HStack(spacing: 10) {
-                Button { isShowingInformation = true } label: {
-                    Image(systemName: item.information.isEmpty ? "info.circle" : "info.circle.fill")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(item.information.isEmpty ? Color.secondary.opacity(0.45) : FacilityTheme.blue)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .disabled(item.information.isEmpty)
-                .popover(isPresented: $isShowingInformation) {
-                    Text(item.information)
-                        .font(.body)
-                        .padding(20)
-                        .frame(width: 360, alignment: .leading)
-                }
+                NotificationInfoButton(information: item.information)
 
                 Text(item.title)
                     .font(.body)
@@ -803,19 +789,11 @@ private struct MobileLadderInspectionRow: View {
             .disabled(!isEditingEnabled)
             .frame(width: 52)
 
-            Button(action: editComment) {
-                Image(systemName: item.comment.isEmpty ? "pencil" : "note.text")
-                    .foregroundStyle(item.comment.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                    .frame(width: 44, height: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(.gray.opacity(0.25))
-                    }
-            }
-            .buttonStyle(.plain)
-            .disabled(!isEditingEnabled)
-            .frame(width: 58)
+            NotificationCommentButton(
+                hasComment: !item.comment.isEmpty,
+                isReadOnly: !isEditingEnabled,
+                action: editComment
+            )
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 10)
