@@ -234,7 +234,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     /// Rebuilds the read-only master-data header of a shared equipment
-    /// inspection (TFM2, TFM4, TFM6) from the same legacy cache tables used by
+    /// inspection (TFM2, TFM4, TFM6, TFM8) from the same legacy cache tables used by
     /// Cordova: T0263 describes the class, while T0266 (or T0265 for a
     /// technical-place assignment) supplies the asset values. The accepted
     /// equipment types come from the notification's `EquipmentInspectionForm`.
