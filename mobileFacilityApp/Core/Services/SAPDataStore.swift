@@ -29,10 +29,14 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     private(set) var totalNotificationCount = 0
     private(set) var isLoadingMoreNotifications = false
     private(set) var notificationFilterMetadata: [NotificationStructuralFilterMetadata] = []
+    private(set) var notificationFilterOptions = NotificationStructuralFilterOptions.empty
+    private(set) var notificationPageRevision = 0
     private var nextNotificationOffset: Int?
     private var notificationSearchText = ""
     private var notificationStructuralFilter = NotificationStructuralFilter.empty
     private var notificationLoadID = UUID()
+    private var cacheLoadIsInFlight = false
+    private var initialCacheLoadCompleted = false
     /// Refresh calls share one set of legacy temporary SQLite tables. Keep an
     /// explicit operation lease rather than deriving exclusivity from the
     /// presentation state alone: a saved-token task can otherwise see
@@ -139,18 +143,23 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     }
 
     func loadCachedData() async {
+        guard !cacheLoadIsInFlight, !initialCacheLoadCompleted else { return }
+        cacheLoadIsInFlight = true
+        defer { cacheLoadIsInFlight = false }
         state = .loadingCache
         do {
             cachedData = try await repository.load(for: localWorkerID)
             guard cachedData.metadata != nil else {
                 resetNotificationPage()
                 state = .noData
+                initialCacheLoadCompleted = true
                 return
             }
             try await loadTotalNotificationCount()
             try await loadNotificationFilterMetadata()
             try await loadFirstNotificationPage()
             state = .ready
+            initialCacheLoadCompleted = true
         } catch is CancellationError {
             return
         } catch {
@@ -201,6 +210,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             )
             guard notificationLoadID == loadID else { return }
             notifications.append(contentsOf: page.notifications)
+            notificationPageRevision &+= 1
             matchingNotificationCount = page.totalCount
             nextNotificationOffset = page.nextOffset
         } catch is CancellationError {
@@ -393,6 +403,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         )
         guard notificationLoadID == loadID else { return }
         notifications = page.notifications
+        notificationPageRevision &+= 1
         matchingNotificationCount = page.totalCount
         nextNotificationOffset = page.nextOffset
     }
@@ -409,17 +420,24 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     }
 
     private func loadNotificationFilterMetadata() async throws {
-        notificationFilterMetadata = try await repository.loadNotificationFilterMetadata(
+        let metadata = try await repository.loadNotificationFilterMetadata(
             for: localWorkerID
         )
+        let options = await Task.detached(priority: .utility) {
+            NotificationStructuralFilterOptions(metadata: metadata)
+        }.value
+        notificationFilterMetadata = metadata
+        notificationFilterOptions = options
     }
 
     private func resetNotificationPage() {
         notificationLoadID = UUID()
         notifications = []
+        notificationPageRevision &+= 1
         matchingNotificationCount = 0
         totalNotificationCount = 0
         notificationFilterMetadata = []
+        notificationFilterOptions = .empty
         nextNotificationOffset = nil
     }
 }

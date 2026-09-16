@@ -27,20 +27,7 @@ struct AppRootView: View {
                                 workerID: user.workerID,
                                 displayName: user.displayName
                             )
-                            productionSession = session
-                            productionWorkspace = FacilityDemoViewModel(
-                                isDemoMode: false,
-                                offlineWorkStore: OfflineWorkStore(
-                                    repository: productionOfflineWorkRepository,
-                                    workerID: session.workerID
-                                ),
-                                sapDataStore: productionSAPDataStore(for: session),
-                                meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
-                                photoAttachmentStore: productionPhotoAttachmentStore,
-                                workerDisplayName: session.displayName,
-                                workerRole: session.role
-                            )
-                            phase = .ready
+                            enterProductionWorkspace(for: session)
                         }
                     }
                 } else {
@@ -48,17 +35,30 @@ struct AppRootView: View {
                 }
             case .ready:
                 if let productionWorkspace {
-                    FacilityShellView(demo: productionWorkspace, onLogout: signOut)
-                        .tint(FacilityTheme.accent)
-                        .background(FacilityTheme.canvas)
+                    KeyboardStableContainer(isEnabled: productionWorkspace.suppressesKeyboardAvoidance) {
+                        FacilityShellView(
+                            demo: productionWorkspace,
+                            onLogout: Self.debugLoginBypassSession == nil ? signOut : nil
+                        )
+                            .tint(FacilityTheme.accent)
+                            .background(FacilityTheme.canvas)
+                            #if DEBUG
+                            .keyboardDebugFrame("root shell suppress=\(productionWorkspace.suppressesKeyboardAvoidance)")
+                            #endif
+                    }
                 } else {
                     ProgressView()
                 }
             case .demo:
                 if let demo {
-                    FacilityShellView(demo: demo, onLogout: exitDemo)
-                        .tint(FacilityTheme.accent)
-                        .background(FacilityTheme.canvas)
+                    KeyboardStableContainer(isEnabled: demo.suppressesKeyboardAvoidance) {
+                        FacilityShellView(demo: demo, onLogout: exitDemo)
+                            .tint(FacilityTheme.accent)
+                            .background(FacilityTheme.canvas)
+                            #if DEBUG
+                            .keyboardDebugFrame("root shell suppress=\(demo.suppressesKeyboardAvoidance)")
+                            #endif
+                    }
                 } else {
                     ProgressView()
                 }
@@ -69,38 +69,27 @@ struct AppRootView: View {
 
             switch completion {
             case .authenticated:
-                authenticationWorkspace = FacilityDemoViewModel(
-                    isDemoMode: false,
-                    offlineWorkStore: OfflineWorkStore(
-                        repository: InMemoryOfflineWorkRepository(),
-                        workerID: "unauthenticated"
-                    ),
-                    sapDataStore: SAPDataStore(
-                        repository: InMemorySAPDataCacheRepository(),
-                        refreshService: nil,
-                        localWorkerID: "unauthenticated"
-                    ),
-                    meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
-                    photoAttachmentStore: InMemoryPhotoAttachmentStore()
-                )
-                phase = .authentication
+                if let testSession = Self.debugLoginBypassSession {
+                    enterProductionWorkspace(for: testSession)
+                } else {
+                    authenticationWorkspace = FacilityDemoViewModel(
+                        isDemoMode: false,
+                        offlineWorkStore: OfflineWorkStore(
+                            repository: InMemoryOfflineWorkRepository(),
+                            workerID: "unauthenticated"
+                        ),
+                        sapDataStore: SAPDataStore(
+                            repository: InMemorySAPDataCacheRepository(),
+                            refreshService: nil,
+                            localWorkerID: "unauthenticated"
+                        ),
+                        meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+                        photoAttachmentStore: InMemoryPhotoAttachmentStore()
+                    )
+                    phase = .authentication
+                }
             case .demo:
-                demo = FacilityDemoViewModel(
-                    isDemoMode: true,
-                    offlineWorkStore: OfflineWorkStore(
-                        repository: InMemoryOfflineWorkRepository(),
-                        workerID: "demo"
-                    ),
-                    sapDataStore: SAPDataStore(
-                        repository: InMemorySAPDataCacheRepository(seed: TechnicalObjectDemoData.cachedData),
-                        refreshService: nil,
-                        localWorkerID: "demo"
-                    ),
-                    meterReferenceProvider: DemoMeterReferenceProvider(),
-                    photoAttachmentStore: InMemoryPhotoAttachmentStore(),
-                    workerDisplayName: "Alex Morgan",
-                    workerRole: .technician
-                )
+                demo = Self.makeDemoWorkspace()
                 phase = .demo
             }
         }
@@ -122,10 +111,61 @@ struct AppRootView: View {
         phase = .authentication
     }
 
+    private func enterProductionWorkspace(for session: FacilityUserSession) {
+        productionSession = session
+        productionWorkspace = FacilityDemoViewModel(
+            isDemoMode: false,
+            offlineWorkStore: OfflineWorkStore(
+                repository: productionOfflineWorkRepository,
+                workerID: session.workerID
+            ),
+            sapDataStore: productionSAPDataStore(for: session),
+            meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+            photoAttachmentStore: productionPhotoAttachmentStore,
+            workerDisplayName: session.displayName,
+            workerRole: session.role
+        )
+        phase = .ready
+    }
+
     private func exitDemo() {
         demo = nil
         onboarding = SAPOnboardingState()
         phase = .launching
+    }
+
+    private static var debugLoginBypassSession: FacilityUserSession? {
+        #if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("-SkipLoginForTesting") else {
+            return nil
+        }
+        return FacilityUserSession(
+            role: .technician,
+            workerID: "S50828",
+            displayName: "S50828"
+        )
+        #else
+        nil
+        #endif
+    }
+
+    private static func makeDemoWorkspace() -> FacilityDemoViewModel {
+        FacilityDemoViewModel(
+            isDemoMode: true,
+            offlineWorkStore: OfflineWorkStore(
+                repository: InMemoryOfflineWorkRepository(),
+                workerID: "demo"
+            ),
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(seed: TechnicalObjectDemoData.cachedData),
+                refreshService: nil,
+                localWorkerID: "demo"
+            ),
+            meterReferenceProvider: DemoMeterReferenceProvider(),
+            photoAttachmentStore: InMemoryPhotoAttachmentStore(),
+            workerDisplayName: "Alex Morgan",
+            workerRole: .technician
+        )
     }
 
     private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {
@@ -177,5 +217,23 @@ struct AppRootView: View {
                 localWorkerID: session.workerID
             )
         }
+    }
+}
+
+/// Keeps the content at its keyboard-free size and pinned to the top while enabled.
+/// `ignoresSafeArea(.keyboard)` directly on the shell is not enough: once the shrunken
+/// area is smaller than the shell's minimum height, SwiftUI centers the overflowing shell,
+/// which moves the whole screen up. The reader is flexible, so its safe-area expansion
+/// works, and the fixed top-aligned frame prevents centering.
+private struct KeyboardStableContainer<Content: View>: View {
+    let isEnabled: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        GeometryReader { proxy in
+            content
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+        }
+        .ignoresSafeArea(isEnabled ? .keyboard : [], edges: .bottom)
     }
 }

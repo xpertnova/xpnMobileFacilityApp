@@ -6,7 +6,7 @@ struct FacilityShellView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var sapPassword = ""
-    @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
+    @State private var notificationFilterPresentation: NotificationStructuralFilterPresentationState
     @State private var networkReachability = NetworkReachabilityMonitor()
     @State private var isShowingUserMenu = false
 
@@ -32,6 +32,15 @@ struct FacilityShellView: View {
     ) {
         self.demo = demo
         self.onLogout = onLogout
+        let restoredFilter = NotificationStructuralFilterPreferences.load(
+            workerID: demo.sapDataStore.localWorkerID,
+            isDemoMode: demo.isDemoMode
+        )
+        _notificationFilterPresentation = State(
+            initialValue: NotificationStructuralFilterPresentationState(
+                restoredFilter: restoredFilter
+            )
+        )
     }
 
     var body: some View {
@@ -143,15 +152,10 @@ struct FacilityShellView: View {
                     .zIndex(2)
             }
 
-            if demo.selection == .notifications, notificationFilterPresentation.isPresented {
-                NotificationStructuralFilterOverlay(
-                    demo: demo,
-                    presentation: $notificationFilterPresentation
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity)
-                .zIndex(2)
-            }
+            NotificationStructuralFilterOverlayHost(
+                demo: demo,
+                presentation: notificationFilterPresentation
+            )
 
             if !demo.isDemoMode, demo.shouldPresentDraftWarningBeforeSync {
                 Color.black.opacity(0.42)
@@ -192,10 +196,17 @@ struct FacilityShellView: View {
         .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
         .task(id: demo.offlineWorkStore.workerID) {
             await demo.offlineWorkStore.load()
+            let restoredFilter = NotificationStructuralFilterPreferences.load(
+                workerID: demo.sapDataStore.localWorkerID,
+                isDemoMode: demo.isDemoMode
+            )
             if !demo.isDemoMode {
+                // Restore the selected filter before the one initial cache query,
+                // rather than loading every notification and immediately querying
+                // the cache again when the notifications view appears.
+                await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
                 await demo.sapDataStore.loadCachedData()
             }
-            await demo.technicalPlacesStore.load()
         }
         .task(id: scenePhase) {
             print("[SAP Connection] 📱 App scenePhase changed to: \(scenePhase)")
@@ -649,7 +660,7 @@ struct FacilityShellView: View {
         case .notifications:
             NotificationsView(
                 demo: demo,
-                filterPresentation: $notificationFilterPresentation
+                filterPresentation: notificationFilterPresentation
             )
         case .manualCapture: ManualCaptureView(demo: demo)
         case .defects: DefectsView(demo: demo)

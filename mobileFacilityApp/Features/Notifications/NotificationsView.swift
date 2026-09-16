@@ -1,57 +1,36 @@
 import SwiftUI
+import Observation
+import UIKit
 
-struct NotificationStructuralFilterPresentationState {
+@Observable
+final class NotificationStructuralFilterPresentationState {
     var isPresented = false
     var pendingFilter = NotificationStructuralFilter.empty
     var appliedFilter = NotificationStructuralFilter.empty
     var expandedField: StructuralFilterField?
-}
 
-struct NotificationSearchState: Equatable {
-    var draftQuery = ""
-    private(set) var appliedQuery = ""
-
-    /// Keeps text entry separate from the query currently applied to the list.
-    /// Returns whether a new search needs to be performed.
-    mutating func submit() -> Bool {
-        let normalizedQuery = draftQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedQuery != appliedQuery else { return false }
-        appliedQuery = normalizedQuery
-        return true
+    init(restoredFilter: NotificationStructuralFilter = .empty) {
+        pendingFilter = restoredFilter
+        appliedFilter = restoredFilter
     }
 }
 
 struct NotificationsView: View {
     let demo: FacilityDemoViewModel
-    @Binding var filterPresentation: NotificationStructuralFilterPresentationState
-    @State private var search = NotificationSearchState()
+    let filterPresentation: NotificationStructuralFilterPresentationState
+    @State private var appliedSearchQuery = ""
     @State private var filterSelection: NotificationFilter = .all
-    @State private var lastVisibleNotificationID: String?
-    @State private var scrollRestoreID: String?
 
-    private let notificationPrefetchThreshold = 8
-
-    enum NotificationFilter {
-        case all, attention, draft
+    init(
+        demo: FacilityDemoViewModel,
+        filterPresentation: NotificationStructuralFilterPresentationState
+    ) {
+        self.demo = demo
+        self.filterPresentation = filterPresentation
     }
 
-    private var visibleNotifications: [MaintenanceNotification] {
-        let structurallyFiltered = demo.isDemoMode
-            ? demo.visibleNotifications.filter { filterPresentation.appliedFilter.matches($0.structuralFilterMetadata) }
-            : demo.visibleNotifications
-        let filtered = structurallyFiltered.filter { notification in
-            switch filterSelection {
-            case .all: return true
-            case .attention: return notification.status == .attention || notification.hasLocalDefect
-            case .draft: return notification.status == .draft
-            }
-        }
-        guard !search.appliedQuery.isEmpty else { return filtered }
-        return filtered.filter {
-            $0.title.localizedCaseInsensitiveContains(search.appliedQuery) ||
-            $0.location.localizedCaseInsensitiveContains(search.appliedQuery) ||
-            $0.id.localizedCaseInsensitiveContains(search.appliedQuery)
-        }
+    enum NotificationFilter: Equatable {
+        case all, attention, draft
     }
 
     /// Demo notifications are already held in memory. Production uses the cache query's
@@ -86,6 +65,7 @@ struct NotificationsView: View {
                 notificationOverview
                     .transition(.opacity)
             }
+
         }
         .animation(.snappy(duration: 0.32, extraBounce: 0), value: demo.selectedNotificationID)
     }
@@ -98,33 +78,21 @@ struct NotificationsView: View {
             }
             .padding(28)
             .frame(maxWidth: 1280, alignment: .leading)
-            
-            ScrollViewReader { proxy in
-                ScrollView {
-                    notificationContent
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 28)
-                        .frame(maxWidth: 1280, alignment: .leading)
-                }
-                .task(id: scrollRestoreID) {
-                    guard let scrollRestoreID else { return }
-                    proxy.scrollTo(scrollRestoreID, anchor: .center)
-                    self.scrollRestoreID = nil
-                }
-            }
+            #if DEBUG
+            .keyboardDebugFrame("header+search")
+            #endif
+
+            notificationList
+            #if DEBUG
+                .keyboardDebugFrame("list")
+            #endif
         }
+        // Keyboard avoidance for the list is disabled at the window root in AppRootView.
         .background(Color(white: 0.97).ignoresSafeArea())
-        .task(id: filterPreferenceScope) {
-            let restoredFilter = NotificationStructuralFilterPreferences.load(
-                workerID: demo.sapDataStore.localWorkerID,
-                isDemoMode: demo.isDemoMode
-            )
-            filterPresentation.pendingFilter = restoredFilter
-            filterPresentation.appliedFilter = restoredFilter
-            guard !demo.isDemoMode else { return }
-            await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
-            await demo.sapDataStore.loadCachedData()
-        }
+        #if DEBUG
+        .keyboardDebugFrame("overview")
+        .onAppear { KeyboardDebugObserver.shared.start() }
+        #endif
     }
 
     @ViewBuilder
@@ -226,10 +194,6 @@ struct NotificationsView: View {
         .accessibilityHidden(true)
     }
 
-    private var filterPreferenceScope: String {
-        "\(demo.isDemoMode ? "demo" : "production")-\(demo.sapDataStore.localWorkerID)"
-    }
-
     private func presentStructuralFilter() {
         withAnimation(.snappy(duration: 0.32, extraBounce: 0)) {
             filterPresentation.pendingFilter = filterPresentation.appliedFilter
@@ -238,107 +202,251 @@ struct NotificationsView: View {
         }
     }
 
-    @ViewBuilder
-    private var notificationContent: some View {
-        if !demo.isDemoMode, demo.sapDataStore.state == .loadingCache {
-            ProgressView("sap.cache.loading")
-                .frame(maxWidth: .infinity, minHeight: 260)
-        } else if !demo.isDemoMode, demo.sapDataStore.state == .noData {
-            sapEmptyState
-        } else if !demo.isDemoMode, demo.sapDataStore.state == .failed, !demo.sapDataStore.hasCache {
-            sapUnavailableState
-        } else {
-            notificationList
+    private func applySearch(_ query: String) {
+        guard query != appliedSearchQuery else { return }
+        appliedSearchQuery = query
+        guard !demo.isDemoMode else { return }
+
+        Task {
+            await demo.sapDataStore.updateNotificationSearch(query)
         }
     }
 
     private var searchBar: some View {
-        HStack(spacing: 8) {
-            Text("🔍")
-                .font(.body)
-                .accessibilityHidden(true)
-            TextField("notifications.search", text: $search.draftQuery)
-                .textFieldStyle(.plain)
-                .submitLabel(.search)
-                .onSubmit(submitSearch)
-
-            Button(action: submitSearch) {
-                Label("notifications.search.action", systemImage: "magnifyingglass")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 44)
-                    .background(
-                        FacilityTheme.accent,
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                    }
-                    .shadow(color: FacilityTheme.accent.opacity(0.18), radius: 5, y: 2)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .background(Color(white: 0.92), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func submitSearch() {
-        guard search.submit() else { return }
-        guard !demo.isDemoMode else { return }
-
-        let appliedQuery = search.appliedQuery
-        Task {
-            await demo.sapDataStore.updateNotificationSearch(appliedQuery)
-        }
+        NotificationSearchBar(onSearch: applySearch)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
     }
 
     private var notificationList: some View {
-        LazyVStack(spacing: 16) {
-            if visibleNotifications.isEmpty {
+        EquatableView(
+            content: NotificationListContent(
+                demo: demo,
+                filterPresentation: filterPresentation,
+                filterSelection: filterSelection,
+                appliedSearchQuery: appliedSearchQuery
+            )
+        )
+    }
+}
+
+/// A UIKit input keeps every keystroke out of SwiftUI's render graph. The
+/// enclosing list only receives a value after Search or Return is pressed.
+private struct NotificationSearchBar: UIViewRepresentable {
+    let onSearch: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSearch: onSearch)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = UIColor(white: 0.92, alpha: 1)
+        container.layer.cornerRadius = 10
+
+        let symbol = UIImageView(image: UIImage(systemName: "magnifyingglass"))
+        symbol.tintColor = .secondaryLabel
+        symbol.contentMode = .scaleAspectFit
+
+        let textField = UITextField()
+        textField.placeholder = String(localized: "notifications.search")
+        textField.font = .preferredFont(forTextStyle: .body)
+        textField.textColor = .label
+        textField.autocorrectionType = .no
+        textField.autocapitalizationType = .none
+        textField.returnKeyType = .search
+        textField.delegate = context.coordinator
+        textField.accessibilityLabel = String(localized: "notifications.search")
+        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let button = UIButton(type: .system)
+        button.setTitle(String(localized: "notifications.search.action"), for: .normal)
+        button.setImage(UIImage(systemName: "magnifyingglass"), for: .normal)
+        button.tintColor = .white
+        button.setTitleColor(.white, for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .subheadline).withSize(15)
+        button.semanticContentAttribute = .forceLeftToRight
+        button.contentEdgeInsets = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.backgroundColor = UIColor(FacilityTheme.accent)
+        button.layer.cornerRadius = 12
+        button.accessibilityLabel = String(localized: "notifications.search.action")
+        button.addTarget(context.coordinator, action: #selector(Coordinator.submitSearch), for: .touchUpInside)
+
+        [symbol, textField, button].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview($0)
+        }
+        NSLayoutConstraint.activate([
+            container.heightAnchor.constraint(equalToConstant: 44),
+            symbol.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+            symbol.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            symbol.widthAnchor.constraint(equalToConstant: 18),
+            symbol.heightAnchor.constraint(equalToConstant: 18),
+            textField.leadingAnchor.constraint(equalTo: symbol.trailingAnchor, constant: 8),
+            textField.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            button.leadingAnchor.constraint(equalTo: textField.trailingAnchor, constant: 8),
+            button.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+            button.topAnchor.constraint(equalTo: container.topAnchor),
+            button.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+        context.coordinator.textField = textField
+        return container
+    }
+
+    func updateUIView(_: UIView, context: Context) {
+        context.coordinator.onSearch = onSearch
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var onSearch: (String) -> Void
+        weak var textField: UITextField?
+
+        init(onSearch: @escaping (String) -> Void) {
+            self.onSearch = onSearch
+        }
+
+        func textFieldShouldReturn(_: UITextField) -> Bool {
+            submitSearch()
+            return false
+        }
+
+        @objc func submitSearch() {
+            guard let textField else { return }
+            let query = textField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            textField.resignFirstResponder()
+            onSearch(query)
+        }
+    }
+}
+
+private struct NotificationListContent: View, Equatable {
+    let demo: FacilityDemoViewModel
+    let filterPresentation: NotificationStructuralFilterPresentationState
+    let filterSelection: NotificationsView.NotificationFilter
+    let appliedSearchQuery: String
+
+    private let notificationPrefetchThreshold = 8
+
+    static func == (lhs: NotificationListContent, rhs: NotificationListContent) -> Bool {
+        lhs.demo === rhs.demo
+            && lhs.filterPresentation === rhs.filterPresentation
+            && lhs.filterSelection == rhs.filterSelection
+            && lhs.appliedSearchQuery == rhs.appliedSearchQuery
+    }
+
+    private var visibleNotifications: [MaintenanceNotification] {
+        let structurallyFiltered = demo.isDemoMode
+            ? demo.visibleNotifications.filter { filterPresentation.appliedFilter.matches($0.structuralFilterMetadata) }
+            : demo.visibleNotifications
+        let filtered = structurallyFiltered.filter { notification in
+            switch filterSelection {
+            case .all: return true
+            case .attention: return notification.status == .attention || notification.hasLocalDefect
+            case .draft: return notification.status == .draft
+            }
+        }
+        guard !appliedSearchQuery.isEmpty else { return filtered }
+        return filtered.filter {
+            $0.title.localizedCaseInsensitiveContains(appliedSearchQuery)
+                || $0.location.localizedCaseInsensitiveContains(appliedSearchQuery)
+                || $0.id.localizedCaseInsensitiveContains(appliedSearchQuery)
+        }
+    }
+
+    var body: some View {
+        let notifications = visibleNotifications
+        return List {
+            if !demo.isDemoMode, demo.sapDataStore.state == .loadingCache {
+                notificationListRow(bottomInset: 28) {
+                    ProgressView("sap.cache.loading")
+                        .frame(maxWidth: .infinity, minHeight: 260)
+                }
+            } else if !demo.isDemoMode, demo.sapDataStore.state == .noData {
+                notificationListRow(bottomInset: 28) {
+                    sapEmptyState
+                }
+            } else if !demo.isDemoMode, demo.sapDataStore.state == .failed, !demo.sapDataStore.hasCache {
+                notificationListRow(bottomInset: 28) {
+                    sapUnavailableState
+                }
+            } else if notifications.isEmpty {
                 if !demo.isDemoMode, demo.sapDataStore.hasMoreNotifications {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 180)
-                        .task(id: demo.sapDataStore.notifications.count) {
-                            await demo.sapDataStore.loadMoreNotifications()
-                        }
+                    notificationListRow(bottomInset: 28) {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                            .task(id: demo.sapDataStore.notifications.count) {
+                                await demo.sapDataStore.loadMoreNotifications()
+                            }
+                    }
                 } else {
-                    EmptyDemoState(
-                        symbol: "tray",
-                        titleKey: "notifications.empty.title",
-                        subtitleKey: "notifications.empty.subtitle"
-                    )
+                    notificationListRow(bottomInset: 28) {
+                        EmptyDemoState(
+                            symbol: "tray",
+                            titleKey: "notifications.empty.title",
+                            subtitleKey: "notifications.empty.subtitle"
+                        )
+                    }
                 }
             } else {
-                ForEach(visibleNotifications) { notification in
-                    NotificationRow(notification: notification, isSelected: demo.selectedNotificationID == notification.id) {
-                        scrollRestoreID = lastVisibleNotificationID ?? notification.id
-                        demo.selectedOfflineNotificationDetail = nil
-                        demo.selectedNotificationID = notification.id
-                    }
-                    .id(notification.id)
-                    .onAppear {
-                        lastVisibleNotificationID = notification.id
-                        prefetchNextPageIfNeeded(for: notification)
+                ForEach(notifications) { notification in
+                    notificationListRow {
+                        EquatableView(
+                            content: NotificationRow(
+                                notification: notification,
+                                isSelected: demo.selectedNotificationID == notification.id
+                            ) {
+                                demo.selectedOfflineNotificationDetail = nil
+                                demo.selectedNotificationID = notification.id
+                            }
+                        )
+                        .id(notification.id)
+                        .onAppear {
+                            prefetchNextPageIfNeeded(for: notification, in: notifications)
+                        }
                     }
                 }
 
                 if !demo.isDemoMode, demo.sapDataStore.isLoadingMoreNotifications {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
+                    notificationListRow(bottomInset: 28) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                    }
                 }
             }
 
             if let notification = demo.selectedNotification, demo.selectedNotificationDetail == nil {
-                NotificationDetailCard(notification: notification, isReadOnly: !demo.isDemoMode) {
-                    demo.finishChecks(for: notification)
+                notificationListRow(bottomInset: 28) {
+                    NotificationDetailCard(notification: notification, isReadOnly: !demo.isDemoMode) {
+                        demo.finishChecks(for: notification)
+                    }
                 }
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .contentMargins(.bottom, 28, for: .scrollContent)
+        .scrollDismissesKeyboard(.never)
+        .transaction { transaction in
+            transaction.animation = nil
+        }
+    }
+
+    private func notificationListRow<Content: View>(
+        bottomInset: CGFloat = 16,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: 1280, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: bottomInset, trailing: 28))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private var sapEmptyState: some View {
@@ -377,10 +485,13 @@ struct NotificationsView: View {
         sapRefreshErrorMessage(demo.sapDataStore.refreshError)
     }
 
-    private func prefetchNextPageIfNeeded(for notification: MaintenanceNotification) {
+    private func prefetchNextPageIfNeeded(
+        for notification: MaintenanceNotification,
+        in notifications: [MaintenanceNotification]
+    ) {
         guard !demo.isDemoMode, demo.sapDataStore.hasMoreNotifications else { return }
-        guard let index = visibleNotifications.firstIndex(where: { $0.id == notification.id }) else { return }
-        let prefetchStartIndex = max(visibleNotifications.count - notificationPrefetchThreshold, 0)
+        guard let index = notifications.firstIndex(where: { $0.id == notification.id }) else { return }
+        let prefetchStartIndex = max(notifications.count - notificationPrefetchThreshold, 0)
         guard index >= prefetchStartIndex else { return }
 
         Task {
@@ -391,7 +502,7 @@ struct NotificationsView: View {
 
 struct NotificationStructuralFilterOverlay: View {
     let demo: FacilityDemoViewModel
-    @Binding var presentation: NotificationStructuralFilterPresentationState
+    let presentation: NotificationStructuralFilterPresentationState
 
     var body: some View {
         GeometryReader { proxy in
@@ -503,14 +614,18 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private var filterFields: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        let businessEntities = businessEntityOptions
+        let buildings = buildingOptions
+        let trades = tradeOptions
+        let forms = formOptions
+        return VStack(alignment: .leading, spacing: 18) {
                 picker(
                     field: .businessEntity,
                     titleKey: "notifications.structuralFilter.businessEntity",
                     placeholderKey: "notifications.structuralFilter.businessEntity.placeholder",
                     selection: presentation.pendingFilter.businessEntityID,
-                    options: businessEntityOptions,
-                    isEnabled: !businessEntityOptions.isEmpty
+                    options: businessEntities,
+                    isEnabled: !businessEntities.isEmpty
                 ) { option in
                     presentation.pendingFilter.businessEntityID = option.id
                     presentation.pendingFilter.buildingCode = ""
@@ -523,8 +638,8 @@ struct NotificationStructuralFilterOverlay: View {
                     titleKey: "notifications.structuralFilter.building",
                     placeholderKey: "notifications.structuralFilter.building.placeholder",
                     selection: presentation.pendingFilter.buildingCode,
-                    options: buildingOptions,
-                    isEnabled: presentation.pendingFilter.hasBusinessEntity && !buildingOptions.isEmpty
+                    options: buildings,
+                    isEnabled: presentation.pendingFilter.hasBusinessEntity && !buildings.isEmpty
                 ) { option in
                     presentation.pendingFilter.buildingCode = option.id
                     presentation.pendingFilter.tradeCode = ""
@@ -536,8 +651,8 @@ struct NotificationStructuralFilterOverlay: View {
                     titleKey: "notifications.structuralFilter.trade",
                     placeholderKey: "notifications.structuralFilter.trade.placeholder",
                     selection: presentation.pendingFilter.tradeCode,
-                    options: tradeOptions,
-                    isEnabled: !presentation.pendingFilter.buildingCode.isEmpty && !tradeOptions.isEmpty
+                    options: trades,
+                    isEnabled: !presentation.pendingFilter.buildingCode.isEmpty && !trades.isEmpty
                 ) { option in
                     presentation.pendingFilter.tradeCode = option.id
                     presentation.pendingFilter.formCode = ""
@@ -548,8 +663,8 @@ struct NotificationStructuralFilterOverlay: View {
                     titleKey: "notifications.structuralFilter.form",
                     placeholderKey: "notifications.structuralFilter.form.placeholder",
                     selection: presentation.pendingFilter.formCode,
-                    options: formOptions,
-                    isEnabled: !presentation.pendingFilter.tradeCode.isEmpty && !formOptions.isEmpty
+                    options: forms,
+                    isEnabled: !presentation.pendingFilter.tradeCode.isEmpty && !forms.isEmpty
                 ) { option in
                     presentation.pendingFilter.formCode = option.id
                 }
@@ -561,9 +676,9 @@ struct NotificationStructuralFilterOverlay: View {
         titleKey: LocalizedStringKey,
         placeholderKey: LocalizedStringKey,
         selection: String,
-        options: [StructuralFilterOption],
+        options: [NotificationStructuralFilterOption],
         isEnabled: Bool,
-        select: @escaping (StructuralFilterOption) -> Void
+        select: @escaping (NotificationStructuralFilterOption) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(titleKey)
@@ -611,7 +726,7 @@ struct NotificationStructuralFilterOverlay: View {
         }
     }
 
-    private func options(for field: StructuralFilterField) -> [StructuralFilterOption] {
+    private func options(for field: StructuralFilterField) -> [NotificationStructuralFilterOption] {
         switch field {
         case .businessEntity: businessEntityOptions
         case .building: buildingOptions
@@ -629,7 +744,7 @@ struct NotificationStructuralFilterOverlay: View {
         }
     }
 
-    private func select(_ option: StructuralFilterOption, for field: StructuralFilterField) {
+    private func select(_ option: NotificationStructuralFilterOption, for field: StructuralFilterField) {
         withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
             switch field {
             case .businessEntity:
@@ -651,7 +766,11 @@ struct NotificationStructuralFilterOverlay: View {
         }
     }
 
-    private func optionList(_ options: [StructuralFilterOption], selection: String, select: @escaping (StructuralFilterOption) -> Void) -> some View {
+    private func optionList(
+        _ options: [NotificationStructuralFilterOption],
+        selection: String,
+        select: @escaping (NotificationStructuralFilterOption) -> Void
+    ) -> some View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(options) { option in
@@ -678,39 +797,34 @@ struct NotificationStructuralFilterOverlay: View {
         .shadow(color: Color.black.opacity(0.20), radius: 16, y: 9)
     }
 
-    private var businessEntityOptions: [StructuralFilterOption] {
-        uniqueOptions(demo.notificationFilterMetadata.filter { !$0.businessEntityID.isEmpty }.map { StructuralFilterOption(id: $0.businessEntityID, label: $0.businessEntityID) })
+    private var businessEntityOptions: [NotificationStructuralFilterOption] {
+        demo.notificationFilterOptions.businessEntityOptions
     }
 
-    private var buildingOptions: [StructuralFilterOption] {
+    private var buildingOptions: [NotificationStructuralFilterOption] {
         guard presentation.pendingFilter.hasBusinessEntity else { return [] }
-        return uniqueOptions(demo.notificationFilterMetadata.compactMap { metadata in
-            guard metadata.businessEntityID == presentation.pendingFilter.businessEntityID, !metadata.buildingCode.isEmpty else { return nil }
-            let label = metadata.functionalLocationName.isEmpty ? metadata.buildingCode : "\(metadata.buildingCode) — \(metadata.functionalLocationName)"
-            return StructuralFilterOption(id: metadata.buildingCode, label: label)
-        })
+        return demo.notificationFilterOptions.buildingOptions(
+            for: presentation.pendingFilter.businessEntityID
+        )
     }
 
-    private var tradeOptions: [StructuralFilterOption] {
+    private var tradeOptions: [NotificationStructuralFilterOption] {
         guard presentation.pendingFilter.hasBusinessEntity, !presentation.pendingFilter.buildingCode.isEmpty else { return [] }
-        return uniqueOptions(demo.notificationFilterMetadata.compactMap { metadata in
-            guard metadata.businessEntityID == presentation.pendingFilter.businessEntityID, metadata.buildingCode == presentation.pendingFilter.buildingCode, !metadata.tradeCode.isEmpty else { return nil }
-            return StructuralFilterOption(id: metadata.tradeCode, label: metadata.tradeCode)
-        })
+        return demo.notificationFilterOptions.tradeOptions(
+            for: presentation.pendingFilter.businessEntityID,
+            buildingCode: presentation.pendingFilter.buildingCode
+        )
     }
 
-    private var formOptions: [StructuralFilterOption] {
+    private var formOptions: [NotificationStructuralFilterOption] {
         guard presentation.pendingFilter.hasBusinessEntity, !presentation.pendingFilter.buildingCode.isEmpty, !presentation.pendingFilter.tradeCode.isEmpty else { return [] }
-        return uniqueOptions(demo.notificationFilterMetadata.compactMap { metadata in
-            guard metadata.businessEntityID == presentation.pendingFilter.businessEntityID, metadata.buildingCode == presentation.pendingFilter.buildingCode, metadata.tradeCode == presentation.pendingFilter.tradeCode, !metadata.formCode.isEmpty else { return nil }
-            return StructuralFilterOption(id: metadata.formCode, label: formLabel(for: metadata.formCode))
-        })
-    }
-
-    private func uniqueOptions(_ options: [StructuralFilterOption]) -> [StructuralFilterOption] {
-        Dictionary(grouping: options, by: \.id)
-            .compactMap { $0.value.sorted { $0.label < $1.label }.first }
-            .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
+        return demo.notificationFilterOptions.formOptions(
+            for: presentation.pendingFilter.businessEntityID,
+            buildingCode: presentation.pendingFilter.buildingCode,
+            tradeCode: presentation.pendingFilter.tradeCode
+        ).map { option in
+            .init(id: option.id, label: formLabel(for: option.id))
+        }
     }
 
     private func formLabel(for code: String) -> String {
@@ -756,16 +870,28 @@ struct NotificationStructuralFilterOverlay: View {
     }
 }
 
-private struct StructuralFilterOption: Identifiable {
-    let id: String
-    let label: String
-}
-
 enum StructuralFilterField: Hashable {
     case businessEntity
     case building
     case trade
     case form
+}
+
+struct NotificationStructuralFilterOverlayHost: View {
+    let demo: FacilityDemoViewModel
+    let presentation: NotificationStructuralFilterPresentationState
+
+    var body: some View {
+        if presentation.isPresented {
+            NotificationStructuralFilterOverlay(
+                demo: demo,
+                presentation: presentation
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .transition(.opacity)
+            .zIndex(2)
+        }
+    }
 }
 
 private struct StructuralFilterControlAnchorKey: PreferenceKey {
@@ -821,10 +947,18 @@ private struct NotificationDetailScreen: View {
     }
 }
 
-private struct NotificationRow: View {
+private struct NotificationRow: View, Equatable {
+    private static let minimumHeight: CGFloat = 160
+
     let notification: MaintenanceNotification
     let isSelected: Bool
     let action: () -> Void
+
+    /// The action always selects this same notification in the shared view
+    /// model, so it is intentionally excluded from the render-state comparison.
+    static func == (lhs: NotificationRow, rhs: NotificationRow) -> Bool {
+        lhs.notification == rhs.notification && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button(action: action) {
@@ -875,6 +1009,7 @@ private struct NotificationRow: View {
                 }
             }
             .padding(20)
+            .frame(minHeight: Self.minimumHeight, alignment: .topLeading)
             .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
             .overlay(
@@ -988,3 +1123,57 @@ private struct NotificationDetailCard: View {
         .facilityCard()
     }
 }
+
+// MARK: - TEMP keyboard shift diagnostics (remove after fix)
+
+#if DEBUG
+extension View {
+    func keyboardDebugFrame(_ name: String) -> some View {
+        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            print("[KeyboardDebug] \(name) frame=\(frame)")
+        }
+    }
+}
+
+final class KeyboardDebugObserver {
+    static let shared = KeyboardDebugObserver()
+    private var tokens: [NSObjectProtocol] = []
+
+    func start() {
+        guard tokens.isEmpty else { return }
+        let names: [Notification.Name] = [
+            UIResponder.keyboardWillShowNotification,
+            UIResponder.keyboardDidShowNotification,
+            UIResponder.keyboardWillHideNotification,
+            UIResponder.keyboardWillChangeFrameNotification,
+        ]
+        tokens = names.map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+                let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? .zero
+                print("[KeyboardDebug] \(name.rawValue) keyboardEnd=\(end)")
+                Self.dumpScrollViews(label: name.rawValue)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    Self.dumpScrollViews(label: "\(name.rawValue) +0.6s")
+                }
+            }
+        }
+    }
+
+    private static func dumpScrollViews(label: String) {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        for window in windows {
+            print("[KeyboardDebug] (\(label)) window=\(type(of: window)) frame=\(window.frame) root=\(window.rootViewController.map { String(describing: type(of: $0)) } ?? "nil") rootViewFrame=\(window.rootViewController?.view.frame ?? .zero) safeArea=\(window.rootViewController?.view.safeAreaInsets ?? .zero)")
+            visit(window, label: label)
+        }
+    }
+
+    private static func visit(_ view: UIView, label: String) {
+        if let scrollView = view as? UIScrollView, !(view is UITextView), scrollView.bounds.height > 200 {
+            print("[KeyboardDebug] (\(label)) \(type(of: scrollView)) frame=\(scrollView.convert(scrollView.bounds, to: nil)) offset=\(scrollView.contentOffset) inset=\(scrollView.contentInset) adjusted=\(scrollView.adjustedContentInset) behavior=\(scrollView.contentInsetAdjustmentBehavior.rawValue) safeArea=\(scrollView.safeAreaInsets)")
+        }
+        view.subviews.forEach { visit($0, label: label) }
+    }
+}
+#endif

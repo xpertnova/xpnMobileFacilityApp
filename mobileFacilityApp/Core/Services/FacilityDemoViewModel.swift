@@ -38,6 +38,8 @@ final class FacilityDemoViewModel {
     var notifications = MockFacilityData.notifications
     var defects = MockFacilityData.defects
     let forms = MockFacilityData.forms
+    @ObservationIgnored private var productionNotificationRows: [MaintenanceNotification] = []
+    @ObservationIgnored private var productionNotificationRowsRevision = -1
 
     var offlineNotificationDetailReturnDestination: AppDestination {
         offlineNotificationReturnDestination ?? .notifications
@@ -91,7 +93,8 @@ final class FacilityDemoViewModel {
     }
 
     var selectedNotification: MaintenanceNotification? {
-        visibleNotifications.first { $0.id == selectedNotificationID }
+        guard let selectedNotificationID else { return nil }
+        return visibleNotifications.first { $0.id == selectedNotificationID }
     }
 
     var selectedSAPNotification: SAPNotificationSummary? {
@@ -109,6 +112,15 @@ final class FacilityDemoViewModel {
         } else {
             return selectedSAPNotification.map { SAPNotificationDetail(summary: $0) }
         }
+    }
+
+    /// The notification list keeps a fixed layout while its search field shows the keyboard.
+    /// Detail screens and the SAP password dialog have inputs that still need avoidance.
+    var suppressesKeyboardAvoidance: Bool {
+        selection == .notifications
+            && selectedNotificationDetail == nil
+            && selectedOfflineNotificationDetail == nil
+            && !(!isDemoMode && shouldPresentSAPRefresh)
     }
 
     func demoNotificationDetail(for id: String) -> SAPNotificationDetail? {
@@ -170,27 +182,27 @@ final class FacilityDemoViewModel {
     }
 
     var visibleNotifications: [MaintenanceNotification] {
+        var elevatorInspectionsByNotificationID: [String: ElevatorInspectionDraftPayload] = [:]
+        var reviewsByNotificationID: [String: NotificationReviewDraftPayload] = [:]
+        for item in offlineWorkStore.items {
+            if item.type == .elevatorInspection,
+               let inspection = item.payload.elevatorInspection {
+                elevatorInspectionsByNotificationID[inspection.notificationID] = inspection
+            }
+            if item.type == .notificationReview,
+               item.status != .synchronized,
+               let review = item.payload.notificationReview {
+                reviewsByNotificationID[review.notificationID] = review
+            }
+        }
         let baseList: [MaintenanceNotification]
         if isDemoMode {
             baseList = notifications
         } else {
-            baseList = sapDataStore.notifications.map { notification in
-                MaintenanceNotification(
-                    id: notification.id,
-                    title: notification.title.isEmpty ? notification.id : notification.title,
-                    location: notification.displayLocation,
-                    dueDate: notification.displayDateRange,
-                    equipment: notification.functionalLocationID,
-                    sapStatus: notification.displayStatus,
-                    status: .open,
-                    completedChecks: 0,
-                    totalChecks: 0,
-                    structuralFilterMetadata: notification.structuralFilterMetadata
-                )
-            }
+            baseList = cachedProductionNotificationRows
         }
         return baseList.map { notification in
-            if let inspection = offlineWorkStore.elevatorInspection(notificationID: notification.id) {
+            if let inspection = elevatorInspectionsByNotificationID[notification.id] {
                 let isClosed = inspection.isClosedLocally
                 let isDef = inspection.closingSystemStatus == "MIAR" || inspection.closingUserStatus.contains("Mnot")
                 return MaintenanceNotification(
@@ -209,7 +221,7 @@ final class FacilityDemoViewModel {
                     structuralFilterMetadata: notification.structuralFilterMetadata
                 )
             }
-            let review = locallySavedNotificationReview(for: notification.id)
+            let review = reviewsByNotificationID[notification.id]
             let isClosedLocally = review?.isClosedLocally == true
             let hasLocalDefect = review?.results.values.contains(.yes) == true
             return MaintenanceNotification(
@@ -236,11 +248,33 @@ final class FacilityDemoViewModel {
             : sapDataStore.notificationFilterMetadata
     }
 
-    private func locallySavedNotificationReview(for notificationID: String) -> NotificationReviewDraftPayload? {
-        offlineWorkStore.items.first {
-            $0.type == .notificationReview && $0.status != .synchronized &&
-            $0.payload.notificationReview?.notificationID == notificationID
-        }?.payload.notificationReview
+    var notificationFilterOptions: NotificationStructuralFilterOptions {
+        isDemoMode
+            ? MockFacilityData.notificationFilterOptions
+            : sapDataStore.notificationFilterOptions
+    }
+
+    private var cachedProductionNotificationRows: [MaintenanceNotification] {
+        let revision = sapDataStore.notificationPageRevision
+        guard productionNotificationRowsRevision != revision else {
+            return productionNotificationRows
+        }
+        productionNotificationRows = sapDataStore.notifications.map { notification in
+            MaintenanceNotification(
+                id: notification.id,
+                title: notification.title.isEmpty ? notification.id : notification.title,
+                location: notification.displayLocation,
+                dueDate: notification.displayDateRange,
+                equipment: notification.functionalLocationID,
+                sapStatus: notification.displayStatus,
+                status: .open,
+                completedChecks: 0,
+                totalChecks: 0,
+                structuralFilterMetadata: notification.structuralFilterMetadata
+            )
+        }
+        productionNotificationRowsRevision = revision
+        return productionNotificationRows
     }
 
     var effectiveWorkerDisplayName: String {
@@ -576,6 +610,10 @@ enum MockFacilityData {
         .init(id: "005140055904", title: "MTFM_Überprüfung Alarmpläne", location: "GB10_Rauschermühle_V1 Verwaltungsgebäude", dueDate: "Tomorrow", equipment: "DE-SAF-11152-10", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 3, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "SAF", businessEntityCode: "11152", buildingCode: "GB10", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "GB10_Rauschermühle_V1 Verwaltungsgebäude")),
         .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", sapStatus: nil, status: .pending, completedChecks: 4, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "U", tradeCode: "UTIL", formCode: "TFM1", functionalLocationName: "Utility room"))
     ]
+
+    static let notificationFilterOptions = NotificationStructuralFilterOptions(
+        metadata: notifications.compactMap(\.structuralFilterMetadata)
+    )
 
     static let defects: [Defect] = [
         .init(id: "D-0284", title: "Emergency exit sign dim", location: "Building C · Corridor 1.04", reportedAt: "Today, 08:45", severity: .attention, description: "Illumination is below the visual inspection threshold."),

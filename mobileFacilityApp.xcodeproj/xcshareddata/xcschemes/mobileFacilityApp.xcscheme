@@ -69,6 +69,10 @@
             argument = "-SAPSyncReuseOnboardingSession"
             isEnabled = "YES">
          </CommandLineArgument>
+         <CommandLineArgument
+            argument = "-SkipLoginForTesting"
+            isEnabled = "YES">
+         </CommandLineArgument>
       </CommandLineArguments>
    </LaunchAction>
    <ProfileAction
