@@ -47,7 +47,8 @@ struct ElevatorAssetCharacteristic: Codable, Equatable, Hashable, Identifiable, 
 }
 
 /// The cached master-data classification associated with a shared equipment
-/// inspection (TFM2 elevator, TFM4 fixed ladder, TFM6 hold-open system).
+/// inspection (TFM2 elevator, TFM4 fixed ladder, TFM6 hold-open system, TFM8
+/// roof system).
 struct ElevatorAssetData: Equatable, Sendable {
     let equipmentType: String
     let className: String
@@ -91,6 +92,7 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
         switch notification.equipmentInspectionForm {
         case .fixedLadder: return Self.fixedLadderData
         case .holdOpenSystem: return Self.holdOpenSystemData
+        case .roofSystem: return Self.roofSystemData
         case .elevator, nil: break
         }
         if notification.equipmentInspectionForm == .subdistribution {
@@ -309,6 +311,70 @@ extension DemoElevatorAssetDataProvider {
                 equipmentID: "EQ-100036",
                 functionalLocationID: "UN01-ST01-BG01-TECH-480-FSA1",
                 className: "TFMFSA",
+                payloadJSON: recordJSON
+            )
+        )
+    }
+}
+
+extension DemoElevatorAssetDataProvider {
+    /// TFM8 header shaped like a Dachanlagen class: a count, a value list with
+    /// "Pflege durch Admin" / "nicht bekannt" and a date.
+    fileprivate static var roofSystemData: ElevatorAssetData {
+        let unknown = ElevatorInspectionValueOption(code: "NICHT VORHN.", text: EquipmentMasterDataCatalog.unknownText)
+        let admin = ElevatorInspectionValueOption(
+            code: EquipmentMasterDataCatalog.adminKey,
+            text: EquipmentMasterDataCatalog.adminText
+        )
+        let anchorTypes = [admin, unknown] + [
+            ElevatorInspectionValueOption(code: "EINZEL", text: String(localized: "roofSystem.masterData.demo.singleAnchor")),
+            ElevatorInspectionValueOption(code: "SEIL", text: String(localized: "roofSystem.masterData.demo.cableSystem"))
+        ]
+        let characteristics = [
+            ElevatorAssetCharacteristic(
+                position: 1, name: "DEMO_DACH_ANCHOR_TYPE",
+                title: String(localized: "roofSystem.masterData.demo.anchorType"), unit: "",
+                isRequired: true, isNumeric: false, allowsMultipleValues: false, options: anchorTypes,
+                selectableOptions: anchorTypes, format: "CHAR", digits: 30
+            ),
+            ElevatorAssetCharacteristic(
+                position: 2, name: "DEMO_DACH_ANCHOR_COUNT",
+                title: String(localized: "roofSystem.masterData.demo.anchorCount"), unit: "ST",
+                isRequired: false, isNumeric: true, allowsMultipleValues: false, options: [],
+                format: "NUM", digits: 3, decimals: 0, template: "___"
+            ),
+            ElevatorAssetCharacteristic(
+                position: 3, name: "DEMO_DACH_INSTALLED_ON",
+                title: String(localized: "roofSystem.masterData.demo.installedOn"), unit: "",
+                isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [],
+                format: "DATE", digits: 8
+            )
+        ]
+        let values = [
+            "DEMO_DACH_ANCHOR_TYPE": "SEIL",
+            "DEMO_DACH_ANCHOR_COUNT": "6",
+            "DEMO_DACH_INSTALLED_ON": "20180412"
+        ]
+        let record: [String: Any] = [
+            "EQUNR_TO": "EQ-100048",
+            "EQART_TO": "TFMDACH",
+            "T_CLASS_EQ": [[
+                "CLASS": "TFMDACH",
+                "T_CLOBJDAT": values.map { ["ATNAM": $0.key, "AUSP1": $0.value] }
+            ]]
+        ]
+        let recordJSON = (try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        return ElevatorAssetData(
+            equipmentType: "TFMDACH",
+            className: "TFMDACH",
+            classTitle: String(localized: "roofSystem.inspection.title"),
+            characteristics: characteristics,
+            values: values,
+            masterRecord: EquipmentMasterRecord(
+                equipmentID: "EQ-100048",
+                functionalLocationID: "UN01-ST01-BG01-TECH-490-DACH1",
+                className: "TFMDACH",
                 payloadJSON: recordJSON
             )
         )

@@ -7,6 +7,227 @@
     " " : {
 
     },
+    "roofSystem.closeDialog.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Prüfung der Dachanlage wurden Mängel erfasst. Soll die Meldung offen bleiben oder abgeschlossen werden?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defects were recorded for this roof system inspection. Should the notification remain open or be closed?"
+          }
+        }
+      }
+    },
+    "roofSystem.inspection.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dachanlagen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roof System"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.demo.anchorCount" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl Anschlagpunkte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Number of anchor points"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.demo.anchorType" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Art der Anschlageinrichtung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anchor device type"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.demo.cableSystem" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seilsicherungssystem"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Horizontal cable system"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.demo.installedOn" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Montagedatum"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installation date"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.demo.singleAnchor" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einzelanschlagpunkte"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Single anchor points"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merkmale der Dachanlage werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading roof system data …"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.subtitle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technische Merkmale der Dachanlage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Technical characteristics of this roof system"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dachanlage Merkmale"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roof system data"
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.unavailable.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Dachanlage sind keine zwischengespeicherten Klassenmerkmale verfügbar. Die Prüfung ist erst nach dem Synchronisieren der Stammdaten möglich."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No cached class characteristics are available for this roof system. The inspection can be performed once master data has been synchronized."
+          }
+        }
+      }
+    },
+    "roofSystem.masterData.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klassenmerkmale nicht gefunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Class characteristics not found"
+          }
+        }
+      }
+    },
+    "roofSystem.unavailable.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prüfung der Dachanlage nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roof System Inspection Unavailable"
+          }
+        }
+      }
+    },
     "—" : {
 
     },

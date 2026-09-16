@@ -21,7 +21,7 @@ enum SAPEquipmentInspectionUploadError: LocalizedError {
 }
 
 /// Builds the outgoing `TO_T0281`/`TO_T0283`/`TO_T0282` batch of a closed
-/// shared equipment inspection (TFM2, TFM4, TFM6). The form code, the material
+/// shared equipment inspection (TFM2, TFM4, TFM6, TFM8). The form code, the material
 /// column and the document mapping come from the draft's
 /// `EquipmentInspectionForm`. An edited class-characteristics header adds its
 /// `TO_T0266`/`TO_T0265` master record and `TO_T0211` proposals.
@@ -65,10 +65,12 @@ enum SAPEquipmentInspectionUploadBuilder {
         }
 
         // `BaseFormController.buildDefaultElements` builds the "Außer Betrieb"
-        // status for TFM2, TFM4 and TFM7. While it is set, `setValues4AnwStatus` clears every
-        // position and `validateFormValues` validates only the status comment.
-        let isOutOfOperation = inspection.isOutOfOperation ?? false
-        let outOfOperationComment = inspection.outOfOperationComment ?? ""
+        // status for TFM2, TFM4, TFM6 and TFM7, but not for TFM8. While it is
+        // set, `setValues4AnwStatus` clears every position and
+        // `validateFormValues` validates only the status comment.
+        let form = inspection.form
+        let isOutOfOperation = form.supportsOutOfService && (inspection.isOutOfOperation ?? false)
+        let outOfOperationComment = isOutOfOperation ? inspection.outOfOperationComment ?? "" : ""
 
         if isOutOfOperation {
             guard !outOfOperationComment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -99,7 +101,10 @@ enum SAPEquipmentInspectionUploadBuilder {
             elementValues: inspection.elementValues
         )
 
-        let applicationStatus = isOutOfOperation ? "aBet" : "iBet"
+        // `select.getItemMeldung` still creates the `<form>-0000-1` row for
+        // TFM8, but without the out-of-order box nothing calls `setAnwStatus`,
+        // so it posts empty.
+        let applicationStatus = form.supportsOutOfService ? (isOutOfOperation ? "aBet" : "iBet") : ""
         let finalStatus: String
         if isOutOfOperation {
             // An out-of-service object stays open for the follow-up.
@@ -110,7 +115,6 @@ enum SAPEquipmentInspectionUploadBuilder {
                 : inspection.closingSystemStatus
         }
 
-        let form = inspection.form
         let formNumber = form.formCode
         let createdDate = basicDate(now)
         let createdTime = basicTime(now)
