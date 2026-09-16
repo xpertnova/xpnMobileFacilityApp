@@ -37,7 +37,9 @@ struct FacilityConfirmationDialog: View {
     let messageKey: String
     var symbol: String = "exclamationmark.triangle.fill"
     var tint: Color = FacilityTheme.orange
-    var cancelTitleKey: String = "common.cancel"
+    /// `nil` makes this an acknowledgement frame: the sole supplied action is
+    /// the only way out, matching a blocking legacy validation error.
+    var cancelTitleKey: String? = "common.cancel"
     let actions: [FacilityDialogAction]
     let cancel: () -> Void
 
@@ -101,15 +103,15 @@ struct FacilityConfirmationDialog: View {
         if stacksActions {
             VStack(spacing: 10) {
                 ForEach(actions) { button(for: $0) }
-                button(
-                    for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel)
-                )
+                if let cancelTitleKey {
+                    button(for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel))
+                }
             }
         } else {
             HStack(spacing: 12) {
-                button(
-                    for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel)
-                )
+                if let cancelTitleKey {
+                    button(for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel))
+                }
                 ForEach(actions) { button(for: $0) }
             }
         }
@@ -159,6 +161,8 @@ private struct FacilityConfirmationDialogModifier: ViewModifier {
     let messageKey: String
     let symbol: String
     let tint: Color
+    let cancelTitleKey: String?
+    let dismissOnBackdropTap: Bool
     let actions: [FacilityDialogAction]
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -169,13 +173,17 @@ private struct FacilityConfirmationDialogModifier: ViewModifier {
                 ZStack {
                     Color.black.opacity(0.32)
                         .ignoresSafeArea()
-                        .onTapGesture { isPresented = false }
+                        .onTapGesture {
+                            guard dismissOnBackdropTap else { return }
+                            isPresented = false
+                        }
 
                     FacilityConfirmationDialog(
                         titleKey: titleKey,
                         messageKey: messageKey,
                         symbol: symbol,
                         tint: tint,
+                        cancelTitleKey: cancelTitleKey,
                         actions: actions.map { action in
                             FacilityDialogAction(
                                 titleKey: action.titleKey,
@@ -210,6 +218,8 @@ extension View {
         messageKey: String,
         symbol: String = "exclamationmark.triangle.fill",
         tint: Color = FacilityTheme.orange,
+        cancelTitleKey: String? = "common.cancel",
+        dismissOnBackdropTap: Bool = true,
         actions: [FacilityDialogAction]
     ) -> some View {
         modifier(
@@ -219,6 +229,8 @@ extension View {
                 messageKey: messageKey,
                 symbol: symbol,
                 tint: tint,
+                cancelTitleKey: cancelTitleKey,
+                dismissOnBackdropTap: dismissOnBackdropTap,
                 actions: actions
             )
         )
@@ -233,6 +245,8 @@ extension View {
         symbol: String = "exclamationmark.triangle.fill",
         tint: Color = FacilityTheme.orange,
         isDestructive: Bool = false,
+        cancelTitleKey: String? = "common.cancel",
+        dismissOnBackdropTap: Bool = true,
         confirm: @escaping () -> Void
     ) -> some View {
         facilityConfirmationDialog(
@@ -241,6 +255,8 @@ extension View {
             messageKey: messageKey,
             symbol: symbol,
             tint: tint,
+            cancelTitleKey: cancelTitleKey,
+            dismissOnBackdropTap: dismissOnBackdropTap,
             actions: [
                 FacilityDialogAction(
                     titleKey: confirmTitleKey,

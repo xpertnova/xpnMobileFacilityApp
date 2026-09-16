@@ -10,11 +10,16 @@ struct EquipmentInspectionView: View {
     let detail: SAPNotificationDetail
     let backDestination: AppDestination
     let dismiss: () -> Void
+    /// The legacy missing-class-characteristics acknowledgement always returns
+    /// to the notification list. This is deliberately separate from the
+    /// normal Back action, which can return an offline draft to its source.
+    let dismissForMissingMasterData: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: EquipmentInspectionViewModel
     @State private var editingCommentID: String?
     @State private var photoWorkspaceItemID: String?
+    @State private var isMasterDataErrorPresented = false
 
     init(
         detail: SAPNotificationDetail,
@@ -24,11 +29,13 @@ struct EquipmentInspectionView: View {
         sapDataStore: SAPDataStore? = nil,
         elevatorAssetDataProvider: any ElevatorAssetDataProviding = UnavailableElevatorAssetDataProvider(),
         backDestination: AppDestination,
-        dismiss: @escaping () -> Void
+        dismiss: @escaping () -> Void,
+        dismissForMissingMasterData: (() -> Void)? = nil
     ) {
         self.detail = detail
         self.backDestination = backDestination
         self.dismiss = dismiss
+        self.dismissForMissingMasterData = dismissForMissingMasterData ?? dismiss
         _model = State(initialValue: EquipmentInspectionViewModel(
             detail: detail,
             form: form,
@@ -52,7 +59,14 @@ struct EquipmentInspectionView: View {
                     ScrollView {
                         VStack(spacing: 18) {
                             metadataCard
-                            masterDataCard
+                            // Cordova dismisses every form that requires
+                            // class characteristics instead of leaving an
+                            // unavailable master-data surface in the form.
+                            // Keep the section out of the layer beneath its
+                            // blocking error frame.
+                            if !model.isMasterDataMissing {
+                                masterDataCard
+                            }
                             inspectionCard
                         }
                         .padding(28)
@@ -62,6 +76,14 @@ struct EquipmentInspectionView: View {
                 .background(FacilityTheme.canvas.ignoresSafeArea())
                 .safeAreaInset(edge: .bottom) { actionBar }
                 .transition(PhotoWorkspaceMotion.source)
+            }
+
+            // This must be in the root ZStack, above the notification and
+            // photo workspace, rather than a same-level view modifier. It is
+            // intentionally non-dismissible except for its acknowledgement.
+            if isMasterDataErrorPresented {
+                masterDataErrorOverlay
+                    .zIndex(100)
             }
         }
         .animation(
@@ -76,8 +98,22 @@ struct EquipmentInspectionView: View {
                 )
             }
         }
+        // If SwiftUI retains this destination while it is navigated away from
+        // and opened again, its data may already be unavailable. Re-present
+        // the blocking frame on each appearance; the post-load check below
+        // covers a newly fetched failure.
+        .onAppear {
+            presentMasterDataErrorIfNeeded()
+        }
         .task(id: detail.summary.id) {
             await model.load()
+            presentMasterDataErrorIfNeeded()
+        }
+        // Cordova's `HeaderFormBuilder.showInvalidData` blocks every form
+        // that requires class characteristics when they are unavailable,
+        // then returns to the notification list after acknowledgement.
+        .onChange(of: model.isMasterDataMissing) { _, isMissing in
+            if isMissing { presentMasterDataErrorIfNeeded() }
         }
         .alert(item: $model.feedback) { feedback in
             Alert(
@@ -464,6 +500,35 @@ struct EquipmentInspectionView: View {
         )
     }
 
+    private var masterDataErrorOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+
+            FacilityConfirmationDialog(
+                titleKey: "inspection.masterData.error.title",
+                messageKey: "inspection.masterData.error.message",
+                symbol: "exclamationmark.circle",
+                tint: FacilityTheme.red,
+                cancelTitleKey: nil,
+                actions: [
+                    FacilityDialogAction(titleKey: "common.ok", emphasis: .primary) {
+                        isMasterDataErrorPresented = false
+                        dismissForMissingMasterData()
+                    }
+                ],
+                cancel: {}
+            )
+            .padding(28)
+        }
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private func presentMasterDataErrorIfNeeded() {
+        guard model.isMasterDataMissing else { return }
+        isMasterDataErrorPresented = true
+    }
+
     private var isReadOnly: Bool {
         model.isClosedLocally
     }
@@ -487,6 +552,7 @@ private extension ElevatorInspectionFeedback {
         case .i2DefectsCreated: "elevator.i2.created.success"
         }
     }
+
 }
 
 private struct ElevatorI2DefectSelectionSheet: View {

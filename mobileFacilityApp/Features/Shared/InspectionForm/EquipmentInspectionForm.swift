@@ -18,6 +18,8 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     case elevator = "TFM2"
     /// Steigleitern (equipment type `TFMLEITER`).
     case fixedLadder = "TFM4"
+    /// Unterverteilung / FI-Schutzschalter (equipment type `TFMNSPV`).
+    case subdistribution = "TFM7"
 
     init?(formCode: String) {
         self.init(rawValue: formCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
@@ -48,6 +50,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: ["TFMPERS", "TFMLAST", "TFMBEFAHR", "TFMKLGUT"]
         case .fixedLadder: ["TFMLEITER"]
+        case .subdistribution: ["TFMNSPV"]
         }
     }
 
@@ -57,6 +60,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "TFMAUFZUG"
         case .fixedLadder: nil
+        case .subdistribution: nil
         }
     }
 
@@ -76,6 +80,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.inspection.title"
         case .fixedLadder: "fixedLadder.inspection.title"
+        case .subdistribution: "subdistribution.title"
         }
     }
 
@@ -84,6 +89,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "🛗"
         case .fixedLadder: "🪜"
+        case .subdistribution: "⚡️"
         }
     }
 
@@ -91,6 +97,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.title"
         case .fixedLadder: "fixedLadder.masterData.title"
+        case .subdistribution: "subdistribution.masterData.title"
         }
     }
 
@@ -98,6 +105,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.subtitle"
         case .fixedLadder: "fixedLadder.masterData.subtitle"
+        case .subdistribution: "subdistribution.masterData.subtitle"
         }
     }
 
@@ -105,6 +113,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.loading"
         case .fixedLadder: "fixedLadder.masterData.loading"
+        case .subdistribution: "subdistribution.masterData.loading"
         }
     }
 
@@ -112,6 +121,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.unavailable.title"
         case .fixedLadder: "fixedLadder.masterData.unavailable.title"
+        case .subdistribution: "subdistribution.masterData.unavailable.title"
         }
     }
 
@@ -119,6 +129,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.assetData.unavailable.message"
         case .fixedLadder: "fixedLadder.masterData.unavailable.message"
+        case .subdistribution: "subdistribution.masterData.unavailable.message"
         }
     }
 
@@ -126,6 +137,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.unavailable.title"
         case .fixedLadder: "fixedLadder.unavailable.title"
+        case .subdistribution: "subdistribution.unavailable.title"
         }
     }
 
@@ -133,6 +145,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "elevator.closeDialog.message"
         case .fixedLadder: "fixedLadder.closeDialog.message"
+        case .subdistribution: "subdistribution.closeDialog.message"
         }
     }
 
@@ -146,6 +159,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "Aufzugskontrolle"
         case .fixedLadder: "Steigleitern"
+        case .subdistribution: "Unterverteilung"
         }
     }
 
@@ -154,6 +168,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         switch self {
         case .elevator: "Aufzug Merkmale"
         case .fixedLadder: "Steigleiter Merkmale"
+        case .subdistribution: "Unterverteilung Merkmale"
         }
     }
 

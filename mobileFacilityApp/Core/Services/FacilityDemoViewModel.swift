@@ -29,8 +29,24 @@ final class FacilityDemoViewModel {
     var selectedBriefingDraftID: UUID?
     var selectedElectricalSafetyDraftID: UUID?
     var selectedProofOfQualificationDraftID: UUID?
-    var selectedNotificationID: String?
-    var selectedOfflineNotificationDetail: SAPNotificationDetail?
+    /// Changes for every new detail presentation, even when the technician
+    /// reopens the same notification. Detail views use it as their SwiftUI
+    /// identity so one-time blocking warnings are evaluated again.
+    private(set) var notificationDetailPresentationID = UUID()
+    var selectedNotificationID: String? {
+        didSet {
+            if selectedNotificationID != nil {
+                notificationDetailPresentationID = UUID()
+            }
+        }
+    }
+    var selectedOfflineNotificationDetail: SAPNotificationDetail? {
+        didSet {
+            if selectedOfflineNotificationDetail != nil {
+                notificationDetailPresentationID = UUID()
+            }
+        }
+    }
     private var offlineNotificationReturnDestination: AppDestination?
     private var manualDefectReturnDestination: AppDestination?
     var shouldPresentSAPRefresh = false
@@ -125,6 +141,10 @@ final class FacilityDemoViewModel {
 
     func demoNotificationDetail(for id: String) -> SAPNotificationDetail? {
         guard let notification = notifications.first(where: { $0.id == id }) else { return nil }
+        if let summary = MockFacilityData.sapNotifications.first(where: { $0.id == id }),
+           summary.equipmentInspectionForm == .subdistribution {
+            return SAPNotificationDetail(summary: summary)
+        }
         if notification.structuralFilterMetadata?.formCode == "TFM1" {
             let items: [SAPNotificationDetail.InspectionItem] = [
                 .init(
@@ -432,10 +452,11 @@ final class FacilityDemoViewModel {
     }
 
     /// Saved reviews are presented over their source screen and return there
-    /// when the user closes the detail.
-    func dismissOfflineNotificationDetail() {
+    /// when the user closes the detail. A legacy invalid-master-data warning
+    /// may instead explicitly send the technician to Notifications.
+    func dismissOfflineNotificationDetail(returningTo destination: AppDestination? = nil) {
         selectedOfflineNotificationDetail = nil
-        let returnDestination = offlineNotificationReturnDestination ?? .notifications
+        let returnDestination = destination ?? offlineNotificationReturnDestination ?? .notifications
         offlineNotificationReturnDestination = nil
         selection = returnDestination
     }
@@ -667,6 +688,65 @@ enum MockFacilityData {
     }
     """
 
+    /// TFM7 Unterverteilung. The `FOTO` operation is deliberately present:
+    /// Cordova's `MasterDataForm` renders it as a photo-and-note row with no
+    /// result selector and blocks close until its JPEG evidence exists.
+    static let tfm7PayloadJSON = """
+    {
+      "QMNUM": "4710000031",
+      "QMART": "I1",
+      "FORMNR": "TFM7",
+      "PLTXT": "Unterverteilung Bürotrakt",
+      "STRNO": "UN01-ST01-BG01-TECH-480-UV1",
+      "EQUNR": "EQ-100031",
+      "EQKTX": "UV Bürotrakt 1. OG",
+      "EQART": "TFMNSPV",
+      "CITY1_TO": "Essen",
+      "STREET_TO": "Hauptstraße 12",
+      "TPWEH": "WE 01",
+      "TPGEB": "Gebäude A",
+      "IWERK": "1501",
+      "GEWRK": "TFM",
+      "T_PLPOD": [
+        {
+          "USR00": "HEADER",
+          "STEUS": "TFM7",
+          "VORNR": "0005",
+          "LTXA1": "Prüfung der Unterverteilung"
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM7",
+          "VORNR": "0010",
+          "LTXA1": "Prüfung durch Betätigen der Prüftasten",
+          "LTXA2": "FI-Schutzschalter gemäß Kennzeichnung prüfen.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        },
+        {
+          "USR00": "POSITION",
+          "STEUS": "TFM7",
+          "VORNR": "0020",
+          "LTXA1": "Sichtkontrolle",
+          "LTXA2": "Gehäuse, Beschriftung und Abdeckungen kontrollieren.",
+          "T_PROPS": [
+            { "POSNR": "1", "DFVAL": "1;2;3;4;5;", "DFVAL_TXT": "In Ordnung;Mangel beseitigt;Mangel behoben;Mangel vorhanden;entfällt;" },
+            { "POSNR": "2", "DFVAL": "7;8;9;", "DFVAL_TXT": "Kleinreparatur;Weiterer Einsatz erforderlich;Keine Maßnahme;" }
+          ]
+        },
+        {
+          "USR00": "FOTO",
+          "STEUS": "TFM7",
+          "VORNR": "0030",
+          "LTXA1": "Foto Anlagentechnik (Verteilung)",
+          "LTXA2": "Übersichtsaufnahme der Unterverteilung hinzufügen."
+        }
+      ]
+    }
+    """
+
     static let sapNotifications: [SAPNotificationSummary] = [
         SAPNotificationSummary(
             id: "4710000012",
@@ -693,6 +773,19 @@ enum MockFacilityData {
             systemStatus: "Offen",
             userStatus: "",
             rawPayloadJSON: tfm4PayloadJSON
+        ),
+        SAPNotificationSummary(
+            id: "4710000031",
+            client: "100",
+            title: "Unterverteilung Bürotrakt",
+            functionalLocationID: "UN01-ST01-BG01-TECH-480-UV1",
+            functionalLocationName: "UV Bürotrakt 1. OG",
+            equipmentID: "EQ-100031",
+            startDate: "2026-08-10",
+            endDate: "2026-08-20",
+            systemStatus: "Offen",
+            userStatus: "",
+            rawPayloadJSON: tfm7PayloadJSON
         )
     ]
 
@@ -700,7 +793,7 @@ enum MockFacilityData {
         .init(id: "4710000012", title: "Aufzugskontrolle Personenaufzug", location: "Gebäude A · Aufzug 1", dueDate: "Heute", equipment: "EQ-100010", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 5, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM2", functionalLocationName: "Gebäude A")),
         .init(id: "4710000024", title: "Steigleiter Dachausstieg", location: "Gebäude A · Dachausstieg Nord", dueDate: "Heute", equipment: "EQ-100024", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM4", functionalLocationName: "Gebäude A")),
         .init(id: "M-31042", title: "Fire door inspection", location: "Building A · Level 02", dueDate: "Today", equipment: "Door group A2", sapStatus: nil, status: .open, completedChecks: 1, totalChecks: 6, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "FM", formCode: "TFM3", functionalLocationName: "Building A")),
-        .init(id: "M-31057", title: "Emergency lighting test", location: "Building C · Level 01", dueDate: "Today", equipment: "Lighting circuit C-11", sapStatus: nil, status: .attention, completedChecks: 3, totalChecks: 8, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "C", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Building C")),
+        .init(id: "4710000031", title: "Unterverteilung Bürotrakt", location: "Gebäude A · Bürotrakt 1. OG", dueDate: "Heute", equipment: "EQ-100031", sapStatus: nil, status: .attention, completedChecks: 0, totalChecks: 3, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "A", tradeCode: "EL", formCode: "TFM7", functionalLocationName: "Gebäude A")),
         .init(id: "005140055904", title: "MTFM_Überprüfung Alarmpläne", location: "GB10_Rauschermühle_V1 Verwaltungsgebäude", dueDate: "Tomorrow", equipment: "DE-SAF-11152-10", sapStatus: nil, status: .open, completedChecks: 0, totalChecks: 3, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "SAF", businessEntityCode: "11152", buildingCode: "GB10", tradeCode: "FM", formCode: "TFM1", functionalLocationName: "GB10_Rauschermühle_V1 Verwaltungsgebäude")),
         .init(id: "M-30965", title: "Water meter reading", location: "Utility room · Level -1", dueDate: "29 Aug", equipment: "WM-120", sapStatus: nil, status: .pending, completedChecks: 4, totalChecks: 4, structuralFilterMetadata: .init(countryCode: "DE", locationCode: "ESS", businessEntityCode: "11248", buildingCode: "U", tradeCode: "UTIL", formCode: "TFM1", functionalLocationName: "Utility room"))
     ]
