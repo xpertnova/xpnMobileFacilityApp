@@ -25,15 +25,15 @@ Open in Xcode (`mobileFacilityApp.xcodeproj`) or use `xcodebuild` from the repo 
 ```bash
 # Build for a simulator
 xcodebuild -project mobileFacilityApp.xcodeproj -scheme mobileFacilityApp \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' build
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' build
 
 # Run the full test suite
 xcodebuild -project mobileFacilityApp.xcodeproj -scheme mobileFacilityApp \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' test
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' test
 
 # Run a single test class or method
 xcodebuild -project mobileFacilityApp.xcodeproj -scheme mobileFacilityApp \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
+  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' \
   -only-testing:mobileFacilityAppTests/MobileLadderTests test
 xcodebuild ... -only-testing:mobileFacilityAppTests/MobileLadderTests/testSomething test
 ```

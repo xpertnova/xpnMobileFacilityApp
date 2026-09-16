@@ -718,7 +718,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
         XCTAssertEqual(localized(InspectionFormColumn.photo, english), "Photo")
         XCTAssertEqual(localized(InspectionFormColumn.comment, english), "Comment")
         XCTAssertEqual(localized(InspectionFormColumn.performedOn, english), "Performed on")
-        XCTAssertEqual(localized("inspection.outOfService", english), "Out of service")
+        XCTAssertEqual(localized("inspection.outOfService", english), "Out of operation")
         XCTAssertEqual(localized("inspection.outOfService.demounted", english), "Disassembled")
 
         let german = Locale(identifier: "de")

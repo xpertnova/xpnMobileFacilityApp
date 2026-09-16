@@ -757,8 +757,32 @@ protocol SAPNotificationOutgoingStore: Sendable {
         headers: [LegacySAPRow],
         values: [LegacySAPRow],
         documents: [LegacySAPRow],
-        equipment: [LegacySAPRow]
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow]
     ) async throws
+}
+
+extension SAPNotificationOutgoingStore {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow]
+    ) async throws {
+        try await replaceNotificationOutgoingRows(
+            processIDs: processIDs,
+            equipmentIDs: equipmentIDs,
+            headers: headers,
+            values: values,
+            documents: documents,
+            equipment: equipment,
+            functionalLocations: [],
+            proposals: []
+        )
+    }
 }
 
 enum SAPReadRefreshStage: Equatable, Sendable {

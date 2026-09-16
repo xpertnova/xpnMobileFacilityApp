@@ -234,7 +234,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     /// Rebuilds the read-only master-data header of a shared equipment
-    /// inspection (TFM2, TFM4) from the same legacy cache tables used by
+    /// inspection (TFM2, TFM4, TFM6) from the same legacy cache tables used by
     /// Cordova: T0263 describes the class, while T0266 (or T0265 for a
     /// technical-place assignment) supplies the asset values. The accepted
     /// equipment types come from the notification's `EquipmentInspectionForm`.
@@ -347,13 +347,25 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             return .empty
         }
 
-        guard let assetData = ElevatorAssetDataDecoder.decode(
+        guard var assetData = ElevatorAssetDataDecoder.decode(
             equipmentType: resolvedType,
             classDefinition: classPayload,
             masterData: masterPayload
         ) else {
             SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("class definition has no usable characteristics")
             return .empty
+        }
+        // `HeaderFormBuilder.masterDataQuery` carries `EQUNR` when the
+        // notification has an equipment (leaving `STRNO` empty) and `STRNO`
+        // otherwise; the edited header is written back to that record.
+        if let payloadData = try? JSONSerialization.data(withJSONObject: masterPayload, options: [.sortedKeys]),
+           let payloadJSON = String(data: payloadData, encoding: .utf8) {
+            assetData.masterRecord = EquipmentMasterRecord(
+                equipmentID: notification.equipmentID,
+                functionalLocationID: notification.equipmentID.isEmpty ? notification.functionalLocationID : "",
+                className: assetData.className,
+                payloadJSON: payloadJSON
+            )
         }
         SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution(
             "loaded \(assetData.characteristics.count) classification characteristics"
@@ -878,17 +890,21 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         headers: [LegacySAPRow],
         values: [LegacySAPRow],
         documents: [LegacySAPRow],
-        equipment: [LegacySAPRow]
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow]
     ) async throws {
         guard let database else { throw SAPReadError.serviceUnavailable }
         let headerSchema = try Self.schema(named: "TO_T0281")
         let valueSchema = try Self.schema(named: "TO_T0283")
         let documentSchema = try Self.schema(named: "TO_T0282")
         let equipmentSchema = try Self.schema(named: "TO_T0266")
+        let locationSchema = try Self.schema(named: "TO_T0265")
+        let proposalSchema = try Self.schema(named: "TO_T0211")
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for processID in Set(processIDs) where !processID.isEmpty {
-                for table in [headerSchema.name, valueSchema.name, documentSchema.name] {
+                for table in [headerSchema.name, valueSchema.name, documentSchema.name, proposalSchema.name] {
                     try Self.execute(
                         on: database,
                         "DELETE FROM \(table) WHERE VORGANGSNR = ?",
@@ -903,10 +919,20 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                     bindings: [equipmentID]
                 )
             }
+            // `insertTO_T0265` replaces the technical place's pending record.
+            for locationID in Set(functionalLocations.compactMap { $0["STRNO"] ?? nil }) where !locationID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(locationSchema.name) WHERE STRNO = ?",
+                    bindings: [locationID]
+                )
+            }
             for row in headers { try Self.insert(row: row, into: headerSchema, on: database) }
             for row in values { try Self.insert(row: row, into: valueSchema, on: database) }
             for row in documents { try Self.insert(row: row, into: documentSchema, on: database) }
             for row in equipment { try Self.insert(row: row, into: equipmentSchema, on: database) }
+            for row in functionalLocations { try Self.insert(row: row, into: locationSchema, on: database) }
+            for row in proposals { try Self.insert(row: row, into: proposalSchema, on: database) }
             try Self.execute(on: database, "COMMIT")
         } catch {
             try? Self.execute(on: database, "ROLLBACK")

@@ -329,7 +329,7 @@ struct DraftsView: View {
     }
 }
 
-/// Saved TFM2/TFM4 equipment inspection.
+/// Saved TFM2/TFM4/TFM6 equipment inspection.
 private struct SavedEquipmentInspectionRow: View {
     let item: OfflineWorkItem
     let inspection: ElevatorInspectionDraftPayload

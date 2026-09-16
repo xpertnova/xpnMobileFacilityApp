@@ -16,6 +16,10 @@ struct SAPNotificationOutgoingBatch: Sendable {
     let values: [LegacySAPRow]
     let documents: [SAPNotificationOutgoingDocument]
     let equipment: [LegacySAPRow]
+    /// `TO_T0265` technical-place master records.
+    var functionalLocations: [LegacySAPRow] = []
+    /// `TO_T0211` master-data proposals (`Vorschlag`).
+    var proposals: [LegacySAPRow] = []
 
     static let empty = SAPNotificationOutgoingBatch(
         workItemIDs: [], attachmentIDs: [], processIDs: [], equipmentIDs: [],
@@ -388,7 +392,9 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                 headers: batches.flatMap(\.headers),
                 values: batches.flatMap(\.values),
                 documents: batches.flatMap(\.documents),
-                equipment: batches.flatMap(\.equipment)
+                equipment: batches.flatMap(\.equipment),
+                functionalLocations: batches.flatMap(\.functionalLocations),
+                proposals: batches.flatMap(\.proposals)
             )
             try await outgoingStore.replaceNotificationOutgoingRows(
                 processIDs: merged.processIDs, equipmentIDs: merged.equipmentIDs,
@@ -399,7 +405,9 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                         row[entry.key] = entry.value
                     }
                 },
-                equipment: merged.equipment
+                equipment: merged.equipment,
+                functionalLocations: merged.functionalLocations,
+                proposals: merged.proposals
             )
             for item in pending {
                 try await offlineRepository.save(copy(item, status: .synchronizing, error: nil))
@@ -444,7 +452,8 @@ private extension SAPNotificationOutgoingBatch {
         Self(
             workItemIDs: workItemIDs + ids, attachmentIDs: attachmentIDs,
             processIDs: processIDs, equipmentIDs: equipmentIDs, headers: headers,
-            values: values, documents: documents, equipment: equipment
+            values: values, documents: documents, equipment: equipment,
+            functionalLocations: functionalLocations, proposals: proposals
         )
     }
 }

@@ -74,6 +74,17 @@ struct EquipmentInspectionView: View {
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
                 )
+            } else if let characteristic = proposalCharacteristic {
+                EquipmentMasterDataProposalOverlay(
+                    fieldTitle: characteristic.title,
+                    // `vorschlagBeforeOpen` fills the input only with this
+                    // inspection's proposal; earlier ones are suggestions.
+                    initialText: model.proposal(for: characteristic),
+                    lastProposal: model.lastProposal(for: characteristic),
+                    cancel: { model.proposalCharacteristicID = nil },
+                    save: { model.saveProposal($0, for: characteristic) }
+                )
+                .id(characteristic.name)
             }
         }
         .task(id: detail.summary.id) {
@@ -241,8 +252,9 @@ struct EquipmentInspectionView: View {
         )
     }
 
-    /// Read-only class characteristics above the checklist
-    /// (`HeaderFormBuilder.createHeaderForm`).
+    /// Class characteristics above the checklist
+    /// (`HeaderFormBuilder.createHeaderForm`), editable unless the equipment
+    /// type is read-only (`_isEditable`).
     private var masterDataCard: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -259,7 +271,7 @@ struct EquipmentInspectionView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                if model.elevatorAssetDataState == .ready {
+                if model.elevatorAssetDataState == .ready && !model.isMasterDataRecordEditable {
                     Text("elevator.assetData.readOnly")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -280,15 +292,7 @@ struct EquipmentInspectionView: View {
                 .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
 
             case .ready:
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 290, maximum: 520), spacing: 16)],
-                    alignment: .leading,
-                    spacing: 16
-                ) {
-                    ForEach(model.elevatorAssetCharacteristics) { characteristic in
-                        elevatorAssetValueCell(for: characteristic)
-                    }
-                }
+                EquipmentMasterDataFields(model: model)
 
             case .unavailable:
                 ContentUnavailableView(
@@ -309,45 +313,6 @@ struct EquipmentInspectionView: View {
             }
         }
         .facilityCard(padding: 22)
-    }
-
-    private func elevatorAssetValueCell(for characteristic: ElevatorAssetCharacteristic) -> some View {
-        let value = model.elevatorAssetDisplayValue(for: characteristic)
-        return VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 5) {
-                Text(characteristic.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(FacilityTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                if characteristic.isRequired {
-                    Image(systemName: "asterisk")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(FacilityTheme.accent)
-                        .accessibilityLabel(Text("elevator.assetData.required"))
-                }
-            }
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(value)
-                    .font(characteristic.isNumeric ? .body.monospacedDigit() : .body)
-                    .foregroundStyle(value == "—" ? Color.secondary : FacilityTheme.ink)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !characteristic.unit.isEmpty {
-                    Text(characteristic.unit)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .padding(.horizontal, 12)
-            .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.black.opacity(0.10))
-            }
-        }
-        .accessibilityElement(children: .combine)
     }
 
     /// The shared checklist configured by the form code: SAP-driven dropdowns
@@ -462,6 +427,12 @@ struct EquipmentInspectionView: View {
                 && !model.isSaving
                 && (!model.items.isEmpty || model.isOutOfService)
         )
+    }
+
+    /// Characteristic whose proposal editor is open.
+    private var proposalCharacteristic: ElevatorAssetCharacteristic? {
+        guard let id = model.proposalCharacteristicID else { return nil }
+        return model.elevatorAssetCharacteristics.first { $0.name == id }
     }
 
     private var isReadOnly: Bool {

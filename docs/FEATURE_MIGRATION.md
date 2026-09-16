@@ -113,6 +113,19 @@ those differences, and it is traced to the legacy controllers:
   `HeaderFormBuilder.checkInputConstraints` and the `checkInputConstraints`
   overrides in `Rundgang`/`WartungsPlan`. A new offline-capable inspection
   form adds a variant and reuses those rules; it does not restate them.
+- The class-characteristics header above the checklist (TFM2, TFM4, TFM6) is
+  one component, `EquipmentMasterDataFields`, with its rules in
+  `EquipmentMasterDataRules`. Traced from `HeaderFormBuilder._buildHeaderForm`:
+  one labelled row per characteristic, a dropdown for a `T_CHARVAL` list
+  (multi-select without `ATEIN`), a date for `ATFOR = DATE`, a number field for
+  `NUM` with `ATSCH`, and an upper-cased text field otherwise. The fields are
+  editable except for `TFMPERS`/`TFMLAST` elevators and `…_IDNUMMER`
+  dropdowns. Every dropdown needs a value to close; "Pflege durch Admin" needs
+  a proposal. On close, the values post to `TO_T0283` (`ELEMENTNR = ATNAM`),
+  proposals to `TO_T0211`, and a changed record as a whole packed `JSOBJECT` to
+  `TO_T0266` (equipment) or `TO_T0265` (technical place). Proposals stay in the
+  offline draft until the inspection is closed, unlike the legacy client, which
+  wrote them to `TO_T0211` as soon as the popover was saved.
 
 ### Phase 3 — Manual processing, defects, and temporary-save overview
 
