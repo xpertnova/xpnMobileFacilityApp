@@ -81,6 +81,44 @@ struct LocalPhotoScope: Codable, Equatable, Hashable, Sendable {
 struct LocalPhotoAttachment: Codable, Equatable, Identifiable, Sendable {
     let localAttachmentID: String
     let capturedAt: Date
+    let name: String
+    let description: String
+
+    init(
+        localAttachmentID: String,
+        capturedAt: Date,
+        name: String = "",
+        description: String = ""
+    ) {
+        self.localAttachmentID = localAttachmentID
+        self.capturedAt = capturedAt
+        self.name = name
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case localAttachmentID
+        case capturedAt
+        case name
+        case description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        localAttachmentID = try container.decode(String.self, forKey: .localAttachmentID)
+        capturedAt = try container.decode(Date.self, forKey: .capturedAt)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+    }
+
+    func updatingMetadata(name: String, description: String) -> Self {
+        Self(
+            localAttachmentID: localAttachmentID,
+            capturedAt: capturedAt,
+            name: name,
+            description: description
+        )
+    }
 
     var id: String { localAttachmentID }
 }
@@ -288,6 +326,59 @@ struct NotificationPhotoAttachment: Codable, Equatable, Identifiable, Sendable {
     let sapElementID: String
     let capturedAt: Date
     let sapDocumentID: String
+    let name: String
+    let description: String
+
+    init(
+        localAttachmentID: String,
+        checklistItemID: String,
+        sapElementID: String,
+        capturedAt: Date,
+        sapDocumentID: String,
+        name: String = "",
+        description: String = ""
+    ) {
+        self.localAttachmentID = localAttachmentID
+        self.checklistItemID = checklistItemID
+        self.sapElementID = sapElementID
+        self.capturedAt = capturedAt
+        self.sapDocumentID = sapDocumentID
+        self.name = name
+        self.description = description
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case localAttachmentID
+        case checklistItemID
+        case sapElementID
+        case capturedAt
+        case sapDocumentID
+        case name
+        case description
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        localAttachmentID = try container.decode(String.self, forKey: .localAttachmentID)
+        checklistItemID = try container.decode(String.self, forKey: .checklistItemID)
+        sapElementID = try container.decode(String.self, forKey: .sapElementID)
+        capturedAt = try container.decode(Date.self, forKey: .capturedAt)
+        sapDocumentID = try container.decode(String.self, forKey: .sapDocumentID)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        description = try container.decodeIfPresent(String.self, forKey: .description) ?? ""
+    }
+
+    func updatingMetadata(name: String, description: String) -> Self {
+        Self(
+            localAttachmentID: localAttachmentID,
+            checklistItemID: checklistItemID,
+            sapElementID: sapElementID,
+            capturedAt: capturedAt,
+            sapDocumentID: sapDocumentID,
+            name: name,
+            description: description
+        )
+    }
 
     var id: String { sapDocumentID }
 }

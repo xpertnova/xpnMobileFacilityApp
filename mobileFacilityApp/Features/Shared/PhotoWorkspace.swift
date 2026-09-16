@@ -14,6 +14,8 @@ struct PhotoWorkspaceEntry: Identifiable, Equatable {
     let id: String
     let localAttachmentID: String
     let capturedAt: Date
+    let name: String
+    let description: String
 }
 
 @MainActor
@@ -56,7 +58,9 @@ final class LocalPhotoCollectionViewModel {
             PhotoWorkspaceEntry(
                 id: $0.id,
                 localAttachmentID: $0.localAttachmentID,
-                capturedAt: $0.capturedAt
+                capturedAt: $0.capturedAt,
+                name: $0.name,
+                description: $0.description
             )
         }
     }
@@ -127,6 +131,26 @@ final class LocalPhotoCollectionViewModel {
             feedback = .saveFailed
         }
     }
+
+    func updatePhoto(id: String, name: String, description: String) async {
+        guard !isSaving, let attachment = attachments.first(where: { $0.id == id }) else { return }
+        isSaving = true
+        defer { isSaving = false }
+
+        let updated = attachments.map {
+            $0.id == id ? attachment.updatingMetadata(name: name, description: description) : $0
+        }
+        do {
+            _ = try await offlineWorkStore.savePhotoCollection(
+                scope: scope,
+                attachments: updated,
+                retainEmpty: !legacyAttachmentIDs.isEmpty
+            )
+            attachments = updated
+        } catch {
+            feedback = .saveFailed
+        }
+    }
 }
 
 struct LocalPhotoWorkspace: View {
@@ -168,6 +192,9 @@ struct LocalPhotoWorkspace: View {
             close: close,
             addPhoto: { data in Task { await model.addPhoto(jpegData: data) } },
             removePhoto: { id in Task { await model.removePhoto(id: id) } },
+            updatePhoto: { id, name, description in
+                await model.updatePhoto(id: id, name: name, description: description)
+            },
             reportImportFailure: { model.feedback = .importFailed },
             reportCameraUnavailable: { model.feedback = .cameraUnavailable },
             reportCameraPermissionDenied: { model.feedback = .cameraPermissionDenied }
@@ -195,6 +222,11 @@ private extension LocalPhotoCollectionViewModel.Feedback {
 }
 
 struct PhotoWorkspace: View {
+    private enum MetadataField: Hashable {
+        case name
+        case description
+    }
+
     let title: String
     let subtitle: String
     let entries: [PhotoWorkspaceEntry]
@@ -206,6 +238,7 @@ struct PhotoWorkspace: View {
     let close: () -> Void
     let addPhoto: (Data) -> Void
     let removePhoto: (String) -> Void
+    let updatePhoto: (String, String, String) async -> Void
     let reportImportFailure: () -> Void
     let reportCameraUnavailable: () -> Void
     let reportCameraPermissionDenied: () -> Void
@@ -214,6 +247,12 @@ struct PhotoWorkspace: View {
     @State private var selectedLibraryPhoto: PhotosPickerItem?
     @State private var isPhotoLibraryPresented = false
     @State private var isCameraPresented = false
+    @State private var draftName = ""
+    @State private var draftDescription = ""
+    @State private var metadataDraftEntryID: String?
+    @State private var metadataSaveTask: Task<Void, Never>?
+    @State private var isMetadataExpanded = true
+    @FocusState private var focusedMetadataField: MetadataField?
 
     private var selectedEntry: PhotoWorkspaceEntry? {
         entries.first { $0.id == selectedID } ?? entries.first
@@ -260,8 +299,24 @@ struct PhotoWorkspace: View {
             .ignoresSafeArea()
         }
         .onChange(of: entries) { _, newEntries in
-            if let selectedID, newEntries.contains(where: { $0.id == selectedID }) { return }
-            self.selectedID = newEntries.first?.id
+            synchronizeSelectedEntry(in: newEntries)
+        }
+        .onChange(of: selectedID) { _, _ in
+            saveMetadataImmediately()
+            synchronizeSelectedEntry(in: entries)
+        }
+        .onChange(of: draftName) { _, _ in scheduleMetadataSave() }
+        .onChange(of: draftDescription) { _, _ in scheduleMetadataSave() }
+        .onAppear { synchronizeSelectedEntry(in: entries) }
+        .onDisappear { saveMetadataImmediately() }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("photos.workspace.done") {
+                    saveMetadataImmediately()
+                    focusedMetadataField = nil
+                }
+            }
         }
     }
 
@@ -323,14 +378,16 @@ struct PhotoWorkspace: View {
             } else if entries.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(entries) { entry in
-                            photoListRow(entry)
-                        }
+                List {
+                    ForEach(entries) { entry in
+                        photoListRow(entry, allowsSwipeActions: true)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                     }
-                    .padding(12)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .background(FacilityTheme.surface)
@@ -343,7 +400,9 @@ struct PhotoWorkspace: View {
             } else {
                 ScrollView(.horizontal) {
                     HStack(spacing: 10) {
-                        ForEach(entries) { entry in photoListRow(entry).frame(width: 210) }
+                        ForEach(entries) { entry in
+                            photoListRow(entry, allowsSwipeActions: false).frame(width: 210)
+                        }
                     }
                     .padding(12)
                 }
@@ -354,7 +413,22 @@ struct PhotoWorkspace: View {
         .background(FacilityTheme.surface)
     }
 
-    private func photoListRow(_ entry: PhotoWorkspaceEntry) -> some View {
+    @ViewBuilder
+    private func photoListRow(_ entry: PhotoWorkspaceEntry, allowsSwipeActions: Bool) -> some View {
+        if allowsSwipeActions && !isReadOnly {
+            photoListRowContent(entry)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) { removePhoto(entry.id) } label: {
+                        Label("photos.workspace.delete", systemImage: "trash")
+                    }
+                    .disabled(isSaving)
+                }
+        } else {
+            photoListRowContent(entry)
+        }
+    }
+
+    private func photoListRowContent(_ entry: PhotoWorkspaceEntry) -> some View {
         Button { selectedID = entry.id } label: {
             HStack(spacing: 12) {
                 Group {
@@ -370,12 +444,14 @@ struct PhotoWorkspace: View {
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.capturedAt, format: .dateTime.day().month().year())
+                    Text(entry.name.isEmpty ? String(localized: "photos.workspace.untitled") : entry.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(FacilityTheme.ink)
-                    Text(entry.capturedAt, format: .dateTime.hour().minute())
+                        .lineLimit(1)
+                    Text(entry.description.isEmpty ? String(localized: "photos.workspace.noDescription") : entry.description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }
@@ -391,7 +467,7 @@ struct PhotoWorkspace: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(format: String(localized: "photos.workspace.photo.accessibility"), entry.capturedAt.formatted())))
+        .accessibilityLabel(Text(entry.name.isEmpty ? String(localized: "photos.workspace.untitled") : entry.name))
     }
 
     private var preview: some View {
@@ -415,6 +491,10 @@ struct PhotoWorkspace: View {
                     .background(Color.black.opacity(0.04), in: RoundedRectangle(cornerRadius: 18))
 
                     if !isReadOnly {
+                        photoMetadataEditor(for: entry)
+                    }
+
+                    if !isReadOnly {
                         HStack {
                             Spacer()
                             Button(role: .destructive) { removePhoto(entry.id) } label: {
@@ -436,6 +516,86 @@ struct PhotoWorkspace: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func photoMetadataEditor(for entry: PhotoWorkspaceEntry) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Button {
+                saveMetadataImmediately()
+                focusedMetadataField = nil
+                withAnimation(PhotoWorkspaceMotion.navigation) {
+                    isMetadataExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Label("photos.workspace.details", systemImage: "pencil.and.list.clipboard")
+                        .font(.headline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: isMetadataExpanded ? "chevron.up" : "chevron.down")
+                        .font(.subheadline.weight(.bold))
+                }
+                .foregroundStyle(FacilityTheme.ink)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text(
+                isMetadataExpanded
+                    ? "photos.workspace.details.collapse"
+                    : "photos.workspace.details.expand"
+            ))
+
+            if isMetadataExpanded {
+                VStack(alignment: .leading, spacing: 14) {
+                    photoMetadataField(
+                        "photos.workspace.name",
+                        isFocused: focusedMetadataField == .name
+                    ) {
+                        TextField("photos.workspace.name", text: $draftName)
+                            .focused($focusedMetadataField, equals: .name)
+                            .submitLabel(.next)
+                            .onSubmit { focusedMetadataField = .description }
+                            .accessibilityLabel(Text("photos.workspace.name"))
+                    }
+
+                    photoMetadataField(
+                        "photos.workspace.description",
+                        isFocused: focusedMetadataField == .description
+                    ) {
+                        TextField("photos.workspace.description", text: $draftDescription)
+                            .focused($focusedMetadataField, equals: .description)
+                            .submitLabel(.done)
+                            .onSubmit {
+                                saveMetadataImmediately()
+                                focusedMetadataField = nil
+                            }
+                            .accessibilityLabel(Text("photos.workspace.description"))
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .facilityCard(padding: 18)
+    }
+
+    private func photoMetadataField<Content: View>(
+        _ title: LocalizedStringKey,
+        isFocused: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+                .font(.body)
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isFocused ? FacilityTheme.blue : Color.black.opacity(0.11), lineWidth: isFocused ? 2 : 1)
+                }
+        }
     }
 
     private var emptyState: some View {
@@ -474,6 +634,55 @@ struct PhotoWorkspace: View {
             return
         }
         addPhoto(jpegData)
+    }
+
+    private func synchronizeSelectedEntry(in entries: [PhotoWorkspaceEntry]) {
+        let entry = entries.first { $0.id == selectedID } ?? entries.first
+        guard let entry else {
+            selectedID = nil
+            metadataDraftEntryID = nil
+            draftName = ""
+            draftDescription = ""
+            return
+        }
+        selectedID = entry.id
+        metadataDraftEntryID = entry.id
+        draftName = entry.name
+        draftDescription = entry.description
+    }
+
+    private func isMetadataDirty(for entry: PhotoWorkspaceEntry) -> Bool {
+        draftName.trimmingCharacters(in: .whitespacesAndNewlines) != entry.name
+            || draftDescription.trimmingCharacters(in: .whitespacesAndNewlines) != entry.description
+    }
+
+    private func scheduleMetadataSave() {
+        metadataSaveTask?.cancel()
+        guard let entry = metadataDraftEntry, isMetadataDirty(for: entry) else { return }
+
+        let photoID = entry.id
+        let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let description = draftDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        metadataSaveTask = Task {
+            try? await Task<Never, Never>.sleep(nanoseconds: 450_000_000)
+            guard !Task.isCancelled else { return }
+            await updatePhoto(photoID, name, description)
+        }
+    }
+
+    private func saveMetadataImmediately() {
+        metadataSaveTask?.cancel()
+        metadataSaveTask = nil
+        guard let entry = metadataDraftEntry, isMetadataDirty(for: entry) else { return }
+
+        let photoID = entry.id
+        let name = draftName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let description = draftDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task { await updatePhoto(photoID, name, description) }
+    }
+
+    private var metadataDraftEntry: PhotoWorkspaceEntry? {
+        entries.first { $0.id == metadataDraftEntryID }
     }
 }
 
