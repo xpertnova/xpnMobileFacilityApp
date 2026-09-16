@@ -392,6 +392,9 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     var isClosedLocally: Bool
     var notificationSnapshot: OfflineNotificationSnapshot? = nil
     var outgoingProcessID: String? = nil
+    /// I2 notifications chosen in the defect dialog after closing. Uploaded
+    /// with this review.
+    var i2Requests: [I2NotificationRequest] = []
 
     init(
         notificationID: String,
@@ -401,7 +404,8 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         photoAttachments: [NotificationPhotoAttachment],
         isClosedLocally: Bool,
         notificationSnapshot: OfflineNotificationSnapshot? = nil,
-        outgoingProcessID: String? = nil
+        outgoingProcessID: String? = nil,
+        i2Requests: [I2NotificationRequest] = []
     ) {
         self.notificationID = notificationID
         self.performedOn = performedOn
@@ -411,6 +415,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         self.isClosedLocally = isClosedLocally
         self.notificationSnapshot = notificationSnapshot
         self.outgoingProcessID = outgoingProcessID
+        self.i2Requests = i2Requests
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -423,6 +428,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         case isClosedLocally
         case notificationSnapshot
         case outgoingProcessID
+        case i2Requests
     }
 
     init(from decoder: Decoder) throws {
@@ -441,6 +447,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
             forKey: .notificationSnapshot
         )
         outgoingProcessID = try container.decodeIfPresent(String.self, forKey: .outgoingProcessID)
+        i2Requests = try container.decodeIfPresent([I2NotificationRequest].self, forKey: .i2Requests) ?? []
         // Older versions stored only checklist IDs in `photoItemIDs`; those
         // values represented a colored icon and never referred to image data.
         // Decode the key for compatibility, but deliberately do not turn it
@@ -458,6 +465,9 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         try container.encode(isClosedLocally, forKey: .isClosedLocally)
         try container.encodeIfPresent(notificationSnapshot, forKey: .notificationSnapshot)
         try container.encodeIfPresent(outgoingProcessID, forKey: .outgoingProcessID)
+        if !i2Requests.isEmpty {
+            try container.encode(i2Requests, forKey: .i2Requests)
+        }
     }
 }
 

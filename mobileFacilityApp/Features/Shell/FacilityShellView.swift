@@ -95,6 +95,7 @@ struct FacilityShellView: View {
                                 detail: selectedOfflineNotificationDetail,
                                 offlineWorkStore: demo.offlineWorkStore,
                                 photoAttachmentStore: demo.photoAttachmentStore,
+                                sapDataStore: demo.sapDataStore,
                                 backDestination: demo.offlineNotificationDetailReturnDestination,
                                 dismiss: { demo.dismissOfflineNotificationDetail() }
                             )
@@ -107,6 +108,7 @@ struct FacilityShellView: View {
                                 detail: selectedOfflineNotificationDetail,
                                 offlineWorkStore: demo.offlineWorkStore,
                                 photoAttachmentStore: demo.photoAttachmentStore,
+                                sapDataStore: demo.sapDataStore,
                                 backDestination: demo.offlineNotificationDetailReturnDestination,
                                 dismiss: { demo.dismissOfflineNotificationDetail() }
                             )

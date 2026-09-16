@@ -937,6 +937,7 @@ private struct NotificationDetailScreen: View {
                 detail: detail,
                 offlineWorkStore: offlineWorkStore,
                 photoAttachmentStore: photoAttachmentStore,
+                sapDataStore: sapDataStore,
                 backDestination: .notifications,
                 dismiss: dismiss
             )
@@ -945,6 +946,7 @@ private struct NotificationDetailScreen: View {
                 detail: detail,
                 offlineWorkStore: offlineWorkStore,
                 photoAttachmentStore: photoAttachmentStore,
+                sapDataStore: sapDataStore,
                 backDestination: .notifications,
                 dismiss: dismiss
             )

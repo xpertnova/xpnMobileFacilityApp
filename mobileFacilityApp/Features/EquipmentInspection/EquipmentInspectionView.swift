@@ -131,12 +131,11 @@ struct EquipmentInspectionView: View {
                 title: Text("notifications.detail.action.title"),
                 message: Text(feedback.messageKey),
                 dismissButton: .default(Text("notifications.detail.commentEditor.done")) {
-                    if case .closedLocally = feedback {
-                        if !model.isI2DefectSelectionPresented {
-                            dismiss()
-                        }
-                    } else if case .i2DefectsCreated = feedback {
+                    switch feedback {
+                    case .closedLocally, .i2NotificationsQueued:
                         dismiss()
+                    default:
+                        break
                     }
                 }
             )
@@ -177,23 +176,20 @@ struct EquipmentInspectionView: View {
                 secondaryButton: .cancel(Text("common.cancel"))
             )
         }
-        .sheet(isPresented: $model.isI2DefectSelectionPresented, onDismiss: {
-            dismiss()
-        }) {
-            ElevatorI2DefectSelectionSheet(
-                items: model.deficientItems,
-                selectedIDs: $model.selectedI2DefectIDs,
-                confirm: {
-                    Task {
-                        await model.createI2Defects(for: model.selectedI2DefectIDs)
+        .i2DefectSelectionDialog(
+            model.i2Selection,
+            accept: {
+                Task {
+                    if !(await model.acceptI2Selection()) {
+                        dismiss()
                     }
-                },
-                cancel: {
-                    model.isI2DefectSelectionPresented = false
-                    dismiss()
                 }
-            )
-        }
+            },
+            cancel: {
+                model.cancelI2Selection()
+                dismiss()
+            }
+        )
     }
 
     /// Photos belong either to a checklist position or to the header status
@@ -390,6 +386,7 @@ struct EquipmentInspectionView: View {
             performedOn: variant.showsPerformedOnDate ? $model.performedOn : nil,
             isPerformedOnDisabled: isReadOnly,
             outOfService: outOfServiceControls,
+            existingI2Notifications: model.existingI2Notifications,
             actions: InspectionFormActions(
                 selectResult: { item, option in
                     guard model.arePositionsEditable else { return }
@@ -520,69 +517,8 @@ private extension ElevatorInspectionFeedback {
         case .photoLimitReached: "notifications.detail.photo.limit"
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
-        case .i2DefectsCreated: "elevator.i2.created.success"
+        case .i2NotificationsQueued: "i2.selection.success"
         }
     }
 
-}
-
-private struct ElevatorI2DefectSelectionSheet: View {
-    let items: [ElevatorInspectionItem]
-    @Binding var selectedIDs: Set<String>
-    let confirm: () -> Void
-    let cancel: () -> Void
-
-    var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("elevator.i2.sheet.description")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-
-                List {
-                    ForEach(items) { item in
-                        Button {
-                            if selectedIDs.contains(item.id) {
-                                selectedIDs.remove(item.id)
-                            } else {
-                                selectedIDs.insert(item.id)
-                            }
-                        } label: {
-                            HStack(spacing: 14) {
-                                Image(systemName: selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(selectedIDs.contains(item.id) ? FacilityTheme.blue : .secondary)
-                                    .frame(width: 44, height: 44)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(item.title)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(FacilityTheme.ink)
-                                    Text("\(item.steus) - \(item.vornr)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .listStyle(.insetGrouped)
-            }
-            .navigationTitle("elevator.i2.sheet.title")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("elevator.i2.sheet.skip", action: cancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("elevator.i2.sheet.create", action: confirm)
-                        .bold()
-                }
-            }
-        }
-    }
 }

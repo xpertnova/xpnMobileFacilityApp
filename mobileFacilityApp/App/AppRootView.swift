@@ -169,7 +169,10 @@ struct AppRootView: View {
                 workerID: "demo"
             ),
             sapDataStore: SAPDataStore(
-                repository: InMemorySAPDataCacheRepository(seed: TechnicalObjectDemoData.cachedData),
+                repository: InMemorySAPDataCacheRepository(
+                    seed: TechnicalObjectDemoData.cachedData,
+                    i2NotificationsByObjectID: I2NotificationDemoData.notificationsByObjectID
+                ),
                 refreshService: nil,
                 localWorkerID: "demo"
             ),

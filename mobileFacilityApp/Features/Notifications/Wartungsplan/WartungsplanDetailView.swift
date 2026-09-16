@@ -18,6 +18,7 @@ struct WartungsplanDetailView: View {
         detail: SAPNotificationDetail,
         offlineWorkStore: OfflineWorkStore,
         photoAttachmentStore: any PhotoAttachmentStore,
+        sapDataStore: SAPDataStore? = nil,
         backDestination: AppDestination = .notifications,
         dismiss: @escaping () -> Void
     ) {
@@ -29,7 +30,8 @@ struct WartungsplanDetailView: View {
         _model = State(initialValue: WartungsplanViewModel(
             detail: detail,
             offlineWorkStore: offlineWorkStore,
-            photoStore: photoAttachmentStore
+            photoStore: photoAttachmentStore,
+            sapDataStore: sapDataStore
         ))
     }
 
@@ -84,17 +86,31 @@ struct WartungsplanDetailView: View {
             confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
             Task {
-                if await model.save(closed: true) {
+                if await model.save(closed: true), !model.i2Selection.isPresented {
                     dismiss()
                 }
             }
         }
+        .i2DefectSelectionDialog(
+            model.i2Selection,
+            accept: {
+                Task {
+                    if !(await model.acceptI2Selection()) {
+                        dismiss()
+                    }
+                }
+            },
+            cancel: {
+                model.cancelI2Selection()
+                dismiss()
+            }
+        )
         .alert(item: $model.feedback) { feedback in
             Alert(
                 title: Text("notifications.detail.action.title"),
                 message: Text(feedbackMessage(for: feedback)),
                 dismissButton: .default(Text("common.ok")) {
-                    if feedback == .closedLocally {
+                    if feedback == .closedLocally || feedback == .i2NotificationsQueued {
                         dismiss()
                     }
                 }
@@ -159,6 +175,7 @@ struct WartungsplanDetailView: View {
                 messageKey: "notifications.detail.noInspectionItems.message",
                 systemImage: "list.bullet"
             ),
+            existingI2Notifications: model.existingI2Notifications,
             actions: InspectionFormActions(
                 selectResult: { item, option in
                     guard !model.isEditingDisabled,
@@ -277,6 +294,7 @@ struct WartungsplanDetailView: View {
         case .photoLimitReached: "notifications.detail.photo.limit"
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
+        case .i2NotificationsQueued: "i2.selection.success"
         }
     }
 }

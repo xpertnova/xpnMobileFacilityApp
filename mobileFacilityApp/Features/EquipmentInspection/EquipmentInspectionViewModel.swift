@@ -10,7 +10,8 @@ enum ElevatorInspectionFeedback: Identifiable {
     case photoLimitReached
     case cameraUnavailable
     case cameraPermissionDenied
-    case i2DefectsCreated(Int)
+    /// The chosen I2 notifications were stored with the closed inspection.
+    case i2NotificationsQueued
 
     var id: String { String(describing: self) }
 }
@@ -73,8 +74,10 @@ final class EquipmentInspectionViewModel {
     /// case except a defective inspection — that one asks for a status
     /// instead.
     var isCloseConfirmationPresented = false
-    var isI2DefectSelectionPresented = false
-    var selectedI2DefectIDs: Set<String> = []
+    /// The defect dialog shown after closing, for users with I2 permission.
+    let i2Selection = I2DefectSelection()
+    /// I2 notifications SAP already holds for the inspected object.
+    private(set) var existingI2Notifications: [SAPI2NotificationSummary] = []
     var validationErrors: Set<String> = []
 
     /// Header-level "Außer Betrieb" status.
@@ -198,6 +201,34 @@ final class EquipmentInspectionViewModel {
         userProfile?.canCreateI2 ?? false
     }
 
+    /// The deficient positions as rows of the I2 defect dialog
+    /// (`HeaderFormBuilder.setValue4Process`).
+    var i2Candidates: [I2DefectCandidate] {
+        let positions = deficientItems
+        guard !positions.isEmpty else { return [] }
+        let planRows = I2NotificationRules.planRows(rawPayloadJSON: detail.summary.rawPayloadJSON)
+        return positions.map { item in
+            let resultCode = results[item.id] ?? ""
+            let actionCode = actions[item.id] ?? ""
+            let header = I2NotificationRules.headerText(
+                operation: item.vornr,
+                planRows: planRows,
+                groupTitle: item.groupTitle
+            )
+            return I2DefectCandidate(
+                id: item.id,
+                number: item.positionNumber,
+                title: item.title,
+                resultCode: resultCode,
+                resultText: item.resultOptions.first { $0.code == resultCode }?.text ?? "",
+                actionCode: actionCode,
+                actionText: item.actionOptions.first { $0.code == actionCode }?.text ?? "",
+                note: I2NotificationRules.note(comment: comments[item.id, default: ""], headerText: header),
+                noteElementID: item.commentElementID
+            )
+        }
+    }
+
     func attachments(for checklistItemID: String) -> [NotificationPhotoAttachment] {
         photoAttachments.filter { $0.checklistItemID == checklistItemID }
     }
@@ -210,6 +241,7 @@ final class EquipmentInspectionViewModel {
 
         if let store = sapDataStore {
             self.userProfile = await store.loadUserProfile()
+            existingI2Notifications = await store.loadI2Notifications(for: detail)
         }
 
         await reloadElevatorAssetData()
@@ -546,11 +578,6 @@ final class EquipmentInspectionViewModel {
         isStatusDecisionPresented = false
         statusDecision = decision
         await save(closed: true, statusDecision: decision)
-
-        if canCreateI2Defects && !deficientItems.isEmpty {
-            selectedI2DefectIDs = Set(deficientItems.map(\.id))
-            isI2DefectSelectionPresented = true
-        }
     }
 
     /// Requests a change of the header status. Both directions are confirmed
@@ -742,10 +769,38 @@ final class EquipmentInspectionViewModel {
             outgoingProcessID = processID
             isClosedLocally = closed
             persistedDraft = draft
-            feedback = closed ? .closedLocally : .savedLocally
+            // `_afterSetMeldung` offers the deficient positions for I2
+            // notifications instead of finishing the form.
+            let offersI2 = closed && canCreateI2Defects && i2Selection.present(i2Candidates)
+            if !offersI2 {
+                feedback = closed ? .closedLocally : .savedLocally
+            }
         } catch {
             feedback = .saveFailed
         }
+    }
+
+    /// Stores the notifications chosen in the defect dialog with the closed
+    /// inspection. Returns `false` when nothing was chosen, so the form can be
+    /// left straight away as `onDefectPosItemAccept` does.
+    func acceptI2Selection() async -> Bool {
+        let requests = i2Selection.accept()
+        guard !requests.isEmpty, var draft = persistedDraft, draft.isClosedLocally else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        draft.i2Requests = requests
+        do {
+            _ = try await offlineWorkStore.saveElevatorInspection(draft)
+            persistedDraft = draft
+            feedback = .i2NotificationsQueued
+        } catch {
+            feedback = .saveFailed
+        }
+        return true
+    }
+
+    func cancelI2Selection() {
+        i2Selection.cancel()
     }
 
     func addPhoto(jpegData: Data, to item: ElevatorInspectionItem) async {
@@ -851,47 +906,6 @@ final class EquipmentInspectionViewModel {
 
     func cancel() async {
         await discardStagedPhotos()
-    }
-
-    func createI2Defects(for selectedIDs: Set<String>) async {
-        isI2DefectSelectionPresented = false
-        guard !selectedIDs.isEmpty else { return }
-
-        var createdCount = 0
-        for itemID in selectedIDs {
-            guard let item = items.first(where: { $0.id == itemID }) else { continue }
-            let note = comments[item.id] ?? ""
-            let techRef: TechnicalObjectReference
-            let techName: String
-            if !detail.summary.equipmentID.isEmpty {
-                techRef = TechnicalObjectReference(kind: .equipment, objectID: detail.summary.equipmentID)
-                techName = detail.summary.functionalLocationName.isEmpty ? detail.summary.title : detail.summary.functionalLocationName
-            } else {
-                techRef = TechnicalObjectReference(kind: .functionalLocation, objectID: detail.summary.functionalLocationID)
-                techName = detail.summary.functionalLocationName
-            }
-
-            let defect = DefectDraftPayload(
-                technicalObject: techRef,
-                technicalObjectName: techName,
-                dinGroup: nil,
-                priority: .medium,
-                shortText: item.title,
-                longText: note.isEmpty ? "\(form.reportTitleFallback): \(item.title)" : note,
-                attachmentIDs: []
-            )
-
-            do {
-                _ = try await offlineWorkStore.saveDefect(payload: defect, status: .pendingSynchronization)
-                createdCount += 1
-            } catch {
-                // Independent failure does not affect the completed inspection
-            }
-        }
-
-        if createdCount > 0 {
-            feedback = .i2DefectsCreated(createdCount)
-        }
     }
 
     private func discardStagedPhotos() async {

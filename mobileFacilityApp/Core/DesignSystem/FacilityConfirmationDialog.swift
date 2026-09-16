@@ -32,16 +32,46 @@ struct FacilityDialogAction: Identifiable {
 /// The inspection forms use this in place of a system alert so a warning like
 /// "Meldung abschließen?" looks the same on every form and matches the app's
 /// own dialog chrome (`SAPPreSyncDraftWarningDialog`) rather than the OS.
-struct FacilityConfirmationDialog: View {
+///
+/// A dialog that needs more than a message, such as the I2 defect selection,
+/// passes its own content and a wider frame; it keeps the same header,
+/// buttons and chrome.
+struct FacilityConfirmationDialog<Content: View>: View {
+    static var standardWidth: CGFloat { 460 }
+
     let titleKey: String
     let messageKey: String
-    var symbol: String = "exclamationmark.triangle.fill"
-    var tint: Color = FacilityTheme.orange
+    var symbol: String
+    var tint: Color
     /// `nil` makes this an acknowledgement frame: the sole supplied action is
     /// the only way out, matching a blocking legacy validation error.
-    var cancelTitleKey: String? = "common.cancel"
+    var cancelTitleKey: String?
+    var width: CGFloat
     let actions: [FacilityDialogAction]
     let cancel: () -> Void
+    let content: Content
+
+    init(
+        titleKey: String,
+        messageKey: String,
+        symbol: String = "exclamationmark.triangle.fill",
+        tint: Color = FacilityTheme.orange,
+        cancelTitleKey: String? = "common.cancel",
+        width: CGFloat = 460,
+        actions: [FacilityDialogAction],
+        cancel: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.titleKey = titleKey
+        self.messageKey = messageKey
+        self.symbol = symbol
+        self.tint = tint
+        self.cancelTitleKey = cancelTitleKey
+        self.width = width
+        self.actions = actions
+        self.cancel = cancel
+        self.content = content()
+    }
 
     /// Three or more choices do not fit side by side at a readable width, so
     /// they stack — the same rule a system alert applies.
@@ -51,10 +81,11 @@ struct FacilityConfirmationDialog: View {
         VStack(alignment: .leading, spacing: 18) {
             header
             message
+            content
             actionButtons
         }
         .padding(28)
-        .frame(width: 460, alignment: .leading)
+        .frame(width: width, alignment: .leading)
         .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         // The same defined edge the other centered overlays use
         // (`NotificationCommentEditorOverlay`), not a barely-there hairline.
@@ -108,12 +139,16 @@ struct FacilityConfirmationDialog: View {
                 }
             }
         } else {
+            // A wide dialog keeps its buttons at the standard size, on the
+            // trailing edge, instead of stretching them across the frame.
             HStack(spacing: 12) {
                 if let cancelTitleKey {
                     button(for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel))
                 }
                 ForEach(actions) { button(for: $0) }
             }
+            .frame(maxWidth: Self.standardWidth - 56)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
@@ -152,6 +187,29 @@ struct FacilityConfirmationDialog: View {
         case .destructive: FacilityTheme.red
         case .secondary: Color.black.opacity(0.06)
         }
+    }
+}
+
+extension FacilityConfirmationDialog where Content == EmptyView {
+    init(
+        titleKey: String,
+        messageKey: String,
+        symbol: String = "exclamationmark.triangle.fill",
+        tint: Color = FacilityTheme.orange,
+        cancelTitleKey: String? = "common.cancel",
+        actions: [FacilityDialogAction],
+        cancel: @escaping () -> Void
+    ) {
+        self.init(
+            titleKey: titleKey,
+            messageKey: messageKey,
+            symbol: symbol,
+            tint: tint,
+            cancelTitleKey: cancelTitleKey,
+            actions: actions,
+            cancel: cancel,
+            content: { EmptyView() }
+        )
     }
 }
 

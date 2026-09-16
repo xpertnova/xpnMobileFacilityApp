@@ -20,6 +20,11 @@ struct SAPNotificationOutgoingBatch: Sendable {
     var functionalLocations: [LegacySAPRow] = []
     /// `TO_T0211` master-data proposals (`Vorschlag`).
     var proposals: [LegacySAPRow] = []
+    /// `TO_T0284` I2 notifications created from the closed forms.
+    var i2Notifications: [LegacySAPRow] = []
+    /// `TO_T0285` documents of those I2 notifications. They reuse the parent
+    /// photos but are uploaded separately as `I2` documents.
+    var i2Documents: [SAPNotificationOutgoingDocument] = []
 
     static let empty = SAPNotificationOutgoingBatch(
         workItemIDs: [], attachmentIDs: [], processIDs: [], equipmentIDs: [],
@@ -287,9 +292,11 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                     for attachment in review.photoAttachments {
                         photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
                     }
-                    batches.append(try SAPNotificationReviewUploadBuilder.build(
+                    var batch = try SAPNotificationReviewUploadBuilder.build(
                         workItem: item, source: source, syncUserID: syncUserID, photoData: photos
-                    ))
+                    )
+                    try await addI2Notifications(review.i2Requests, source: source, to: &batch)
+                    batches.append(batch)
                 case let .elevatorInspection(inspection):
                     let page = try await cacheRepository.loadNotifications(
                         for: workerID, matching: inspection.notificationID,
@@ -344,10 +351,16 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                         )
                         pdfData = (try? ElevatorInspectionPDFRenderer.render(payload).data) ?? Data()
                     }
-                    batches.append(try SAPEquipmentInspectionUploadBuilder.build(
+                    var batch = try SAPEquipmentInspectionUploadBuilder.build(
                         workItem: item, source: source, syncUserID: syncUserID,
                         photoData: photos, pdfData: pdfData
-                    ))
+                    )
+                    // An out-of-service inspection has no positions left to
+                    // report a fault for.
+                    if !(inspection.isOutOfOperation ?? false) {
+                        try await addI2Notifications(inspection.i2Requests ?? [], source: source, to: &batch)
+                    }
+                    batches.append(batch)
                 case let .mobileLadder(draft):
                     var photos: [String: Data] = [:]
                     for attachment in draft.photoAttachments {
@@ -394,20 +407,20 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                 documents: batches.flatMap(\.documents),
                 equipment: batches.flatMap(\.equipment),
                 functionalLocations: batches.flatMap(\.functionalLocations),
-                proposals: batches.flatMap(\.proposals)
+                proposals: batches.flatMap(\.proposals),
+                i2Notifications: batches.flatMap(\.i2Notifications),
+                i2Documents: batches.flatMap(\.i2Documents)
             )
             try await outgoingStore.replaceNotificationOutgoingRows(
                 processIDs: merged.processIDs, equipmentIDs: merged.equipmentIDs,
                 headers: merged.headers,
                 values: merged.values,
-                documents: merged.documents.map { document in
-                    document.metadata.reduce(into: LegacySAPRow()) { row, entry in
-                        row[entry.key] = entry.value
-                    }
-                },
+                documents: merged.documents.map(\.legacyRow),
                 equipment: merged.equipment,
                 functionalLocations: merged.functionalLocations,
-                proposals: merged.proposals
+                proposals: merged.proposals,
+                i2Notifications: merged.i2Notifications,
+                i2Documents: merged.i2Documents.map(\.legacyRow)
             )
             for item in pending {
                 try await offlineRepository.save(copy(item, status: .synchronizing, error: nil))
@@ -441,6 +454,37 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
         )
     }
 
+    /// Adds the I2 notifications chosen for a closed form. Their documents
+    /// are copies of the form's own photo documents, so they are built from
+    /// the batch the form produced.
+    private func addI2Notifications(
+        _ requests: [I2NotificationRequest],
+        source: SAPNotificationSummary,
+        to batch: inout SAPNotificationOutgoingBatch
+    ) async throws {
+        guard !requests.isEmpty else { return }
+        guard let parent = SAPI2NotificationUploadBuilder.parentNotification(from: source) else {
+            throw SAPNotificationReviewUploadError.missingSourceNotification(source.id)
+        }
+        let output = try SAPI2NotificationUploadBuilder.build(
+            requests: requests,
+            parentNotification: parent,
+            template: try await newNotificationTemplate(),
+            parentDocuments: batch.documents,
+            syncUserID: syncUserID
+        )
+        batch.i2Notifications += output.notifications
+        batch.i2Documents += output.documents
+    }
+
+    private func newNotificationTemplate() async throws -> [String: Any]? {
+        guard let provider = cacheRepository as? any I2NotificationTemplateProviding,
+              let json = try await provider.loadNewNotificationTemplateJSON(),
+              let data = json.data(using: .utf8)
+        else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
     private func loadPhoto(_ id: String) async throws -> Data {
         do { return try await photoStore.loadJPEG(id: id) }
         catch { throw SAPNotificationReviewUploadError.missingPhoto(id) }
@@ -453,8 +497,18 @@ private extension SAPNotificationOutgoingBatch {
             workItemIDs: workItemIDs + ids, attachmentIDs: attachmentIDs,
             processIDs: processIDs, equipmentIDs: equipmentIDs, headers: headers,
             values: values, documents: documents, equipment: equipment,
-            functionalLocations: functionalLocations, proposals: proposals
+            functionalLocations: functionalLocations, proposals: proposals,
+            i2Notifications: i2Notifications, i2Documents: i2Documents
         )
+    }
+}
+
+extension SAPNotificationOutgoingDocument {
+    /// The metadata as the `TO_T0282` / `TO_T0285` row it is stored as.
+    var legacyRow: LegacySAPRow {
+        metadata.reduce(into: LegacySAPRow()) { row, entry in
+            row[entry.key] = entry.value
+        }
     }
 }
 
