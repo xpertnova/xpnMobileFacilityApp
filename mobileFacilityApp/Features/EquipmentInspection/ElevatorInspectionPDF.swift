@@ -313,22 +313,13 @@ enum ElevatorInspectionPDFRenderer {
         return currentY
     }
 
+    /// `addMasterDataToPdf`: option texts, `dd.MM.yyyy` dates, typed values.
     private static func elevatorAssetDisplayValue(
         _ characteristic: ElevatorAssetCharacteristic,
         values: [String: String]
     ) -> String {
-        let raw = values[characteristic.id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !raw.isEmpty else { return "-" }
-        let parts = characteristic.allowsMultipleValues
-            ? raw.split(separator: ";").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            : [raw]
-        return parts.map { value in
-            characteristic.options.first {
-                $0.code.caseInsensitiveCompare(value) == .orderedSame
-                    || $0.text.caseInsensitiveCompare(value) == .orderedSame
-            }?.text ?? value
-        }
-        .joined(separator: ", ")
+        let value = EquipmentMasterDataRules.displayValue(for: characteristic, value: values[characteristic.id] ?? "")
+        return value.isEmpty ? "-" : value
     }
 
     // MARK: - 4. Report Table (addReportTableAK)

@@ -4,14 +4,15 @@ import Foundation
 /// offline draft, PDF report and upload.
 ///
 /// Traced from the legacy Cordova client. `Aufzugskontrolle.controller.js`
-/// (TFM2) and `MasterDataForm.controller.js` (TFM4 Steigleitern, routed there
-/// by `App.controller.navToForm`) both extend `BaseFormController` and
+/// (TFM2, and TFM6 Feststellanlage, which `App.controller.navToForm` routes to
+/// the same controller) and `MasterDataForm.controller.js` (TFM4 Steigleitern)
+/// all extend `BaseFormController` and
 /// `HeaderFormBuilder`: the same class-characteristics header, the same
 /// `T_PROPS`-driven dropdown positions, the same "Außer Betrieb" status, the
 /// same close rules (`MIAR`/`MMAB`, `Mnot`) and the same document class
 /// `D_TFM_Wartung` / `TFM006`. Only what this type describes differs per form.
 ///
-/// Adding the next form code (TFM6, TFM8, …) means adding a case here once its
+/// Adding the next form code (TFM7, TFM8, …) means adding a case here once its
 /// legacy differences are verified — never a copy of the screen.
 enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     /// Aufzugskontrolle.
@@ -20,6 +21,8 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     case fixedLadder = "TFM4"
     /// Unterverteilung / FI-Schutzschalter (equipment type `TFMNSPV`).
     case subdistribution = "TFM7"
+    /// Feststellanlage (equipment type `TFMFSA`).
+    case holdOpenSystem = "TFM6"
 
     init?(formCode: String) {
         self.init(rawValue: formCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
@@ -36,7 +39,8 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     ///
     /// `MasterDataForm.getSelect` has the position 3 branch commented out and
     /// its `buildPDF` passes `hasMaterial = false`, so TFM4 never shows or
-    /// posts a material value even when SAP delivers the property.
+    /// posts a material value even when SAP delivers the property. TFM6 runs
+    /// on `Aufzugskontrolle`, whose `getCheckBox` binds the position 3 `CBOX`.
     var supportsMaterial: Bool {
         variant.hasMaterialColumn
     }
@@ -44,13 +48,14 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     // MARK: - Master data (HeaderFormBuilder)
 
     /// Equipment types (`EQART`) whose cached class characteristics belong to
-    /// this form. `constEqartSteusMap` maps `TFMLEITER` to TFM4; TFM2 covers
-    /// the passenger, freight and related elevator types.
+    /// this form. `constEqartSteusMap` maps `TFMLEITER` to TFM4 and `TFMFSA`
+    /// to TFM6; TFM2 covers the passenger, freight and related elevator types.
     var equipmentTypes: Set<String> {
         switch self {
         case .elevator: ["TFMPERS", "TFMLAST", "TFMBEFAHR", "TFMKLGUT"]
         case .fixedLadder: ["TFMLEITER"]
         case .subdistribution: ["TFMNSPV"]
+        case .holdOpenSystem: ["TFMFSA"]
         }
     }
 
@@ -59,8 +64,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     var fallbackClassName: String? {
         switch self {
         case .elevator: "TFMAUFZUG"
-        case .fixedLadder: nil
-        case .subdistribution: nil
+        case .fixedLadder, .subdistribution, .holdOpenSystem: nil
         }
     }
 
@@ -68,8 +72,9 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     ///
     /// `HeaderFormBuilder._afterMasterdata4Header` and
     /// `_afterGetKlassenMerkmale` call `showInvalidData` ("Klassenmerkmale
-    /// nicht gefunden.") and navigate back for every form except
-    /// `Aufzugskontrolle`.
+    /// nicht gefunden.") and navigate back unless `T0281.FORMNR` is `TFM2`.
+    /// The check is on the form code, not the controller, so TFM6 is blocked
+    /// even though it shares the `Aufzugskontrolle` screen.
     var requiresMasterData: Bool {
         self != .elevator
     }
@@ -81,6 +86,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.inspection.title"
         case .fixedLadder: "fixedLadder.inspection.title"
         case .subdistribution: "subdistribution.title"
+        case .holdOpenSystem: "holdOpenSystem.inspection.title"
         }
     }
 
@@ -90,6 +96,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "🛗"
         case .fixedLadder: "🪜"
         case .subdistribution: "⚡️"
+        case .holdOpenSystem: "🚪"
         }
     }
 
@@ -98,6 +105,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.title"
         case .fixedLadder: "fixedLadder.masterData.title"
         case .subdistribution: "subdistribution.masterData.title"
+        case .holdOpenSystem: "holdOpenSystem.masterData.title"
         }
     }
 
@@ -106,6 +114,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.subtitle"
         case .fixedLadder: "fixedLadder.masterData.subtitle"
         case .subdistribution: "subdistribution.masterData.subtitle"
+        case .holdOpenSystem: "holdOpenSystem.masterData.subtitle"
         }
     }
 
@@ -114,6 +123,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.loading"
         case .fixedLadder: "fixedLadder.masterData.loading"
         case .subdistribution: "subdistribution.masterData.loading"
+        case .holdOpenSystem: "holdOpenSystem.masterData.loading"
         }
     }
 
@@ -122,6 +132,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.unavailable.title"
         case .fixedLadder: "fixedLadder.masterData.unavailable.title"
         case .subdistribution: "subdistribution.masterData.unavailable.title"
+        case .holdOpenSystem: "holdOpenSystem.masterData.unavailable.title"
         }
     }
 
@@ -130,6 +141,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.assetData.unavailable.message"
         case .fixedLadder: "fixedLadder.masterData.unavailable.message"
         case .subdistribution: "subdistribution.masterData.unavailable.message"
+        case .holdOpenSystem: "holdOpenSystem.masterData.unavailable.message"
         }
     }
 
@@ -138,6 +150,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.unavailable.title"
         case .fixedLadder: "fixedLadder.unavailable.title"
         case .subdistribution: "subdistribution.unavailable.title"
+        case .holdOpenSystem: "holdOpenSystem.unavailable.title"
         }
     }
 
@@ -146,6 +159,7 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "elevator.closeDialog.message"
         case .fixedLadder: "fixedLadder.closeDialog.message"
         case .subdistribution: "subdistribution.closeDialog.message"
+        case .holdOpenSystem: "holdOpenSystem.closeDialog.message"
         }
     }
 
@@ -155,11 +169,14 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
     /// The PDF is an SAP document and is always German, like the legacy
     /// `PdfBuilder` output. `Aufzugskontrolle.buildPDF` falls back to
     /// "Aufzugskontrolle"; `MasterDataForm.buildPDF` always uses `TXTBZ`.
+    /// TFM6 cannot open without class characteristics, so its fallback only
+    /// covers a class definition with an empty `TXTBZ`.
     var reportTitleFallback: String {
         switch self {
         case .elevator: "Aufzugskontrolle"
         case .fixedLadder: "Steigleitern"
         case .subdistribution: "Unterverteilung"
+        case .holdOpenSystem: "Feststellanlage"
         }
     }
 
@@ -169,11 +186,12 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
         case .elevator: "Aufzug Merkmale"
         case .fixedLadder: "Steigleiter Merkmale"
         case .subdistribution: "Unterverteilung Merkmale"
+        case .holdOpenSystem: "Feststellanlage Merkmale"
         }
     }
 
     /// `docClass` / `valueList` of the legacy controller. Both
-    /// `Aufzugskontrolle` and `MasterDataForm` declare `D_TFM_Wartung` /
+    /// `Aufzugskontrolle` (TFM2, TFM6) and `MasterDataForm` declare `D_TFM_Wartung` /
     /// `TFM006`.
     var documentClass: String { "D_TFM_Wartung" }
     var documentValueList: String { "TFM006" }

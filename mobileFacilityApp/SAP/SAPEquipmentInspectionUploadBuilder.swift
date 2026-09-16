@@ -21,9 +21,10 @@ enum SAPEquipmentInspectionUploadError: LocalizedError {
 }
 
 /// Builds the outgoing `TO_T0281`/`TO_T0283`/`TO_T0282` batch of a closed
-/// shared equipment inspection (TFM2, TFM4). The form code, the material
+/// shared equipment inspection (TFM2, TFM4, TFM6). The form code, the material
 /// column and the document mapping come from the draft's
-/// `EquipmentInspectionForm`.
+/// `EquipmentInspectionForm`. An edited class-characteristics header adds its
+/// `TO_T0266`/`TO_T0265` master record and `TO_T0211` proposals.
 enum SAPEquipmentInspectionUploadBuilder {
     static func build(
         workItem: OfflineWorkItem,
@@ -208,6 +209,58 @@ enum SAPEquipmentInspectionUploadBuilder {
             date: createdDate, time: createdTime
         ))
 
+        // Header characteristics: `_addItemToT0283(ATNAM, ATBEZ)` with the
+        // value `onChangeHeader` stored.
+        let masterData = inspection.masterData
+        for headerValue in masterData?.headerValues ?? [] {
+            values.append(valueRow(
+                client: source.client, processID: processID, notificationID: inspection.notificationID,
+                elementID: headerValue.elementID, value: headerValue.value, userID: userID,
+                date: createdDate, time: createdTime, label: headerValue.label
+            ))
+        }
+
+        // `insertSaveProcessVorschlag`: one `TO_T0211` row per proposal. The
+        // legacy type leaves `MANDT` empty.
+        let proposals: [LegacySAPRow] = (masterData?.proposals ?? [:])
+            .filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { $0.key < $1.key }
+            .map { elementID, proposal in
+                [
+                    "MANDT": "", "REQID": "", "VORGANGSNR": processID,
+                    "ELEMENTNR": elementID, "QMNUM": inspection.notificationID,
+                    "STRNO": masterData?.functionalLocationID ?? "",
+                    "EQUNR": masterData?.equipmentID ?? "",
+                    "CREATEDBY": userID, "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
+                    "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime, "MODIFIEDBY": userID,
+                    "FELDWERT": proposal, "AKTIV": "X"
+                ]
+            }
+
+        // `runSetMasterdata4Header`: the whole master record, packed like
+        // every `FELDWERT`, to `TO_T0266` for an equipment and `TO_T0265` for
+        // a technical place.
+        var equipment: [LegacySAPRow] = []
+        var functionalLocations: [LegacySAPRow] = []
+        var equipmentIDs: [String] = []
+        if let masterData,
+           let payloadJSON = masterData.updatedMasterPayloadJSON,
+           let payloadData = payloadJSON.data(using: .utf8),
+           let payload = try? JSONSerialization.jsonObject(with: payloadData) {
+            let feldwert = try SAPLegacyDataExchangeCodec.packedFeldwert(payload)
+            if !masterData.equipmentID.isEmpty {
+                equipment.append([
+                    "MANDT": "", "REQID": "", "STRNO": masterData.functionalLocationID,
+                    "EQUNR": masterData.equipmentID, "FELDWERT": feldwert
+                ])
+                equipmentIDs.append(masterData.equipmentID)
+            } else if !masterData.functionalLocationID.isEmpty {
+                functionalLocations.append([
+                    "MANDT": "", "REQID": "", "STRNO": masterData.functionalLocationID, "FELDWERT": feldwert
+                ])
+            }
+        }
+
         // T_0282 documents: 1 PDF + up to 20 photos
         var documents: [SAPNotificationOutgoingDocument] = []
 
@@ -262,24 +315,26 @@ enum SAPEquipmentInspectionUploadBuilder {
             workItemIDs: [workItem.id],
             attachmentIDs: inspection.photoAttachments.map(\.localAttachmentID),
             processIDs: [processID],
-            equipmentIDs: [],
+            equipmentIDs: equipmentIDs,
             headers: [header],
             values: values,
             documents: documents,
-            equipment: []
+            equipment: equipment,
+            functionalLocations: functionalLocations,
+            proposals: proposals
         )
     }
 
     private static func valueRow(
         client: String, processID: String, notificationID: String, elementID: String,
-        value: String, userID: String, date: String, time: String
+        value: String, userID: String, date: String, time: String, label: String = ""
     ) -> LegacySAPRow {
         [
             "MANDT": client, "REQID": "", "VORGANGSNR": processID,
             "ELEMENTNR": elementID, "QMNUM": notificationID,
             "CREATEDBY": userID, "CREATEDDATE": date, "CREATEDTIME": time,
             "MODIFIEDDATE": date, "MODIFIEDTIME": time, "MODIFIEDBY": userID,
-            "FELDBEZEICHNUNG": "", "FELDWERT": value
+            "FELDBEZEICHNUNG": label, "FELDWERT": value
         ]
     }
 
