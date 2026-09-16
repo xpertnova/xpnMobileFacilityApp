@@ -77,20 +77,17 @@ struct WartungsplanDetailView: View {
         } message: {
             Text("mobileLadder.feedback.saved.message")
         }
-        .alert(
-            "notifications.detail.closeConfirmation.title",
-            isPresented: $isCloseConfirmationPresented
+        .facilityConfirmationDialog(
+            isPresented: $isCloseConfirmationPresented,
+            titleKey: "notifications.detail.closeConfirmation.title",
+            messageKey: "notifications.detail.closeConfirmation.message",
+            confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
-            Button("notifications.detail.closeConfirmation.confirm", role: .destructive) {
-                Task {
-                    if await model.save(closed: true) {
-                        dismiss()
-                    }
+            Task {
+                if await model.save(closed: true) {
+                    dismiss()
                 }
             }
-            Button("common.cancel", role: .cancel) { }
-        } message: {
-            Text("notifications.detail.closeConfirmation.message")
         }
         .alert(item: $model.feedback) { feedback in
             Alert(
@@ -131,81 +128,56 @@ struct WartungsplanDetailView: View {
         NotificationFormHeaderCard(info: headerInfo)
     }
 
-    /// Inspection checklist table card with columns: No., [i], Reviewed asset, Result, Photo, Comment.
-    private var inspectionCard: some View {
-        VStack(spacing: 0) {
-            tableHeader
-            Divider()
+    /// TFM1 Wartungsplan. The shared checklist configured by its form code:
+    /// a two-value segmented result, no action or material column, and no
+    /// header status (`BaseFormController.buildDefaultElements` returns early
+    /// for TFM1).
+    private var variant: InspectionFormVariant {
+        InspectionFormVariant.forFormCode("TFM1")
+    }
 
-            if detail.inspectionItems.isEmpty {
-                ContentUnavailableView(
-                    "notifications.detail.noInspectionItems.title",
-                    systemImage: "list.bullet",
-                    description: Text("notifications.detail.noInspectionItems.message")
-                )
-                .frame(maxWidth: .infinity, minHeight: 180)
-            } else {
-                ForEach(Array(detail.inspectionItems.enumerated()), id: \.element.id) { index, item in
-                    WartungsplanItemRow(
-                        item: item,
-                        number: index + 1,
-                        result: model.results[item.id],
-                        isCommentMissing: model.isCommentMissing(for: item.id),
-                        isReadOnly: model.isEditingDisabled,
-                        selectResult: { newResult in
-                            guard !model.isEditingDisabled else { return }
-                            model.results[item.id] = newResult
-                            // When defect is selected and comment is empty, prompt comment overlay immediately.
-                            if newResult == .yes && (model.comments[item.id]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) {
-                                editingCommentID = item.id
-                            }
-                        },
-                        attachments: model.attachments(for: item.id),
-                        openPhotos: { photoWorkspaceItemID = item.id },
-                        comment: model.comments[item.id, default: ""],
-                        editComment: {
-                            guard !model.isEditingDisabled else { return }
-                            editingCommentID = item.id
-                        }
-                    )
-
-                    if index < detail.inspectionItems.count - 1 {
-                        Divider().padding(.leading, 22)
-                    }
-                }
-            }
-        }
-        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.06))
+    private var formItems: [InspectionFormItem] {
+        detail.inspectionItems.enumerated().map { index, item in
+            item.inspectionFormItem(number: index + 1)
         }
     }
 
-    private var tableHeader: some View {
-        HStack(spacing: 12) {
-            Text("notifications.detail.numberColumn")
-                .frame(width: 42, alignment: .leading)
-
-            Color.clear
-                .frame(width: 28, height: 1)
-
-            Text("wartungsplan.column.reviewedAsset")
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text("notifications.detail.result")
-                .frame(width: 150, alignment: .center)
-
-            Text("notifications.detail.photo")
-                .frame(width: 52, alignment: .center)
-
-            Text("notifications.detail.comment")
-                .frame(width: 58, alignment: .center)
-        }
-        .font(.subheadline.weight(.bold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 14)
+    private var inspectionCard: some View {
+        InspectionFormTable(
+            variant: variant,
+            items: formItems,
+            state: { item in
+                InspectionFormItemState(
+                    resultID: model.results[item.id]?.optionID,
+                    comment: model.comments[item.id, default: ""],
+                    photoCount: model.attachments(for: item.id).count
+                )
+            },
+            isEditable: !model.isEditingDisabled,
+            emptyState: InspectionFormEmptyState(
+                titleKey: "notifications.detail.noInspectionItems.title",
+                messageKey: "notifications.detail.noInspectionItems.message",
+                systemImage: "list.bullet"
+            ),
+            actions: InspectionFormActions(
+                selectResult: { item, option in
+                    guard !model.isEditingDisabled,
+                          let result = NotificationReviewResult(optionID: option.id)
+                    else { return }
+                    model.results[item.id] = result
+                    // `WartungsPlan.controller.js.onBefundChange` opens the
+                    // comment popover as soon as a defect is picked.
+                    if result == .yes, model.isCommentMissing(for: item.id) {
+                        editingCommentID = item.id
+                    }
+                },
+                openPhotos: { photoWorkspaceItemID = $0.id },
+                editComment: { item in
+                    guard !model.isEditingDisabled else { return }
+                    editingCommentID = item.id
+                }
+            )
+        )
     }
 
     /// Bottom bar reused from Mobile Ladder (FacilityInspectionActionBar).
@@ -301,91 +273,5 @@ struct WartungsplanDetailView: View {
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
         }
-    }
-}
-
-private struct WartungsplanItemRow: View {
-    let item: SAPNotificationDetail.InspectionItem
-    let number: Int
-    let result: NotificationReviewResult?
-    let isCommentMissing: Bool
-    let isReadOnly: Bool
-    let selectResult: (NotificationReviewResult) -> Void
-    let attachments: [NotificationPhotoAttachment]
-    let openPhotos: () -> Void
-    let comment: String
-    let editComment: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(number, format: .number)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .leading)
-
-            HStack(spacing: 10) {
-                NotificationInfoButton(information: item.information)
-
-                Text(item.title)
-                    .font(.body)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            segmentedResultControl
-                .frame(width: 150)
-
-            NotificationPhotoButton(count: attachments.count, action: openPhotos)
-
-            NotificationCommentButton(
-                hasComment: !comment.isEmpty,
-                isMissing: isCommentMissing,
-                isReadOnly: isReadOnly,
-                action: editComment
-            )
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 10)
-        .frame(minHeight: 64)
-    }
-
-    /// Segmented result control with [ Nein | Ja ] matching legacy screenshot styling.
-    private var segmentedResultControl: some View {
-        HStack(spacing: 0) {
-            Button {
-                selectResult(.no)
-            } label: {
-                Text("notifications.detail.result.no")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(result == .no ? .white : FacilityTheme.blue)
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .background(result == .no ? FacilityTheme.blue : Color.clear)
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly)
-
-            Rectangle()
-                .fill(FacilityTheme.blue.opacity(0.35))
-                .frame(width: 1, height: 36)
-
-            Button {
-                selectResult(.yes)
-            } label: {
-                Text("notifications.detail.result.yes")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(result == .yes ? .white : FacilityTheme.blue)
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .background(result == .yes ? FacilityTheme.blue : Color.clear)
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly)
-        }
-        .frame(width: 150)
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(FacilityTheme.blue, lineWidth: 1.5)
-        )
     }
 }

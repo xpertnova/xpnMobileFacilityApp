@@ -1,0 +1,253 @@
+import SwiftUI
+
+/// One action of a `FacilityConfirmationDialog`.
+struct FacilityDialogAction: Identifiable {
+    /// How prominently the action is drawn. There is at most one `primary` or
+    /// `destructive` action in a dialog; the rest are `secondary`.
+    enum Emphasis: Equatable {
+        case primary
+        case destructive
+        case secondary
+    }
+
+    let id: String
+    let titleKey: String
+    let emphasis: Emphasis
+    let perform: () -> Void
+
+    init(
+        titleKey: String,
+        emphasis: Emphasis = .secondary,
+        perform: @escaping () -> Void
+    ) {
+        self.id = titleKey
+        self.titleKey = titleKey
+        self.emphasis = emphasis
+        self.perform = perform
+    }
+}
+
+/// A centered, framed confirmation dialog.
+///
+/// The inspection forms use this in place of a system alert so a warning like
+/// "Meldung abschließen?" looks the same on every form and matches the app's
+/// own dialog chrome (`SAPPreSyncDraftWarningDialog`) rather than the OS.
+struct FacilityConfirmationDialog: View {
+    let titleKey: String
+    let messageKey: String
+    var symbol: String = "exclamationmark.triangle.fill"
+    var tint: Color = FacilityTheme.orange
+    var cancelTitleKey: String = "common.cancel"
+    let actions: [FacilityDialogAction]
+    let cancel: () -> Void
+
+    /// Three or more choices do not fit side by side at a readable width, so
+    /// they stack — the same rule a system alert applies.
+    private var stacksActions: Bool { actions.count > 2 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header
+            message
+            actionButtons
+        }
+        .padding(28)
+        .frame(width: 460, alignment: .leading)
+        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        // The same defined edge the other centered overlays use
+        // (`NotificationCommentEditorOverlay`), not a barely-there hairline.
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(.gray.opacity(0.28), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.24), radius: 28, y: 14)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: symbol)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(tint)
+            }
+            .accessibilityHidden(true)
+
+            // No close glyph: the Cancel action already dismisses, and two
+            // ways out of one dialog only invite a mis-tap.
+            Text(LocalizedStringKey(titleKey))
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .foregroundStyle(FacilityTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+        }
+    }
+
+    private var message: some View {
+        Text(LocalizedStringKey(messageKey))
+            .font(.subheadline)
+            .foregroundStyle(FacilityTheme.ink)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        if stacksActions {
+            VStack(spacing: 10) {
+                ForEach(actions) { button(for: $0) }
+                button(
+                    for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel)
+                )
+            }
+        } else {
+            HStack(spacing: 12) {
+                button(
+                    for: FacilityDialogAction(titleKey: cancelTitleKey, perform: cancel)
+                )
+                ForEach(actions) { button(for: $0) }
+            }
+        }
+    }
+
+    private func button(for action: FacilityDialogAction) -> some View {
+        Button(action: action.perform) {
+            Text(LocalizedStringKey(action.titleKey))
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .foregroundStyle(foreground(for: action.emphasis))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(
+                    background(for: action.emphasis),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .overlay {
+                    if action.emphasis == .secondary {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(.gray.opacity(0.28), lineWidth: 1)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func foreground(for emphasis: FacilityDialogAction.Emphasis) -> Color {
+        switch emphasis {
+        case .primary, .destructive: .white
+        case .secondary: FacilityTheme.ink
+        }
+    }
+
+    private func background(for emphasis: FacilityDialogAction.Emphasis) -> Color {
+        switch emphasis {
+        case .primary: FacilityTheme.accent
+        case .destructive: FacilityTheme.red
+        case .secondary: Color.black.opacity(0.06)
+        }
+    }
+}
+
+private struct FacilityConfirmationDialogModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    let titleKey: String
+    let messageKey: String
+    let symbol: String
+    let tint: Color
+    let actions: [FacilityDialogAction]
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    func body(content: Content) -> some View {
+        content.overlay {
+            if isPresented {
+                ZStack {
+                    Color.black.opacity(0.32)
+                        .ignoresSafeArea()
+                        .onTapGesture { isPresented = false }
+
+                    FacilityConfirmationDialog(
+                        titleKey: titleKey,
+                        messageKey: messageKey,
+                        symbol: symbol,
+                        tint: tint,
+                        actions: actions.map { action in
+                            FacilityDialogAction(
+                                titleKey: action.titleKey,
+                                emphasis: action.emphasis
+                            ) {
+                                isPresented = false
+                                action.perform()
+                            }
+                        },
+                        cancel: { isPresented = false }
+                    )
+                    .padding(28)
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(
+            accessibilityReduceMotion ? nil : .easeOut(duration: 0.18),
+            value: isPresented
+        )
+    }
+}
+
+extension View {
+    /// Presents a centered confirmation dialog instead of a system alert.
+    ///
+    /// Every action dismisses the dialog before it runs, so a call site only
+    /// supplies what the choice does.
+    func facilityConfirmationDialog(
+        isPresented: Binding<Bool>,
+        titleKey: String,
+        messageKey: String,
+        symbol: String = "exclamationmark.triangle.fill",
+        tint: Color = FacilityTheme.orange,
+        actions: [FacilityDialogAction]
+    ) -> some View {
+        modifier(
+            FacilityConfirmationDialogModifier(
+                isPresented: isPresented,
+                titleKey: titleKey,
+                messageKey: messageKey,
+                symbol: symbol,
+                tint: tint,
+                actions: actions
+            )
+        )
+    }
+
+    /// Convenience for the common confirm/cancel warning.
+    func facilityConfirmationDialog(
+        isPresented: Binding<Bool>,
+        titleKey: String,
+        messageKey: String,
+        confirmTitleKey: String,
+        symbol: String = "exclamationmark.triangle.fill",
+        tint: Color = FacilityTheme.orange,
+        isDestructive: Bool = false,
+        confirm: @escaping () -> Void
+    ) -> some View {
+        facilityConfirmationDialog(
+            isPresented: isPresented,
+            titleKey: titleKey,
+            messageKey: messageKey,
+            symbol: symbol,
+            tint: tint,
+            actions: [
+                FacilityDialogAction(
+                    titleKey: confirmTitleKey,
+                    emphasis: isDestructive ? .destructive : .primary,
+                    perform: confirm
+                )
+            ]
+        )
+    }
+}

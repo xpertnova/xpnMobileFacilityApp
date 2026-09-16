@@ -48,7 +48,18 @@ final class NotificationReviewViewModel {
     }
 
     var canClose: Bool {
-        detail.inspectionItems.allSatisfy { results[$0.id] != nil }
+        guard !detail.inspectionItems.isEmpty else { return false }
+        guard detail.inspectionItems.allSatisfy({ results[$0.id] != nil }) else { return false }
+        // `Rundgang.controller.js` refuses a defect without a comment in
+        // `checkInputConstraints`, exactly as TFM1 does. The two forms share
+        // the rule, so they share `InspectionFormRules`.
+        return detail.inspectionItems.allSatisfy { !isCommentMissing(for: $0.id) }
+    }
+
+    /// Whether this position records a defect but no comment.
+    func isCommentMissing(for itemID: String) -> Bool {
+        guard results[itemID] == .yes else { return false }
+        return comments[itemID]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
     }
 
     var isEditingDisabled: Bool { isLoading || isClosedLocally }

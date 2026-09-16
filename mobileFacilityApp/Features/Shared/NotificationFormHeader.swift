@@ -177,28 +177,14 @@ struct NotificationFormHeaderBar: View {
 }
 
 /// Information card of the shared header: every notification attribute the
-/// legacy `FormHeader` fragment carried, plus the optional execution date.
+/// legacy `FormHeader` fragment carried.
 ///
-/// The execution date was never part of the legacy `FormHeader` fragment — it
-/// lived in the `form.date` row of `www/fragment/TableFormHeader.fragment.xml`,
-/// which each form view could show or hide. That is why the date is optional
-/// here rather than a fixed part of the card: passing `nil` renders the same
-/// header without it.
+/// The execution date and the "Außer Betrieb" / "Demontiert" status are
+/// deliberately *not* here. The legacy client keeps them in
+/// `www/fragment/TableFormHeader.fragment.xml`, on one toolbar band directly
+/// above the position table, so they live on `InspectionFormTable` instead.
 struct NotificationFormHeaderCard: View {
     let info: NotificationFormHeaderInfo
-    /// Execution date (`performedOn`), or `nil` for a form that has no date in
-    /// its header.
-    ///
-    /// The legacy `form.date` row is visible by default, so most forms pass a
-    /// binding: `Rundgang`/TFM3 and every other form on the generic review
-    /// screen, and `Aufzugskontrolle`/TFM2. Two screens pass `nil`:
-    /// - `WartungsPlan`/TFM1, the one form whose controller hides the row
-    ///   (`WartungsPlan.controller.js`, `tableOutofOrderFragment` → `false`);
-    /// - `CreateNewForm`/TFM5, which edits the date elsewhere on the screen,
-    ///   next to the "Demontiert" control.
-    var performedOn: Binding<Date>?
-    /// Ignored when `performedOn` is `nil`.
-    var isPerformedOnDisabled: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 30) {
@@ -256,31 +242,6 @@ struct NotificationFormHeaderCard: View {
             }
 
             Spacer(minLength: 0)
-
-            if let performedOn {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("notifications.detail.performedOn")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    DatePicker(
-                        "notifications.detail.performedOn",
-                        selection: performedOn,
-                        displayedComponents: .date
-                    )
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                    .disabled(isPerformedOnDisabled)
-                    .padding(.horizontal, 8)
-                    .frame(minHeight: 44)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(.gray.opacity(0.22))
-                    }
-                }
-                .frame(width: 190, alignment: .leading)
-            }
         }
         .facilityCard(padding: 22)
     }

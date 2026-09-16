@@ -27,7 +27,6 @@ struct NotificationPhotoButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(Text("notifications.detail.photo"))
         .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), count)))
-        .frame(width: 52)
     }
 }
 
@@ -56,7 +55,6 @@ struct NotificationCommentButton: View {
         .buttonStyle(.plain)
         .disabled(isReadOnly)
         .accessibilityLabel(Text("notifications.detail.comment"))
-        .frame(width: 58)
     }
 }
 

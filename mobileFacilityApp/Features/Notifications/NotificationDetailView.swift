@@ -75,16 +75,13 @@ struct NotificationDetailView: View {
                 }
             )
         }
-        .alert(
-            "notifications.detail.closeConfirmation.title",
-            isPresented: $isCloseConfirmationPresented
+        .facilityConfirmationDialog(
+            isPresented: $isCloseConfirmationPresented,
+            titleKey: "notifications.detail.closeConfirmation.title",
+            messageKey: "notifications.detail.closeConfirmation.message",
+            confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
-            Button("notifications.detail.closeConfirmation.confirm", role: .destructive) {
-                Task { await model.save(closed: true) }
-            }
-            Button("common.cancel", role: .cancel) { }
-        } message: {
-            Text("notifications.detail.closeConfirmation.message")
+            Task { await model.save(closed: true) }
         }
     }
 
@@ -139,81 +136,66 @@ struct NotificationDetailView: View {
         )
     }
 
+    /// The execution date lives on the checklist toolbar, where the legacy
+    /// `form.date` row of `TableFormHeader.fragment.xml` puts it.
     private var metadataCard: some View {
-        NotificationFormHeaderCard(
-            info: headerInfo,
-            performedOn: Binding(
-                get: { model.performedOn },
-                set: { model.performedOn = $0 }
-            ),
-            isPerformedOnDisabled: isEditingDisabled
-        )
+        NotificationFormHeaderCard(info: headerInfo)
+    }
+
+    /// TFM3 Rundgang. Same shared checklist as every other form, configured
+    /// by its form code: a two-value segmented result, no action or material
+    /// column, and no header status.
+    private var variant: InspectionFormVariant {
+        InspectionFormVariant.forFormCode("TFM3")
+    }
+
+    private var formItems: [InspectionFormItem] {
+        detail.inspectionItems.enumerated().map { index, item in
+            item.inspectionFormItem(number: index + 1)
+        }
     }
 
     private var inspectionCard: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("notifications.detail.numberColumn")
-                    .frame(width: 42, alignment: .leading)
-                Color.clear
-                    .frame(width: 28, height: 1)
-                Text("notifications.detail.inspectionPoint")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("notifications.detail.result")
-                    .frame(width: 130, alignment: .center)
-                Text("notifications.detail.photo")
-                    .frame(width: 52, alignment: .center)
-                Text("notifications.detail.comment")
-                    .frame(width: 58, alignment: .center)
-            }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
-
-            Divider()
-
-            if detail.inspectionItems.isEmpty {
-                ContentUnavailableView(
-                    "notifications.detail.noInspectionItems.title",
-                    systemImage: "list.bullet",
-                    description: Text("notifications.detail.noInspectionItems.message")
+        InspectionFormTable(
+            variant: variant,
+            items: formItems,
+            state: { item in
+                InspectionFormItemState(
+                    resultID: model.results[item.id]?.optionID,
+                    comment: model.comments[item.id, default: ""],
+                    photoCount: model.attachments(for: item.id).count
                 )
-                .frame(maxWidth: .infinity, minHeight: 180)
-            } else {
-                ForEach(Array(detail.inspectionItems.enumerated()), id: \.element.id) { index, item in
-                    InspectionItemRow(
-                        item: item,
-                        number: index + 1,
-                        result: model.results[item.id],
-                        isResultMissing: model.results[item.id] == nil,
-                        isReadOnly: isEditingDisabled,
-                        selectResult: {
-                            guard !isEditingDisabled else { return }
-                            model.results[item.id] = $0
-                        },
-                        attachments: model.attachments(for: item.id),
-                        openPhotos: { photoWorkspaceItemID = item.id },
-                        comment: model.comments[item.id, default: ""],
-                        editComment: {
-                            guard !isEditingDisabled else { return }
-                            editingCommentID = item.id
-                        }
-                    )
-                    if index < detail.inspectionItems.count - 1 {
-                        Divider().padding(.leading, 22)
+            },
+            isEditable: !isEditingDisabled,
+            emptyState: InspectionFormEmptyState(
+                titleKey: "notifications.detail.noInspectionItems.title",
+                messageKey: "notifications.detail.noInspectionItems.message",
+                systemImage: "list.bullet"
+            ),
+            performedOn: variant.showsPerformedOnDate
+                ? Binding(get: { model.performedOn }, set: { model.performedOn = $0 })
+                : nil,
+            isPerformedOnDisabled: isEditingDisabled,
+            actions: InspectionFormActions(
+                selectResult: { item, option in
+                    guard !isEditingDisabled,
+                          let result = NotificationReviewResult(optionID: option.id)
+                    else { return }
+                    model.results[item.id] = result
+                    // `Rundgang.controller.js.onBefundChange` opens the comment
+                    // popover as soon as a defect is picked, because closing
+                    // the notification then requires one.
+                    if result == .yes, model.isCommentMissing(for: item.id) {
+                        editingCommentID = item.id
                     }
+                },
+                openPhotos: { photoWorkspaceItemID = $0.id },
+                editComment: { item in
+                    guard !isEditingDisabled else { return }
+                    editingCommentID = item.id
                 }
-            }
-        }
-        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        // A shadow around one long scrolling surface forces expensive
-        // off-screen compositing. A subtle border keeps the same card edge
-        // without making scroll performance depend on checklist height.
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.06))
-        }
+            )
+        )
     }
 
     private func commentBinding(for itemID: String) -> Binding<String> {
@@ -275,81 +257,5 @@ private extension NotificationReviewViewModel.Feedback {
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
         }
-    }
-}
-
-private struct InspectionItemRow: View {
-    let item: SAPNotificationDetail.InspectionItem
-    let number: Int
-    let result: NotificationReviewResult?
-    let isResultMissing: Bool
-    let isReadOnly: Bool
-    let selectResult: (NotificationReviewResult) -> Void
-    let attachments: [NotificationPhotoAttachment]
-    let openPhotos: () -> Void
-    let comment: String
-    let editComment: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Text(number, format: .number)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 42, alignment: .leading)
-
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(FacilityTheme.red)
-                    .frame(width: 28, height: 52)
-                    .opacity(isResultMissing ? 1 : 0)
-                    .accessibilityLabel(Text("notifications.detail.validation.incompleteItem"))
-                    .accessibilityHidden(!isResultMissing)
-
-                HStack(spacing: 10) {
-                    NotificationInfoButton(information: item.information)
-
-                    Text(item.title)
-                        .font(.body)
-                        .foregroundStyle(FacilityTheme.ink)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                resultControl
-                    .frame(width: 130)
-
-                NotificationPhotoButton(count: attachments.count, action: openPhotos)
-
-                NotificationCommentButton(
-                    hasComment: !comment.isEmpty,
-                    isReadOnly: isReadOnly,
-                    action: editComment
-                )
-            }
-
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 10)
-        .frame(minHeight: 64)
-    }
-
-    private var resultControl: some View {
-        HStack(spacing: 0) {
-            resultButton(.no, titleKey: "notifications.detail.result.no")
-            resultButton(.yes, titleKey: "notifications.detail.result.yes")
-        }
-        .background(Color(white: 0.94), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func resultButton(_ value: NotificationReviewResult, titleKey: String) -> some View {
-        Button { selectResult(value) } label: {
-            Text(LocalizedStringKey(titleKey))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(result == value ? .white : .secondary)
-                .frame(maxWidth: .infinity, minHeight: 38)
-                .background(result == value ? FacilityTheme.accent : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .disabled(isReadOnly)
     }
 }

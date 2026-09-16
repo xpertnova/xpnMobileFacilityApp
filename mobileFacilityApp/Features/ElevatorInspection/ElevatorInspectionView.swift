@@ -33,8 +33,8 @@ struct TFM2ElevatorInspectionView: View {
 
     var body: some View {
         ZStack {
-            if let item = photoWorkspaceItem {
-                photoWorkspace(for: item)
+            if let photoWorkspaceItemID {
+                photoWorkspace(for: photoWorkspaceItemID)
                     .transition(PhotoWorkspaceMotion.destination)
                     .zIndex(1)
             } else {
@@ -86,22 +86,41 @@ struct TFM2ElevatorInspectionView: View {
                 }
             )
         }
-        .confirmationDialog(
-            "elevator.closeDialog.title",
-            isPresented: $model.isStatusDecisionPresented,
-            titleVisibility: .visible
+        .facilityConfirmationDialog(
+            isPresented: $model.isCloseConfirmationPresented,
+            titleKey: "notifications.detail.closeConfirmation.title",
+            messageKey: "notifications.detail.closeConfirmation.message",
+            confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
-            Button("elevator.closeDialog.leaveOpen") {
-                Task { await model.confirmStatusDecision(.leaveOpen) }
-            }
-            Button("elevator.closeDialog.close") {
-                Task { await model.confirmStatusDecision(.close) }
-            }
-            Button("common.cancel", role: .cancel) {
-                model.cancelStatusDecision()
-            }
-        } message: {
-            Text("elevator.closeDialog.message")
+            Task { await model.confirmClose() }
+        }
+        // A defective inspection asks for a status instead of a plain
+        // confirmation, in the same framed dialog.
+        .facilityConfirmationDialog(
+            isPresented: $model.isStatusDecisionPresented,
+            titleKey: "elevator.closeDialog.title",
+            messageKey: "elevator.closeDialog.message",
+            actions: [
+                FacilityDialogAction(titleKey: "elevator.closeDialog.leaveOpen") {
+                    Task { await model.confirmStatusDecision(.leaveOpen) }
+                },
+                FacilityDialogAction(
+                    titleKey: "elevator.closeDialog.close",
+                    emphasis: .primary
+                ) {
+                    Task { await model.confirmStatusDecision(.close) }
+                }
+            ]
+        )
+        .alert(item: $model.outOfServiceTransition) { transition in
+            Alert(
+                title: Text(LocalizedStringKey(transition.titleKey)),
+                message: Text(LocalizedStringKey(transition.messageKey)),
+                primaryButton: .destructive(Text("inspection.outOfService.continue")) {
+                    Task { await model.confirmOutOfServiceChange(to: transition.isActive) }
+                },
+                secondaryButton: .cancel(Text("common.cancel"))
+            )
         }
         .sheet(isPresented: $model.isI2DefectSelectionPresented, onDismiss: {
             dismiss()
@@ -122,15 +141,18 @@ struct TFM2ElevatorInspectionView: View {
         }
     }
 
-    private var photoWorkspaceItem: ElevatorInspectionItem? {
-        model.items.first { $0.id == photoWorkspaceItemID }
-    }
-
-    private func photoWorkspace(for item: ElevatorInspectionItem) -> some View {
-        let attachments = model.attachments(for: item.id)
+    /// Photos belong either to a checklist position or to the header status
+    /// row, which is not part of `model.items`.
+    private func photoWorkspace(for rowID: String) -> some View {
+        let isOutOfServiceRow = rowID == ElevatorInspectionViewModel.outOfServiceRowID
+        let item = model.items.first { $0.id == rowID }
+        let attachments = model.attachments(for: rowID)
+        let subtitle = isOutOfServiceRow
+            ? String(localized: "inspection.outOfService")
+            : (item?.title ?? "")
         return PhotoWorkspace(
             title: String(localized: "photos.workspace.title"),
-            subtitle: item.title,
+            subtitle: subtitle,
             entries: attachments.map {
                 PhotoWorkspaceEntry(
                     id: $0.id,
@@ -141,10 +163,18 @@ struct TFM2ElevatorInspectionView: View {
             photoData: model.photoData,
             isLoading: model.isLoading,
             isSaving: model.isSaving,
-            isReadOnly: isReadOnly,
+            isReadOnly: isReadOnly || (!isOutOfServiceRow && model.isOutOfService),
             maxAttachments: ElevatorInspectionViewModel.maximumPhotoCount,
             close: { photoWorkspaceItemID = nil },
-            addPhoto: { data in Task { await model.addPhoto(jpegData: data, to: item) } },
+            addPhoto: { data in
+                Task {
+                    if isOutOfServiceRow {
+                        await model.addOutOfServicePhoto(jpegData: data)
+                    } else if let item {
+                        await model.addPhoto(jpegData: data, to: item)
+                    }
+                }
+            },
             removePhoto: { id in
                 guard let attachment = attachments.first(where: { $0.id == id }) else { return }
                 Task { await model.removePhoto(attachment) }
@@ -173,11 +203,28 @@ struct TFM2ElevatorInspectionView: View {
         )
     }
 
+    /// The execution date and the header status live on the checklist
+    /// toolbar, not here — the legacy `form.date` and `form.outOfOrder`
+    /// controls sit in `TableFormHeader.fragment.xml`, directly above the
+    /// position table.
     private var metadataCard: some View {
-        NotificationFormHeaderCard(
-            info: headerInfo,
-            performedOn: $model.performedOn,
-            isPerformedOnDisabled: isReadOnly
+        NotificationFormHeaderCard(info: headerInfo)
+    }
+
+    /// TFM2 carries the header "Außer Betrieb" status that
+    /// `BaseFormController.buildDefaultElements` builds for it.
+    private var outOfServiceControls: InspectionOutOfServiceControls? {
+        guard let titleKey = variant.outOfServiceTitleKey else { return nil }
+        return InspectionOutOfServiceControls(
+            titleKey: titleKey,
+            isActive: model.isOutOfService,
+            photoCount: model.attachments(for: ElevatorInspectionViewModel.outOfServiceRowID).count,
+            hasComment: !model.outOfServiceComment.isEmpty,
+            isCommentMissing: model.isOutOfServiceCommentMissing,
+            isEnabled: !isEditingDisabled && !model.isSaving,
+            requestStatusChange: { model.requestOutOfServiceChange() },
+            openPhotos: { photoWorkspaceItemID = ElevatorInspectionViewModel.outOfServiceRowID },
+            editComment: { editingCommentID = ElevatorInspectionViewModel.outOfServiceRowID }
         )
     }
 
@@ -288,113 +335,92 @@ struct TFM2ElevatorInspectionView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var inspectionCard: some View {
-        VStack(spacing: 0) {
-            if model.items.isEmpty {
-                VStack(spacing: 16) {
-                    ContentUnavailableView(
-                        "elevator.unavailable.title",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("elevator.unavailable.message")
-                    )
-                    Button {
-                        Task { await model.load() }
-                    } label: {
-                        Label("elevator.unavailable.retry", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(FacilityTheme.blue)
-                }
-                .frame(maxWidth: .infinity, minHeight: 220)
-                .padding(24)
-            } else {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        inspectionHeaderRow
-                        Divider()
-
-                        ForEach(Array(model.items.enumerated()), id: \.element.id) { index, item in
-                            ElevatorInspectionItemRow(
-                                item: item,
-                                number: index + 1,
-                                result: model.results[item.id],
-                                action: model.actions[item.id],
-                                material: model.materials[item.id] ?? false,
-                                isResultMissing: model.validationErrors.contains(item.id),
-                                hasMaterialColumn: model.hasMaterialColumn,
-                                isReadOnly: isReadOnly,
-                                selectResult: { val in
-                                    guard !isEditingDisabled else { return }
-                                    model.results[item.id] = val
-                                    model.validationErrors.remove(item.id)
-                                },
-                                selectAction: { val in
-                                    guard !isEditingDisabled else { return }
-                                    model.actions[item.id] = val
-                                },
-                                toggleMaterial: {
-                                    guard !isEditingDisabled else { return }
-                                    let current = model.materials[item.id] ?? false
-                                    model.materials[item.id] = !current
-                                },
-                                attachments: model.attachments(for: item.id),
-                                openPhotos: { photoWorkspaceItemID = item.id },
-                                comment: model.comments[item.id, default: ""],
-                                editComment: {
-                                    guard !isEditingDisabled else { return }
-                                    editingCommentID = item.id
-                                }
-                            )
-                            if index < model.items.count - 1 {
-                                Divider().padding(.leading, 22)
-                            }
-                        }
-                    }
-                    .frame(minWidth: 840)
-                }
-            }
-        }
-        .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.black.opacity(0.06))
-        }
+    /// TFM2 Aufzugskontrolle. The shared checklist configured by its form
+    /// code: SAP-driven dropdowns for result and action, the material
+    /// checkbox, and the header "Außer Betrieb" status.
+    private var variant: InspectionFormVariant {
+        InspectionFormVariant.forFormCode("TFM2")
+            .adjusted(
+                hasActionValues: model.items.contains { $0.hasAction },
+                hasMaterialValues: model.hasMaterialColumn
+            )
     }
 
-    private var inspectionHeaderRow: some View {
-        HStack(spacing: 12) {
-            Text("notifications.detail.numberColumn")
-                .frame(width: 42, alignment: .leading)
-            Color.clear
-                .frame(width: 28, height: 1)
-            Text("notifications.detail.inspectionPoint")
-                .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
-            Text("elevator.column.result")
-                .frame(width: 160, alignment: .leading)
-            Text("elevator.column.action")
-                .frame(width: 160, alignment: .leading)
+    private var formItems: [InspectionFormItem] {
+        model.items.map(\.inspectionFormItem)
+    }
 
-            if model.hasMaterialColumn {
-                Text("elevator.column.material")
-                    .frame(width: 65, alignment: .center)
-            }
-
-            Text("notifications.detail.photo")
-                .frame(width: 52, alignment: .center)
-            Text("notifications.detail.comment")
-                .frame(width: 58, alignment: .center)
-        }
-        .font(.subheadline.weight(.bold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 22)
-        .padding(.vertical, 14)
+    private var inspectionCard: some View {
+        InspectionFormTable(
+            variant: variant,
+            items: formItems,
+            state: { item in
+                InspectionFormItemState(
+                    resultID: model.results[item.id],
+                    actionID: model.actions[item.id],
+                    isMaterialSelected: model.materials[item.id] ?? false,
+                    comment: model.comments[item.id, default: ""],
+                    photoCount: model.attachments(for: item.id).count,
+                    isFlagged: model.validationErrors.contains(item.id)
+                )
+            },
+            isEditable: model.arePositionsEditable,
+            emptyState: InspectionFormEmptyState(
+                titleKey: "elevator.unavailable.title",
+                messageKey: "elevator.unavailable.message",
+                systemImage: "exclamationmark.triangle",
+                retry: { Task { await model.load() } }
+            ),
+            performedOn: variant.showsPerformedOnDate ? $model.performedOn : nil,
+            isPerformedOnDisabled: isReadOnly,
+            outOfService: outOfServiceControls,
+            actions: InspectionFormActions(
+                selectResult: { item, option in
+                    guard model.arePositionsEditable else { return }
+                    model.results[item.id] = option.code
+                    // `BaseFormController.onBefundChange` clears an action and
+                    // a material flag the new result no longer permits.
+                    let resolved = InspectionFormRules.resolvedSelection(
+                        resultCode: option.code,
+                        actionCode: model.actions[item.id],
+                        isMaterialSelected: model.materials[item.id] ?? false,
+                        style: variant.resultStyle
+                    )
+                    model.actions[item.id] = resolved.actionCode
+                    model.materials[item.id] = resolved.isMaterialSelected
+                    model.validationErrors.remove(item.id)
+                },
+                selectAction: { item, option in
+                    guard model.arePositionsEditable else { return }
+                    model.actions[item.id] = option.code
+                },
+                toggleMaterial: { item in
+                    guard model.arePositionsEditable else { return }
+                    model.materials[item.id] = !(model.materials[item.id] ?? false)
+                },
+                openPhotos: { photoWorkspaceItemID = $0.id },
+                editComment: { item in
+                    guard model.arePositionsEditable else { return }
+                    editingCommentID = item.id
+                }
+            )
+        )
     }
 
     private func commentBinding(for itemID: String) -> Binding<String> {
-        Binding(
+        if itemID == ElevatorInspectionViewModel.outOfServiceRowID {
+            return Binding(
+                get: { model.outOfServiceComment },
+                set: { newValue in
+                    guard !isEditingDisabled else { return }
+                    model.outOfServiceComment = newValue
+                }
+            )
+        }
+        return Binding(
             get: { model.comments[itemID, default: ""] },
             set: { newValue in
-                guard !isEditingDisabled else { return }
+                guard model.arePositionsEditable else { return }
                 if newValue.isEmpty {
                     model.comments.removeValue(forKey: itemID)
                 } else {
@@ -404,35 +430,24 @@ struct TFM2ElevatorInspectionView: View {
         )
     }
 
+    /// The same three-button bar every other inspection form uses. TFM2 had
+    /// its own copy with different labels; the order and treatment come from
+    /// `FacilityInspectionActionBar`.
     private var actionBar: some View {
-        HStack(spacing: 14) {
-            Spacer(minLength: 12)
-
-            Button("notifications.detail.allGood") {
-                model.applyAllGood()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(FacilityTheme.blue)
-            .disabled(isEditingDisabled || !model.isAllGoodAvailable || model.isSaving)
-
-            Button("notifications.detail.saveTemporary") {
-                Task { await model.save(closed: false) }
-            }
-            .buttonStyle(.bordered)
-            .tint(FacilityTheme.ink)
-            .disabled(isEditingDisabled || model.isSaving)
-
-            Button("notifications.detail.closeNotification") {
-                model.handleCloseTapped()
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(FacilityTheme.accent)
-            .disabled(isEditingDisabled || model.isSaving || model.items.isEmpty)
-        }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider() }
+        FacilityInspectionActionBar(
+            markEverythingOkay: { model.applyAllGood() },
+            saveDraft: { Task { await model.save(closed: false) } },
+            closeNotification: { model.handleCloseTapped() },
+            // `setValues4AnwStatus` disables "Alles OK" while the form is out
+            // of service.
+            isMarkEverythingOkayEnabled: model.arePositionsEditable
+                && model.isAllGoodAvailable
+                && !model.isSaving,
+            isSaveDraftEnabled: !isEditingDisabled && !model.isSaving,
+            isCloseNotificationEnabled: !isEditingDisabled
+                && !model.isSaving
+                && (!model.items.isEmpty || model.isOutOfService)
+        )
     }
 
     private var isReadOnly: Bool {
@@ -456,179 +471,6 @@ private extension ElevatorInspectionFeedback {
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
         case .i2DefectsCreated: "elevator.i2.created.success"
-        }
-    }
-}
-
-private struct ElevatorInspectionItemRow: View {
-    let item: ElevatorInspectionItem
-    let number: Int
-    let result: String?
-    let action: String?
-    let material: Bool
-    let isResultMissing: Bool
-    let hasMaterialColumn: Bool
-    let isReadOnly: Bool
-    let selectResult: (String) -> Void
-    let selectAction: (String) -> Void
-    let toggleMaterial: () -> Void
-    let attachments: [NotificationPhotoAttachment]
-    let openPhotos: () -> Void
-    let comment: String
-    let editComment: () -> Void
-
-    @State private var expandedPicker: InspectionPickerField?
-
-    private var isDefect: Bool {
-        guard let res = result else { return false }
-        return ElevatorInspectionLogic.isDefect(resultCode: res, actionCode: action)
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(number, format: .number)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .leading)
-
-            // Warning icon
-            ZStack {
-                if isResultMissing {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.red)
-                        .accessibilityLabel(Text("notifications.detail.validation.incompleteItem"))
-                } else if isDefect {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.red)
-                        .accessibilityLabel(Text("elevator.status.defect"))
-                } else if result == "1" {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(FacilityTheme.accent)
-                        .accessibilityLabel(Text("elevator.status.inOrder"))
-                }
-            }
-            .frame(width: 28, height: 44)
-
-            // Info frame and title match the shared Rundgang checklist treatment.
-            HStack(spacing: 10) {
-                NotificationInfoButton(information: item.information)
-
-                Text(item.title)
-                    .font(.body)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .frame(minWidth: 160, maxWidth: .infinity, alignment: .leading)
-            }
-
-            // Result (Befund)
-            resultControl
-                .frame(width: 160)
-
-            // Action (Maßnahme)
-            actionControl
-                .frame(width: 160)
-
-            // Material Checkbox
-            if hasMaterialColumn {
-                materialControl
-                    .frame(width: 65, alignment: .center)
-            }
-
-            // Photos button
-            Button(action: openPhotos) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: attachments.isEmpty ? "camera" : "camera.fill")
-                        .foregroundStyle(attachments.isEmpty ? FacilityTheme.ink : FacilityTheme.blue)
-                        .frame(width: 44, height: 44)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
-                    if !attachments.isEmpty {
-                        Text(attachments.count, format: .number)
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .frame(minWidth: 18, minHeight: 18)
-                            .background(FacilityTheme.blue, in: Circle())
-                            .offset(x: 5, y: -5)
-                    }
-                }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("notifications.detail.photo"))
-            .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), attachments.count)))
-            .frame(width: 52)
-
-            NotificationCommentButton(
-                hasComment: !comment.isEmpty,
-                isReadOnly: isReadOnly,
-                action: editComment
-            )
-        }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 10)
-        .frame(minHeight: 68)
-        // Keep the active row above its neighbours while its anchored popover is visible
-        .zIndex(expandedPicker == nil ? 0 : 1)
-    }
-
-    @ViewBuilder
-    private var resultControl: some View {
-        if item.resultOptions.isEmpty {
-            Text("-")
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .center)
-        } else {
-            InspectionCodePicker(
-                picker: .result,
-                expandedPicker: $expandedPicker,
-                selection: result,
-                options: item.resultOptions.map { InspectionCodeOption(code: $0.code, title: $0.text) },
-                isEnabled: !isReadOnly,
-                accessibilityLabel: Text("elevator.column.result")
-            ) { code in
-                selectResult(code)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var actionControl: some View {
-        if item.hasAction {
-            InspectionCodePicker(
-                picker: .action,
-                expandedPicker: $expandedPicker,
-                selection: action,
-                options: item.actionOptions.map { InspectionCodeOption(code: $0.code, title: $0.text) },
-                isEnabled: !isReadOnly,
-                accessibilityLabel: Text("elevator.column.action")
-            ) { code in
-                selectAction(code)
-            }
-        } else {
-            Text("-")
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .center)
-        }
-    }
-
-    @ViewBuilder
-    private var materialControl: some View {
-        if item.hasMaterial {
-            Button(action: toggleMaterial) {
-                Image(systemName: material ? "checkmark.square.fill" : "square")
-                    .font(.title2)
-                    .foregroundStyle(material ? FacilityTheme.blue : .secondary)
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .disabled(isReadOnly)
-            .accessibilityLabel(Text("elevator.column.material"))
-            .accessibilityValue(Text(material ? "common.yes" : "common.no"))
-        } else {
-            Text("-")
-                .foregroundStyle(.tertiary)
-                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 }
