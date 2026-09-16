@@ -227,7 +227,9 @@ struct WartungsplanDetailView: View {
                 PhotoWorkspaceEntry(
                     id: $0.id,
                     localAttachmentID: $0.localAttachmentID,
-                    capturedAt: $0.capturedAt
+                    capturedAt: $0.capturedAt,
+                    name: $0.name,
+                    description: $0.description
                 )
             },
             photoData: model.photoData,
@@ -240,6 +242,9 @@ struct WartungsplanDetailView: View {
             removePhoto: { id in
                 guard let attachment = attachments.first(where: { $0.id == id }) else { return }
                 Task { await model.removePhoto(attachment) }
+            },
+            updatePhoto: { id, name, description in
+                await model.updatePhoto(id: id, name: name, description: description)
             },
             reportImportFailure: { model.feedback = .photoFailed },
             reportCameraUnavailable: { model.feedback = .cameraUnavailable },
