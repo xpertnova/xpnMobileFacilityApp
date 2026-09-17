@@ -264,6 +264,20 @@ private struct FacilityConfirmationDialogModifier: ViewModifier {
 }
 
 extension View {
+    /// Shared warning before retaining a notification locally as a draft.
+    func facilitySaveDraftConfirmation(
+        isPresented: Binding<Bool>,
+        saveDraft: @escaping () -> Void
+    ) -> some View {
+        facilityConfirmationDialog(
+            isPresented: isPresented,
+            titleKey: "notifications.detail.saveDraftConfirmation.title",
+            messageKey: "notifications.detail.saveDraftConfirmation.message",
+            confirmTitleKey: "inspection.action.saveDraft",
+            confirm: saveDraft
+        )
+    }
+
     /// Presents a centered confirmation dialog instead of a system alert.
     ///
     /// Every action dismisses the dialog before it runs, so a call site only

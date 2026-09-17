@@ -6,6 +6,7 @@ struct NotificationDetailView: View {
     let dismiss: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: NotificationReviewViewModel
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
     @State private var isCloseConfirmationPresented = false
     @State private var photoWorkspaceItemID: String?
@@ -78,6 +79,14 @@ struct NotificationDetailView: View {
                     }
                 }
             )
+        }
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            Task {
+                if await model.save(closed: false) {
+                    model.feedback = nil
+                    dismiss()
+                }
+            }
         }
         .facilityConfirmationDialog(
             isPresented: $isCloseConfirmationPresented,
@@ -244,7 +253,7 @@ struct NotificationDetailView: View {
                 }
             },
             saveDraft: {
-                Task { await model.save(closed: false) }
+                isSaveDraftConfirmationPresented = true
             },
             closeNotification: {
                 isCloseConfirmationPresented = true

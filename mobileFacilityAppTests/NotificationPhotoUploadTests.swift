@@ -4,6 +4,21 @@ import XCTest
 
 final class NotificationPhotoUploadTests: XCTestCase {
     @MainActor
+    func testReviewDraftSaveReportsFailureWithoutClaimingSuccess() async throws {
+        let model = NotificationReviewViewModel(
+            detail: SAPNotificationDetail(summary: try makeSummary(control: "TFM3", cadence: "M", category: "I002")),
+            offlineWorkStore: OfflineWorkStore(repository: UnavailableOfflineWorkRepository(), workerID: "demo"),
+            photoStore: InMemoryPhotoAttachmentStore()
+        )
+        await model.load()
+        let saved = await model.save(closed: false)
+        XCTAssertFalse(saved)
+        guard case .saveFailed? = model.feedback else {
+            return XCTFail("Expected a visible save failure")
+        }
+        XCTAssertFalse(model.isClosedLocally)
+    }
+    @MainActor
     func testReviewPhotosPersistReopenRespectLimitAndBecomeReadOnlyOnClosure() async throws {
         let source = try makeSummary(control: "TFM1", cadence: "", category: "I002")
         let detail = SAPNotificationDetail(summary: source)
@@ -33,7 +48,9 @@ final class NotificationPhotoUploadTests: XCTestCase {
         XCTAssertEqual(model.photoAttachments.first?.name, "Door hinge")
         XCTAssertEqual(model.photoAttachments.first?.description, "Loose upper hinge")
 
-        await model.save(closed: false)
+        let saved = await model.save(closed: false)
+        XCTAssertTrue(saved)
+        XCTAssertFalse(model.isClosedLocally)
         XCTAssertEqual(workStore.savedNotificationItems.first?.status, .draft)
 
         let reopened = NotificationReviewViewModel(

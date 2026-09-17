@@ -182,11 +182,12 @@ final class NotificationReviewViewModel {
         await discardStagedPhotos()
     }
 
-    func save(closed: Bool) async {
-        guard !isSaving, !isEditingDisabled else { return }
+    @discardableResult
+    func save(closed: Bool) async -> Bool {
+        guard !isSaving, !isEditingDisabled else { return false }
         guard !closed || canClose else {
             feedback = .incomplete
-            return
+            return false
         }
 
         isSaving = true
@@ -221,8 +222,10 @@ final class NotificationReviewViewModel {
             if !offersI2 {
                 feedback = closed ? .closedLocally : .savedLocally
             }
+            return true
         } catch {
             feedback = .saveFailed
+            return false
         }
     }
 

@@ -9,8 +9,8 @@ struct WartungsplanDetailView: View {
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: WartungsplanViewModel
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
-    @State private var isDraftSavedConfirmationPresented = false
     @State private var isCloseConfirmationPresented = false
     @State private var photoWorkspaceItemID: String?
 
@@ -70,13 +70,13 @@ struct WartungsplanDetailView: View {
             }
         }
         .task(id: detail.summary.id) { await model.load() }
-        .alert(
-            "mobileLadder.feedback.saved.title",
-            isPresented: $isDraftSavedConfirmationPresented
-        ) {
-            Button("common.ok") { dismiss() }
-        } message: {
-            Text("mobileLadder.feedback.saved.message")
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            Task {
+                if await model.save(closed: false) {
+                    model.feedback = nil
+                    dismiss()
+                }
+            }
         }
         .facilityConfirmationDialog(
             isPresented: $isCloseConfirmationPresented,
@@ -214,11 +214,7 @@ struct WartungsplanDetailView: View {
             FacilityInspectionActionBar(
                 markEverythingOkay: { model.markEverythingOkay() },
                 saveDraft: {
-                    Task {
-                        if await model.save(closed: false) {
-                            isDraftSavedConfirmationPresented = true
-                        }
-                    }
+                    isSaveDraftConfirmationPresented = true
                 },
                 closeNotification: {
                     isCloseConfirmationPresented = true

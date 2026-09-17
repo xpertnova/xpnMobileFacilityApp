@@ -643,8 +643,9 @@ final class EquipmentInspectionViewModel {
         removedOriginalAttachmentIDs.removeAll()
     }
 
-    func save(closed: Bool, statusDecision: ElevatorInspectionStatusDecision? = nil) async {
-        guard !isSaving, !isEditingDisabled else { return }
+    @discardableResult
+    func save(closed: Bool, statusDecision: ElevatorInspectionStatusDecision? = nil) async -> Bool {
+        guard !isSaving, !isEditingDisabled else { return false }
 
         isSaving = true
         defer { isSaving = false }
@@ -775,8 +776,10 @@ final class EquipmentInspectionViewModel {
             if !offersI2 {
                 feedback = closed ? .closedLocally : .savedLocally
             }
+            return true
         } catch {
             feedback = .saveFailed
+            return false
         }
     }
 

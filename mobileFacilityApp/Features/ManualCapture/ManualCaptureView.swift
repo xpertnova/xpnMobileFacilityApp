@@ -4,6 +4,7 @@ import UIKit
 struct ManualCaptureView: View {
     let demo: FacilityDemoViewModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var defectModel: DefectCaptureViewModel
     @State private var meterModel: MeterReadingViewModel
     @State private var photoWorkspaceScope: LocalPhotoScope?
@@ -60,6 +61,9 @@ struct ManualCaptureView: View {
             accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
             value: photoWorkspaceScope
         )
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            saveDefect(.draft)
+        }
         .task(id: demo.manualCaptureRoute) {
             switch demo.manualCaptureRoute {
             case .landing:
@@ -313,7 +317,7 @@ struct ManualCaptureView: View {
                             }
                         }
                     },
-                    saveDraft: { saveDefect(.draft) },
+                    saveDraft: { isSaveDraftConfirmationPresented = true },
                     submit: { saveDefect(.pendingSynchronization) }
                 )
             }
