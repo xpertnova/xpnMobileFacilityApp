@@ -268,6 +268,12 @@ final class FacilityDemoViewModel {
             : sapDataStore.notificationFilterMetadata
     }
 
+    /// SAP functional locations for location value helps. The demo forms
+    /// bring their own sample locations.
+    var functionalLocationDirectory: FunctionalLocationDirectory {
+        isDemoMode ? .empty : sapDataStore.functionalLocationDirectory
+    }
+
     var notificationFilterOptions: NotificationStructuralFilterOptions {
         isDemoMode
             ? MockFacilityData.notificationFilterOptions

@@ -981,11 +981,11 @@ final class BriefingWorkflowViewModel {
 
         @MainActor static func make(for workspace: FacilityDemoViewModel) -> Self {
             if workspace.isDemoMode { return .demo(workspace.offlineWorkStore, workerName: workspace.effectiveWorkerDisplayName) }
-            let contexts: [Context] = Dictionary(grouping: workspace.notificationFilterMetadata, by: { "\($0.businessEntityID)|\($0.buildingCode)" })
-                .values.compactMap { group in
-                    guard let first = group.first, !first.buildingCode.isEmpty else { return nil }
-                    return Context(businessEntityID: first.businessEntityID, businessEntityTitle: first.businessEntityID, buildingCode: first.buildingCode, buildingTitle: "\(first.buildingCode) · \(first.functionalLocationName)")
-                }.sorted { $0.id < $1.id }
+            // `SelectionCreate` for `TFMINSTRUCFORM`: every active building of
+            // an active business entity, named by the building location itself.
+            let contexts: [Context] = SafetyFormContext.buildings(in: workspace.functionalLocationDirectory).map {
+                Context(businessEntityID: $0.businessEntityID, businessEntityTitle: $0.businessEntityTitle, buildingCode: $0.buildingCode, buildingTitle: $0.buildingTitle)
+            }
             return Self(isDemo: false, contexts: contexts, partners: workspace.sapDataStore.cachedData.briefingPartners, templates: workspace.sapDataStore.cachedData.briefingTemplates, workerProfile: workspace.sapDataStore.workerProfile, workerName: workspace.effectiveWorkerDisplayName, offlineWorkStore: workspace.offlineWorkStore)
         }
 

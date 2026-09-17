@@ -99,7 +99,7 @@ final class EquipmentMasterDataTests: XCTestCase {
         XCTAssertEqual(invalid, ["FSA_HERSTELLER", "FSA_BEMERKUNG"],
                        "empty dropdown always fails, required text fails, locked ID number is skipped")
 
-        values["FSA_HERSTELLER"] = EquipmentMasterDataCatalog.adminKey
+        values["FSA_HERSTELLER"] = MasterDataProposalRules.adminKey
         values["FSA_BEMERKUNG"] = "OK"
         invalid = EquipmentMasterDataRules.invalidCharacteristicIDs(
             characteristics: characteristics, values: values, proposals: [:],
@@ -168,7 +168,7 @@ final class EquipmentMasterDataTests: XCTestCase {
         XCTAssertEqual(model.masterDataSelection(for: manufacturer), ["HERST_A"])
         XCTAssertFalse(model.isProposalAvailable(for: manufacturer))
 
-        model.selectMasterDataOption(EquipmentMasterDataCatalog.adminKey, for: manufacturer)
+        model.selectMasterDataOption(MasterDataProposalRules.adminKey, for: manufacturer)
         XCTAssertEqual(model.proposalCharacteristicID, "DEMO_FSA_MANUFACTURER")
         XCTAssertTrue(model.isProposalAvailable(for: manufacturer))
 
@@ -181,15 +181,15 @@ final class EquipmentMasterDataTests: XCTestCase {
     }
 
     @MainActor
-    func testLastProposalIsSuggestedButNotPrefilled() async throws {
+    func testEarlierProposalsAreSuggestedButNotPrefilled() async throws {
         let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "S50828")
         let first = try await makeDemoModel(store: store)
         let manufacturer = try XCTUnwrap(first.elevatorAssetCharacteristics.first { $0.name == "DEMO_FSA_MANUFACTURER" })
-        XCTAssertNil(first.lastProposal(for: manufacturer))
+        XCTAssertEqual(first.proposalHistory(for: manufacturer), [])
 
-        first.selectMasterDataOption(EquipmentMasterDataCatalog.adminKey, for: manufacturer)
+        first.selectMasterDataOption(MasterDataProposalRules.adminKey, for: manufacturer)
         first.saveProposal("Hersteller X", for: manufacturer)
-        XCTAssertEqual(first.lastProposal(for: manufacturer), "Hersteller X", "shown before the draft is saved")
+        XCTAssertEqual(first.proposalHistory(for: manufacturer), ["Hersteller X"], "shown before the draft is saved")
         await first.save(closed: false)
         XCTAssertEqual(first.proposal(for: manufacturer), "Hersteller X")
 
@@ -216,7 +216,7 @@ final class EquipmentMasterDataTests: XCTestCase {
         )
         await otherModel.load()
         XCTAssertEqual(otherModel.proposal(for: manufacturer), "")
-        XCTAssertEqual(otherModel.lastProposal(for: manufacturer), "Hersteller X")
+        XCTAssertEqual(otherModel.proposalHistory(for: manufacturer), ["Hersteller X"])
     }
 
     @MainActor
@@ -290,7 +290,7 @@ final class EquipmentMasterDataTests: XCTestCase {
         let batch = try buildBatch(equipmentID: "EQ-100036", locationID: "")
 
         let header = try XCTUnwrap(batch.values.first { ($0["ELEMENTNR"] ?? nil) == "FSA_HERSTELLER" })
-        XCTAssertEqual(header["FELDWERT"] ?? nil, EquipmentMasterDataCatalog.adminKey)
+        XCTAssertEqual(header["FELDWERT"] ?? nil, MasterDataProposalRules.adminKey)
         XCTAssertEqual(header["FELDBEZEICHNUNG"] ?? nil, "FSA Hersteller")
 
         let proposal = try XCTUnwrap(batch.proposals.first)
@@ -438,13 +438,13 @@ final class EquipmentMasterDataTests: XCTestCase {
             isClosedLocally: true,
             formCode: "TFM6",
             masterData: EquipmentMasterDataDraft(
-                values: ["FSA_HERSTELLER": EquipmentMasterDataCatalog.adminKey],
+                values: ["FSA_HERSTELLER": MasterDataProposalRules.adminKey],
                 proposals: ["FSA_HERSTELLER": "Neuer Hersteller"],
                 headerValues: [
                     EquipmentMasterDataHeaderValue(
                         elementID: "FSA_HERSTELLER",
                         label: "FSA Hersteller",
-                        value: EquipmentMasterDataCatalog.adminKey
+                        value: MasterDataProposalRules.adminKey
                     )
                 ],
                 equipmentID: equipmentID,
@@ -452,7 +452,7 @@ final class EquipmentMasterDataTests: XCTestCase {
                 updatedMasterPayloadJSON: EquipmentMasterDataRules.updatedMasterPayloadJSON(
                     record: record, characteristics: [],
                     original: ["FSA_HERSTELLER": "HERST_A"],
-                    current: ["FSA_HERSTELLER": EquipmentMasterDataCatalog.adminKey],
+                    current: ["FSA_HERSTELLER": MasterDataProposalRules.adminKey],
                     client: source.client
                 )
             )

@@ -199,14 +199,12 @@ private struct ProofOfQualificationFormScreen: View {
       SafetyFormContextCard(
         businessEntities: viewModel.businessEntities,
         buildings: viewModel.buildings,
-        functionalLocations: viewModel.functionalLocations,
         selectedBusinessEntityID: viewModel.selectedBusinessEntityID,
         selectedBuildingCode: viewModel.selectedBuildingCode,
         selectedContext: viewModel.selectedContext,
         isInvalid: viewModel.isInvalid(.context),
         showBusinessEntityPicker: { isShowingBusinessEntityPicker = true },
-        selectBuilding: viewModel.selectBuilding,
-        selectContext: viewModel.selectContext
+        selectBuilding: viewModel.selectBuilding
       )
       .id(ProofOfQualificationValidationIssue.context)
     }

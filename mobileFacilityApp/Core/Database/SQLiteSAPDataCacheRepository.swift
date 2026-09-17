@@ -210,16 +210,41 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         )
         guard !templates.isEmpty else { return .empty }
 
-        let contexts = try Self.rows(in: "FROM_T0272", on: database).compactMap { row -> MobileLadderCreationContext? in
-            func string(_ key: String) -> String { row[key] as? String ?? "" }
-            let deletionFlag = string("LVORM").uppercased()
-            let userStatus = string("USTXT")
-            guard deletionFlag != "X", userStatus.isEmpty || userStatus.localizedCaseInsensitiveContains("iBet") else {
-                return nil
-            }
+        // `segmentMap[TFMLEITERN]` (`FROM_T0269`): the trade (`TPGSG`) that
+        // holds mobile ladders, 350. Cordova offers no address without it.
+        guard let segment = try Self.rows(in: "FROM_T0269", on: database).lazy
+            .filter({ Self.text("EQART", in: $0).uppercased() == "TFMLEITERN" })
+            .map({ Self.text("TPGSG", in: $0) })
+            .first(where: { !$0.isEmpty })
+        else { return .empty }
+
+        // `SelectionCreate`: a business entity (`getWE4CreateDDB`), then one of
+        // its buildings that has an active ladder trade (`getGE4CreateDDB`),
+        // then that trade (`getGW4CreateDDB`, `TPGSG LIKE segment`).
+        let locationRows = try Self.activeFunctionalLocationRows(on: database)
+        let directory = Self.functionalLocationDirectory(from: locationRows)
+        let tradeRows = Dictionary(
+            grouping: locationRows.filter {
+                !Self.text("TPGEB", in: $0).isEmpty && Self.text("TPGSG", in: $0) == segment
+            },
+            by: { row in ["TPLND", "TPWEH", "TPGEB", "TPGSG"].map { Self.text($0, in: row) } }
+        )
+        // `GROUP BY TPLND, TPWEH, TPGEB, TPGSG`: one trade per building, the
+        // trade location itself rather than a sub-location below it.
+        .compactMap { $0.value.first { Self.text("TPUSG", in: $0).isEmpty } ?? $0.value.first }
+
+        let contexts = tradeRows.compactMap { row -> MobileLadderCreationContext? in
+            func string(_ key: String) -> String { Self.text(key, in: row) }
+            guard let entity = directory.businessEntity(
+                    countryCode: string("TPLND"), businessEntityCode: string("TPWEH")
+                  ),
+                  let building = directory.building(
+                    countryCode: string("TPLND"), businessEntityCode: string("TPWEH"), buildingCode: string("TPGEB")
+                  )
+            else { return nil }
             let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
             let trade = string("TPGSG")
-            guard !functionalLocation.isEmpty, !trade.isEmpty else { return nil }
+            guard !functionalLocation.isEmpty else { return nil }
             let template = templates.first {
                 ($0.plant.isEmpty || $0.plant == string("IWERK"))
                     && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
@@ -228,16 +253,11 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                   let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
                   let sourceJSON = String(data: sourceData, encoding: .utf8) else { return nil }
 
-            let cityLine = [string("POST_CODE1"), string("CITY1")].filter { !$0.isEmpty }.joined(separator: " ")
-            let businessCode = [string("TPLND"), string("TPORT"), string("TPWEH")]
-                .filter { !$0.isEmpty }.joined(separator: "-")
-            let businessTitle = [businessCode, cityLine, string("STREET")].filter { !$0.isEmpty }.joined(separator: " · ")
-            let buildingTitle = [string("TPGEB"), string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · ")
-            let tradeTitle = [trade, functionalLocation].filter { !$0.isEmpty }.joined(separator: " · ")
             return MobileLadderCreationContext(
-                businessEntity: businessTitle.isEmpty ? string("TPWEH") : businessTitle,
-                building: buildingTitle.isEmpty ? functionalLocation : buildingTitle,
-                trade: tradeTitle,
+                businessEntity: Self.creationBusinessEntityTitle(entity),
+                building: Self.creationBuildingTitle(building),
+                // The `select.gw` item: the trade location and its text.
+                trade: [functionalLocation, string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · "),
                 legacyContext: MobileLadderLegacyContext(
                     client: string("MANDT"), functionalLocation: functionalLocation,
                     country: string("TPLND"), location: string("TPORT"), businessEntity: string("TPWEH"),
@@ -260,27 +280,15 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         ]
         var catalog: [MobileLadderCatalogField: [String]] = [:]
         for (field, characteristicName) in catalogPairs {
-            var values = templates
+            // Only SAP's value list, as `_buildHeaderForm` offers it. The
+            // user's `GESELLSCHAFT` is not a TFM5 value and SAP delivers
+            // "Pflege durch Admin" itself where it applies.
+            let values = templates
                 .flatMap(\.characteristics)
                 .filter { $0.name.caseInsensitiveCompare(characteristicName) == .orderedSame }
                 .flatMap(\.values)
                 .map { $0.title.isEmpty ? $0.value : $0.title }
                 .uniquedAndSorted()
-
-            if field == .clientCompany {
-                if let userRows = try? Self.rows(in: "USER", on: database) {
-                    for row in userRows {
-                        if let company = (row["GESELLSCHAFT"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                           !company.isEmpty,
-                           !values.contains(where: { $0.caseInsensitiveCompare(company) == .orderedSame }) {
-                            values.append(company)
-                        }
-                    }
-                }
-                if !values.contains(where: { $0.caseInsensitiveCompare("Pflege durch Admin") == .orderedSame }) {
-                    values.insert("Pflege durch Admin", at: 0)
-                }
-            }
 
             catalog[field] = values.isEmpty ? MobileLadderCatalog.legacyReference.options(for: field) : values
         }
@@ -437,7 +445,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         )
         guard !templates.isEmpty else { return .empty }
 
-        let contexts = try Self.rows(in: "FROM_T0272", on: database).compactMap { row -> SubdistributionCreationContext? in
+        let locationRows = try Self.activeFunctionalLocationRows(on: database)
+        let directory = Self.functionalLocationDirectory(from: locationRows)
+        let contexts = locationRows.compactMap { row -> SubdistributionCreationContext? in
             func string(_ key: String) -> String { row[key] as? String ?? "" }
             let deletionFlag = string("LVORM").uppercased()
             let userStatus = string("USTXT")
@@ -450,7 +460,17 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
             let building = string("TPGEB")
             let segment = string("TPGSG")
-            guard !functionalLocation.isEmpty, !building.isEmpty, !segment.isEmpty else { return nil }
+            guard !functionalLocation.isEmpty, !building.isEmpty, !segment.isEmpty,
+                  // As for TFM5, the business entity and building come from
+                  // their own locations (`getWE4CreateDDB`, `getGE4CreateDDB`),
+                  // not from the parent's text.
+                  let entity = directory.businessEntity(
+                    countryCode: string("TPLND"), businessEntityCode: string("TPWEH")
+                  ),
+                  let buildingLocation = directory.building(
+                    countryCode: string("TPLND"), businessEntityCode: string("TPWEH"), buildingCode: building
+                  )
+            else { return nil }
             guard let template = templates.first(where: {
                 ($0.plant.isEmpty || $0.plant == string("IWERK"))
                     && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
@@ -459,16 +479,11 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             let sourceJSON = String(data: sourceData, encoding: .utf8)
             else { return nil }
 
-            let cityLine = [string("POST_CODE1"), string("CITY1")].filter { !$0.isEmpty }.joined(separator: " ")
-            let businessCode = [string("TPLND"), string("TPORT"), string("TPWEH")]
-                .filter { !$0.isEmpty }.joined(separator: "-")
-            let businessTitle = [businessCode, cityLine, string("STREET")].filter { !$0.isEmpty }.joined(separator: " · ")
-            let buildingTitle = [building, string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · ")
             let parentTitle = [functionalLocation, string("EQKTX"), string("PLTXT")]
                 .filter { !$0.isEmpty }.joined(separator: " · ")
             return SubdistributionCreationContext(
-                businessEntity: businessTitle.isEmpty ? string("TPWEH") : businessTitle,
-                building: buildingTitle.isEmpty ? functionalLocation : buildingTitle,
+                businessEntity: Self.creationBusinessEntityTitle(entity),
+                building: Self.creationBuildingTitle(buildingLocation),
                 parentLocation: parentTitle,
                 legacyContext: SubdistributionLegacyContext(
                     client: string("MANDT"), functionalLocation: functionalLocation, parentEquipmentType: parentType,
@@ -525,6 +540,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             nextOffset: end < matching.count ? end : nil,
             totalCount: matching.count
         )
+    }
+
+    func loadFunctionalLocationDirectory(for localWorkerID: String) async throws -> FunctionalLocationDirectory {
+        try validateWorker(localWorkerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return Self.functionalLocationDirectory(from: try Self.activeFunctionalLocationRows(on: database))
     }
 
     func loadNotificationFilterMetadata(
@@ -1397,6 +1418,49 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             }
             return row
         }
+    }
+
+    private static func text(_ key: String, in row: [String: Any]) -> String {
+        (row[key] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// `FROM_T0272` rows Cordova's creation dropdowns offer: active locations
+    /// only (`USTXT LIKE '%iBet%'`).
+    private static func activeFunctionalLocationRows(on database: OpaquePointer) throws -> [[String: Any]] {
+        try rows(in: "FROM_T0272", on: database).filter {
+            text("LVORM", in: $0).uppercased() != "X"
+                && text("USTXT", in: $0).localizedCaseInsensitiveContains("iBet")
+        }
+    }
+
+    /// Business entity, building and trade locations; sub-locations below a
+    /// trade (`TPUSG`) never name a level.
+    private static func functionalLocationDirectory(from rows: [[String: Any]]) -> FunctionalLocationDirectory {
+        FunctionalLocationDirectory(locations: rows.compactMap { row -> FunctionalLocation? in
+            func string(_ key: String) -> String { text(key, in: row) }
+            let id = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
+            guard !id.isEmpty, !string("TPWEH").isEmpty, string("TPUSG").isEmpty else { return nil }
+            return FunctionalLocation(
+                id: id, countryCode: string("TPLND"), locationCode: string("TPORT"),
+                businessEntityCode: string("TPWEH"), buildingCode: string("TPGEB"), tradeCode: string("TPGSG"),
+                title: string("PLTXT"), street: string("STREET"), postalCode: string("POST_CODE1"),
+                city: string("CITY1"), country: string("COUNTRY")
+            )
+        })
+    }
+
+    /// The business entity title of the TFM5 and TFM7 creation contexts.
+    private static func creationBusinessEntityTitle(_ location: FunctionalLocation) -> String {
+        let code = [location.countryCode, location.locationCode, location.businessEntityCode]
+            .filter { !$0.isEmpty }.joined(separator: "-")
+        let cityLine = [location.postalCode, location.city].filter { !$0.isEmpty }.joined(separator: " ")
+        let title = [code, cityLine, location.street].filter { !$0.isEmpty }.joined(separator: " · ")
+        return title.isEmpty ? location.businessEntityCode : title
+    }
+
+    /// The `select.ge` item: the building number and its location text.
+    private static func creationBuildingTitle(_ location: FunctionalLocation) -> String {
+        [location.buildingCode, location.title].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 
     private static func nonNullRows(

@@ -341,20 +341,20 @@ struct StandardFormHeader<ContextFields: View>: View {
     }
 }
 
+/// Business entity and building, as the legacy `SelectionCreate` asks for the
+/// instruction forms. The building is the work location; there is no separate
+/// functional location.
 struct SafetyFormContextCard: View {
     let businessEntities: [SafetyFormContext]
     let buildings: [SafetyFormContext]
-    let functionalLocations: [SafetyFormContext]
     let selectedBusinessEntityID: String?
     let selectedBuildingCode: String?
     let selectedContext: SafetyFormContext?
     let isInvalid: Bool
     let showBusinessEntityPicker: () -> Void
-    let selectBuilding: (String) -> Void
-    let selectContext: (SafetyFormContext) -> Void
+    let selectBuilding: (SafetyFormContext) -> Void
 
     @State private var isBuildingPickerPresented = false
-    @State private var isFunctionalLocationPickerPresented = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -375,7 +375,6 @@ struct SafetyFormContextCard: View {
 
             SafetyFormField("firePermit.building", required: true) {
                 Button {
-                    isFunctionalLocationPickerPresented = false
                     isBuildingPickerPresented = true
                 } label: {
                     valueHelpLabel(
@@ -398,28 +397,6 @@ struct SafetyFormContextCard: View {
                 if selectedBusinessEntityID != nil && buildings.isEmpty {
                     SafetyFormNoBuildingsNotice()
                 }
-            }
-
-            SafetyFormField("firePermit.functionalLocation", required: true) {
-                Button {
-                    isBuildingPickerPresented = false
-                    isFunctionalLocationPickerPresented = true
-                } label: {
-                    valueHelpLabel(
-                        title: selectedContext?.functionalLocationTitle,
-                        placeholder: "safetyForms.functionalLocation.placeholder",
-                        enabled: selectedBuildingCode != nil && !functionalLocations.isEmpty
-                    )
-                    .briefingFieldChrome(invalid: isInvalid)
-                }
-                .buttonStyle(.plain)
-                .facilityPopover(
-                    isPresented: $isFunctionalLocationPickerPresented,
-                    arrowEdge: .top
-                ) {
-                    functionalLocationPicker
-                }
-                .disabled(selectedBuildingCode == nil || functionalLocations.isEmpty)
             }
         }
     }
@@ -452,22 +429,8 @@ struct SafetyFormContextCard: View {
             primaryText: \SafetyFormContext.buildingTitle,
             secondaryText: \SafetyFormContext.buildingCode
         ) { context in
-            selectBuilding(context.buildingCode)
+            selectBuilding(context)
             isBuildingPickerPresented = false
-        }
-    }
-
-    private var functionalLocationPicker: some View {
-        SafetyFormContextOptionPicker(
-            title: "safetyForms.functionalLocation.placeholder",
-            symbol: "mappin.and.ellipse",
-            contexts: functionalLocations,
-            selectedID: selectedContext?.id,
-            primaryText: \SafetyFormContext.functionalLocationTitle,
-            secondaryText: \SafetyFormContext.functionalLocationID
-        ) { context in
-            selectContext(context)
-            isFunctionalLocationPickerPresented = false
         }
     }
 }

@@ -235,10 +235,10 @@ extension DemoElevatorAssetDataProvider {
     /// that start with "Pflege durch Admin" / "nicht bekannt", and one value
     /// list without a stored value.
     fileprivate static var holdOpenSystemData: ElevatorAssetData {
-        let unknown = ElevatorInspectionValueOption(code: "NICHT VORHN.", text: EquipmentMasterDataCatalog.unknownText)
+        let unknown = ElevatorInspectionValueOption(code: "NICHT VORHN.", text: MasterDataProposalRules.unknownText)
         let admin = ElevatorInspectionValueOption(
-            code: EquipmentMasterDataCatalog.adminKey,
-            text: EquipmentMasterDataCatalog.adminText
+            code: MasterDataProposalRules.adminKey,
+            text: MasterDataProposalRules.adminText
         )
         func list(_ entries: [(String, String)]) -> [ElevatorInspectionValueOption] {
             [admin, unknown] + entries.map { ElevatorInspectionValueOption(code: $0.0, text: $0.1) }
@@ -319,10 +319,10 @@ extension DemoElevatorAssetDataProvider {
     /// TFM8 header shaped like a Dachanlagen class: a count, a value list with
     /// "Pflege durch Admin" / "nicht bekannt" and a date.
     fileprivate static var roofSystemData: ElevatorAssetData {
-        let unknown = ElevatorInspectionValueOption(code: "NICHT VORHN.", text: EquipmentMasterDataCatalog.unknownText)
+        let unknown = ElevatorInspectionValueOption(code: "NICHT VORHN.", text: MasterDataProposalRules.unknownText)
         let admin = ElevatorInspectionValueOption(
-            code: EquipmentMasterDataCatalog.adminKey,
-            text: EquipmentMasterDataCatalog.adminText
+            code: MasterDataProposalRules.adminKey,
+            text: MasterDataProposalRules.adminText
         )
         let anchorTypes = [admin, unknown] + [
             ElevatorInspectionValueOption(code: "EINZEL", text: String(localized: "roofSystem.masterData.demo.singleAnchor")),
@@ -453,7 +453,7 @@ enum ElevatorAssetDataDecoder {
                     .ifEmpty(code)
                 return ElevatorInspectionValueOption(code: code, text: title)
             }
-            let selectableOptions = EquipmentMasterDataCatalog.ordered(options)
+            let selectableOptions = MasterDataProposalRules.ordered(options, text: \.text, code: \.code)
 
             // Map BAPI value descriptions (e.g., "ROPE" -> "Seil", "PASSENGER ELEVATOR" -> "Personenaufzug")
             let bapiForChar = bapiCharValRows.filter {

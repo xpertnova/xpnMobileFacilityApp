@@ -396,10 +396,20 @@ final class SubdistributionTests: XCTestCase {
         ]]])
         let classData = try SAPLegacyDataExchangeCodec.packedFeldwert([
             "KLART": "002", "KLASSE": "TFMUNTERVERT", "KLAGR": "TFM",
-            "T_CHARA": [[
-                "ATNAM": "TFMUNTERVERT_BEZUNTERVERT", "ATBEZ": "Designation",
-                "ATFOR": "CHAR", "ANZST": "40", "ATERF": "X"
-            ]],
+            "T_CHARA": [
+                [
+                    "POSNR": "1", "ATINN": "20000",
+                    "ATNAM": "TFMUNTERVERT_BEZUNTERVERT", "ATBEZ": "Designation",
+                    "ATFOR": "CHAR", "ANZST": "40", "ATERF": "X"
+                ],
+                [
+                    // The shape SAP delivers: the value list nested in its
+                    // characteristic. `POSNR`, not `ATINN`, sets the order.
+                    "POSNR": "2", "ATINN": "10000",
+                    "ATNAM": "TFMUNTERVERT_TYP", "ATBEZ": "Type", "ATFOR": "CHAR",
+                    "T_CHARVAL": [["ATWRT": "AUFPUTZ", "ATWTB": "Aufputz"]]
+                ]
+            ],
             "T_CHARVAL": [[
                 "ATNAM": "TFMUNTERVERT_BEZUNTERVERT", "ATWRT": "UV-A", "ATWTB": "UV A"
             ]]
@@ -415,9 +425,14 @@ final class SubdistributionTests: XCTestCase {
             "LKEY": "EQUIPMENT", "LPAR": "TFMNSPV", "FELDWERT": equipment
         ]], into: "FROM_T0268")
         try await repository.insertLegacyRows([
+            ["MANDT": "100", "STRNO": "DE-ESS-100", "TPLND": "DE", "TPORT": "ESS", "TPWEH": "100", "PLTXT": "Site", "USTXT": "iBet"],
+            [
+                "MANDT": "100", "STRNO": "DE-ESS-100-01", "TPLND": "DE", "TPORT": "ESS", "TPWEH": "100",
+                "TPGEB": "01", "PLTXT": "GB01 Office", "USTXT": "iBet"
+            ],
             [
                 "MANDT": "100", "STRNO": "DE-ESS-100-01-440", "TPLND": "DE", "TPORT": "ESS",
-                "TPWEH": "100", "TPGEB": "01", "TPGSG": "440", "PLTXT": "Building 01",
+                "TPWEH": "100", "TPGEB": "01", "TPGSG": "440", "PLTXT": "Distributor NSHV",
                 "IWERK": "1000", "INGRP": "001", "GEWRK": "FM", "USTXT": "iBet", "EQART": "TFMNSPV"
             ],
             [
@@ -431,12 +446,17 @@ final class SubdistributionTests: XCTestCase {
         XCTAssertEqual(data.contexts.count, 1)
         let context = try XCTUnwrap(data.contexts.first)
         XCTAssertEqual(context.legacyContext.parentEquipmentType, "TFMNSPV")
+        XCTAssertEqual(context.building, "01 · GB01 Office", "the building location's text, not the distributor's")
         XCTAssertEqual(context.legacyContext.template.planNumber, "TFM7_001")
         XCTAssertEqual(context.legacyContext.template.inspectionItems.first?.resultValues.map(\.value), ["1", "2"])
         let characteristic = try XCTUnwrap(context.legacyContext.template.characteristics.first)
         XCTAssertTrue(characteristic.required)
         XCTAssertEqual(characteristic.maximumLength, 40)
         XCTAssertEqual(characteristic.values.first?.title, "UV A")
+        let type = try XCTUnwrap(context.legacyContext.template.characteristics.last)
+        XCTAssertEqual(type.name, "TFMUNTERVERT_TYP")
+        XCTAssertEqual(type.kind, .choice)
+        XCTAssertEqual(type.values.map(\.value), ["AUFPUTZ"])
     }
 
     func testSQLiteProviderDecodesCurrentSAPTFM7CacheShape() async throws {
@@ -474,11 +494,18 @@ final class SubdistributionTests: XCTestCase {
         try await repository.insertLegacyRows([[
             "LKEY": "EQUIPMENT", "LPAR": "EQUIPMENT", "FELDWERT": equipment
         ]], into: "FROM_T0268")
-        try await repository.insertLegacyRows([[
-            "MANDT": "100", "STRNO": "DE-ESS-100-01-440", "TPLND": "DE", "TPORT": "ESS",
-            "TPWEH": "100", "TPGEB": "01", "TPGSG": "440", "PLTXT": "Building 01",
-            "IWERK": "1000", "INGRP": "001", "GEWRK": "FM", "USTXT": "iBet", "EQART": "TFMNSPV"
-        ]], into: "FROM_T0272")
+        try await repository.insertLegacyRows([
+            ["MANDT": "100", "STRNO": "DE-ESS-100", "TPLND": "DE", "TPORT": "ESS", "TPWEH": "100", "PLTXT": "Site", "USTXT": "iBet"],
+            [
+                "MANDT": "100", "STRNO": "DE-ESS-100-01", "TPLND": "DE", "TPORT": "ESS", "TPWEH": "100",
+                "TPGEB": "01", "PLTXT": "GB01 Office", "USTXT": "iBet"
+            ],
+            [
+                "MANDT": "100", "STRNO": "DE-ESS-100-01-440", "TPLND": "DE", "TPORT": "ESS",
+                "TPWEH": "100", "TPGEB": "01", "TPGSG": "440", "PLTXT": "Building 01",
+                "IWERK": "1000", "INGRP": "001", "GEWRK": "FM", "USTXT": "iBet", "EQART": "TFMNSPV"
+            ]
+        ], into: "FROM_T0272")
 
         let data = try await repository.loadSubdistributionCreationData(for: "S50828")
         let template = try XCTUnwrap(data.contexts.first?.legacyContext.template)

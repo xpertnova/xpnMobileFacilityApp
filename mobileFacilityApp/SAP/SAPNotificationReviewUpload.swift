@@ -606,11 +606,25 @@ enum SAPMobileLadderUploadBuilder {
             return SAPNotificationOutgoingDocument(metadata: metadata, data: jpeg)
         }
 
+        // A new ladder's `masterDataQuery` carries the new `EQUNR` and no
+        // `STRNO`, so its proposals are filed under the new equipment.
+        let proposals = SAPMasterDataProposalRows.rows(
+            proposals: draft.outgoingProposals,
+            processID: identifiers.processNumber,
+            notificationID: identifiers.notificationNumber,
+            equipmentID: identifiers.equipmentNumber,
+            functionalLocationID: "",
+            userID: user,
+            date: createdDate,
+            time: createdTime
+        )
+
         return SAPNotificationOutgoingBatch(
             workItemIDs: [workItem.id], attachmentIDs: draft.photoAttachments.map(\.localAttachmentID),
             processIDs: [identifiers.processNumber], equipmentIDs: [identifiers.equipmentNumber],
             headers: [header], values: values, documents: documents,
-            equipment: [try equipmentRow(draft, context, identifiers)]
+            equipment: [try equipmentRow(draft, context, identifiers)],
+            proposals: proposals
         )
     }
 
@@ -663,9 +677,16 @@ enum SAPMobileLadderUploadBuilder {
         data["KLASSE"] = context.template.className
         data["KLAGR"] = context.template.classGroup
         data["T_CLOBJDAT"] = context.template.characteristics.map {
-            ["ATNAM": $0.name, "ATWRT": values[$0.name] ?? "", "MSEHI": $0.unit]
+            ["ATNAM": $0.name, "ATWRT": sapValue(values[$0.name] ?? "", of: $0), "MSEHI": $0.unit]
         }
         return data
+    }
+
+    /// The dropdowns show a value's text (`ATWTB`), while `_buildHeaderForm`
+    /// keys each ComboBox item by `ATWRT` and stores that key. Some keys
+    /// differ from their text, e.g. `PLATTFORMLEITER` for "Plattformleiter".
+    private static func sapValue(_ value: String, of characteristic: MobileLadderLegacyCharacteristic) -> String {
+        characteristic.values.first { $0.title == value }?.value ?? value
     }
 
     private static func valueRow(

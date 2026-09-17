@@ -6,14 +6,13 @@ import Observation
 final class MobileLadderCreationViewModel {
     enum State: Equatable { case loading, ready, unavailable }
     enum Feedback: Identifiable {
-        case validation, saved, queued, proposalSaved, failed(String)
+        case validation, saved, queued, failed(String)
 
         var id: String {
             switch self {
             case .validation: "validation"
             case .saved: "saved"
             case .queued: "queued"
-            case .proposalSaved: "proposalSaved"
             case let .failed(message): "failed-\(message)"
             }
         }
@@ -33,6 +32,8 @@ final class MobileLadderCreationViewModel {
     var selectedBuilding: String?
     var selectedTrade: String?
     var feedback: Feedback?
+    /// Catalog field whose proposal editor is open.
+    var proposalField: MobileLadderCatalogField?
     private(set) var isSaving = false
 
     init(
@@ -88,6 +89,7 @@ final class MobileLadderCreationViewModel {
         !isReadOnly
             && draft.context != nil
             && requiredValues.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            && !MobileLadderCatalogField.allCases.contains(where: isMissingProposal)
             && (Int(draft.rungCount.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0) > 0
             && !draft.inspectionItems.isEmpty
             // Legacy TFM5 clears and disables inspection rows while the
@@ -157,38 +159,89 @@ final class MobileLadderCreationViewModel {
         applyTemplateCatalog(selectedContext.legacyContext.template)
         applyInspectionTemplate(selectedContext.legacyContext.template)
         if draft.clientCompany.isEmpty {
-            let companies = catalog.options(for: .clientCompany).filter { $0 != "Pflege durch Admin" }
+            let companies = catalog.options(for: .clientCompany).filter { !MasterDataProposalRules.isAdmin(text: $0) }
             if companies.count == 1, let first = companies.first {
                 draft.clientCompany = first
             }
         }
     }
 
+    /// Value-list entries in legacy order: "Pflege durch Admin" first,
+    /// "nicht bekannt" second.
+    func options(for field: MobileLadderCatalogField) -> [String] {
+        MasterDataProposalRules.ordered(catalog.options(for: field))
+    }
+
+    /// Applies a dropdown pick the way `onChangeHeader` does: picking
+    /// "Pflege durch Admin" asks for a proposal, replacing it drops the
+    /// proposal (`deleteVorschlag`).
     func setSelection(_ value: String, for field: MobileLadderCatalogField) {
         guard !isReadOnly else { return }
-        switch field {
-        case .material: draft.material = value
-        case .constructionType: draft.constructionType = value
-        case .manufacturer: draft.manufacturer = value
-        case .clientCompany: draft.clientCompany = value
+        let wasAdmin = draft.selectsAdmin(field)
+        draft.setValue(value, for: field)
+        switch MasterDataProposalRules.selectionChange(wasAdmin: wasAdmin, isAdmin: draft.selectsAdmin(field)) {
+        case .requestProposal: proposalField = field
+        case .removeProposal: draft.proposals?[field.characteristicName] = nil
+        case .none: break
         }
     }
 
-    /// Rung counts are numeric legacy values. Normalize input here as well as
-    /// in the numeric keyboard field so pasted and reopened draft data cannot
-    /// reintroduce text characters.
-    func setRungCount(_ value: String) {
-        guard !isReadOnly else { return }
-        draft.rungCount = String(value.filter(\.isNumber))
+    /// The field's value list offers "Pflege durch Admin", so it carries the
+    /// proposal button.
+    func offersProposal(for field: MobileLadderCatalogField) -> Bool {
+        options(for: field).contains { MasterDataProposalRules.isAdmin(text: $0) }
     }
 
-    func saveProposal(_ value: String, for field: MobileLadderCatalogField) -> Bool {
-        let proposal = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !proposal.isEmpty else { return false }
-        catalog.addProposal(proposal, for: field)
-        setSelection(proposal, for: field)
-        feedback = .proposalSaved
-        return true
+    /// The proposal button is enabled while "Pflege durch Admin" is selected.
+    func isProposalAvailable(for field: MobileLadderCatalogField) -> Bool {
+        !isReadOnly && !isSaving && draft.selectsAdmin(field)
+    }
+
+    func isMissingProposal(_ field: MobileLadderCatalogField) -> Bool {
+        MasterDataProposalRules.isMissingProposal(
+            selectsAdmin: draft.selectsAdmin(field),
+            proposal: draft.proposal(for: field)
+        )
+    }
+
+    /// A new ladder gets a new equipment number, so the legacy `getVorschlag`
+    /// (element plus `EQUNR`) only ever finds this ladder's own proposal.
+    func proposalHistory(for field: MobileLadderCatalogField) -> [String] {
+        MasterDataProposalRules.history([draft.proposal(for: field)])
+    }
+
+    /// `onPressVorschlagSave`: a text stores the proposal, an empty text
+    /// removes it.
+    func saveProposal(_ text: String, for field: MobileLadderCatalogField) {
+        defer { proposalField = nil }
+        guard !isReadOnly else { return }
+        let proposal = MasterDataProposalRules.normalized(text)
+        var proposals = draft.proposals ?? [:]
+        proposals[field.characteristicName] = proposal.isEmpty ? nil : proposal
+        draft.proposals = proposals
+    }
+
+    static let rungCountMaxDigits = 3
+
+    /// Legacy `NbpmNumberInput` showed the characteristic's SAP unit (`MSEHI`)
+    /// beside the value; TFM5 counts rungs in pieces ("ST").
+    var rungCountUnit: String {
+        (draft.context?.legacyContext.template.characteristics.first {
+            $0.name.caseInsensitiveCompare("TFMMOBLEITER_ANZAHLSPROSSEN") == .orderedSame
+        }?.unit ?? "").ifEmpty("ST")
+    }
+
+    /// Rung counts are numeric legacy values of at most three digits. Normalize
+    /// input here as well as in the numeric keyboard field so pasted and
+    /// reopened draft data cannot reintroduce text characters or longer values.
+    func setRungCount(_ value: String) {
+        guard !isReadOnly else { return }
+        let digits = String(value.filter(\.isNumber).prefix(Self.rungCountMaxDigits))
+        // `draft` is one observed property: skip unchanged writes so they do
+        // not re-render the whole form.
+        if draft.rungCount != digits {
+            draft.rungCount = digits
+        }
     }
 
     func markEverythingOkay() {
@@ -327,13 +380,9 @@ final class MobileLadderCreationViewModel {
     }
 
     private func applyTemplateCatalog(_ template: MobileLadderLegacyTemplate) {
-        let mappings: [(MobileLadderCatalogField, String)] = [
-            (.material, "TFMMOBLEITER_WERKSTOFF"), (.constructionType, "TFMMOBLEITER_BAUART"),
-            (.manufacturer, "TFMMOBLEITER_HERSTELLER"), (.clientCompany, "TFMMOBLEITER_GESELLSCHAFT")
-        ]
-        for (field, name) in mappings {
+        for field in MobileLadderCatalogField.allCases {
             let values = template.characteristics.first {
-                $0.name.caseInsensitiveCompare(name) == .orderedSame
+                $0.name.caseInsensitiveCompare(field.characteristicName) == .orderedSame
             }?.values.map { $0.title.isEmpty ? $0.value : $0.title } ?? []
             if !values.isEmpty { catalog.options[field] = values }
         }
@@ -389,6 +438,7 @@ final class MobileLadderCreationViewModel {
         isSaving = true
         defer { isSaving = false }
         setRungCount(draft.rungCount)
+        draft.proposals = draft.outgoingProposals
         synchronizePhotoAttachments()
         do {
             let item = try await offlineWorkStore.saveMobileLadder(

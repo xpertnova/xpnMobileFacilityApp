@@ -376,11 +376,13 @@ final class EquipmentInspectionViewModel {
         }
         setMasterDataValue(newValue, for: characteristic)
 
-        let isAdmin = EquipmentMasterDataRules.selectsAdmin(characteristic, value: newValue)
-        if isAdmin && !wasAdmin {
-            proposalCharacteristicID = characteristic.name
-        } else if !isAdmin && wasAdmin {
-            masterDataProposals[characteristic.name] = nil
+        switch MasterDataProposalRules.selectionChange(
+            wasAdmin: wasAdmin,
+            isAdmin: EquipmentMasterDataRules.selectsAdmin(characteristic, value: newValue)
+        ) {
+        case .requestProposal: proposalCharacteristicID = characteristic.name
+        case .removeProposal: masterDataProposals[characteristic.name] = nil
+        case .none: break
         }
     }
 
@@ -410,38 +412,36 @@ final class EquipmentInspectionViewModel {
         masterDataProposals[characteristic.name] ?? ""
     }
 
-    /// The last proposal for the same field of the same object that is still
-    /// on this device. The legacy `getVorschlag` reads the unsent `TO_T0211`
-    /// rows for the element and `EQUNR`/`STRNO`; the history box shows only
-    /// the most recent one. `insertVorschlag` writes a proposal as soon as the
-    /// popover is saved, so this inspection's own proposal counts even before
-    /// the draft is saved.
-    func lastProposal(for characteristic: ElevatorAssetCharacteristic) -> String? {
-        let current = proposal(for: characteristic)
-        if !current.isEmpty { return current }
+    /// Proposals for the same field of the same object that are still on
+    /// this device, newest first. The legacy `getVorschlag` reads the unsent
+    /// `TO_T0211` rows for the element and `EQUNR`/`STRNO`.
+    /// `insertVorschlag` writes a proposal as soon as the popover is saved, so
+    /// this inspection's own proposal counts even before the draft is saved.
+    func proposalHistory(for characteristic: ElevatorAssetCharacteristic) -> [String] {
         let equipmentID = detail.summary.equipmentID
         let locationID = detail.summary.functionalLocationID
-        return offlineWorkStore.items
+        let others = offlineWorkStore.items
+            .filter { $0.status != .synchronized }
             .sorted { $0.updatedAt > $1.updatedAt }
-            .lazy
             .compactMap { item -> String? in
-                guard let masterData = item.payload.elevatorInspection?.masterData,
+                guard let inspection = item.payload.elevatorInspection,
+                      // This inspection's saved proposal is replaced by the
+                      // one being edited, like `insertVorschlag` replaces its row.
+                      inspection.notificationID != detail.summary.id,
+                      let masterData = inspection.masterData,
                       equipmentID.isEmpty
                         ? masterData.functionalLocationID == locationID
-                        : masterData.equipmentID == equipmentID,
-                      let value = masterData.proposals[characteristic.name]?
-                        .trimmingCharacters(in: .whitespacesAndNewlines),
-                      !value.isEmpty
+                        : masterData.equipmentID == equipmentID
                 else { return nil }
-                return value
+                return masterData.proposals[characteristic.name]
             }
-            .first
+        return MasterDataProposalRules.history([proposal(for: characteristic)] + others)
     }
 
     /// `onPressVorschlagSave`: a text stores the proposal, an empty text
     /// removes an existing one.
     func saveProposal(_ text: String, for characteristic: ElevatorAssetCharacteristic) {
-        let value = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+        let value = MasterDataProposalRules.normalized(text)
         masterDataProposals[characteristic.name] = value.isEmpty ? nil : value
         if !value.isEmpty {
             masterDataValidationErrors.remove(characteristic.name)

@@ -120,6 +120,17 @@ enum MobileLadderCatalogField: String, CaseIterable, Codable, Identifiable, Send
         }
     }
 
+    /// SAP class characteristic (`ATNAM`) the field is stored in. It is also
+    /// the element of the field's `TO_T0211` proposal.
+    var characteristicName: String {
+        switch self {
+        case .material: "TFMMOBLEITER_WERKSTOFF"
+        case .constructionType: "TFMMOBLEITER_BAUART"
+        case .manufacturer: "TFMMOBLEITER_HERSTELLER"
+        case .clientCompany: "TFMMOBLEITER_GESELLSCHAFT"
+        }
+    }
+
     var iconName: String {
         switch self {
         case .material: "cube.box"
@@ -139,14 +150,6 @@ struct MobileLadderCatalog: Equatable, Sendable {
             return current
         }
         return Self.legacyReference.options[field, default: []]
-    }
-
-    mutating func addProposal(_ proposal: String, for field: MobileLadderCatalogField) {
-        var existing = options(for: field)
-        if !existing.contains(where: { $0.caseInsensitiveCompare(proposal) == .orderedSame }) {
-            existing.append(proposal)
-            options[field] = existing
-        }
     }
 
     /// Values retained locally while the SAP value-help contract is not yet available.
@@ -281,6 +284,10 @@ struct MobileLadderDraftPayload: Codable, Equatable, Sendable {
     var inspectionItems: [MobileLadderInspectionItem]
     var photoAttachments: [MobileLadderPhotoAttachment]
     var legacyIdentifiers: MobileLadderLegacyIdentifiers?
+    /// `Vorschlag` text per catalog characteristic (`ATNAM`) that holds
+    /// "Pflege durch Admin". Optional to keep earlier version-1 drafts
+    /// readable.
+    var proposals: [String: String]?
 
     init(localDraftID: String = UUID().uuidString, now: Date = .now) {
         version = Self.currentVersion
@@ -302,6 +309,44 @@ struct MobileLadderDraftPayload: Codable, Equatable, Sendable {
         inspectionItems = []
         photoAttachments = []
         legacyIdentifiers = nil
+        proposals = [:]
+    }
+
+    func value(for field: MobileLadderCatalogField) -> String {
+        switch field {
+        case .material: material
+        case .constructionType: constructionType
+        case .manufacturer: manufacturer
+        case .clientCompany: clientCompany
+        }
+    }
+
+    mutating func setValue(_ value: String, for field: MobileLadderCatalogField) {
+        switch field {
+        case .material: material = value
+        case .constructionType: constructionType = value
+        case .manufacturer: manufacturer = value
+        case .clientCompany: clientCompany = value
+        }
+    }
+
+    func selectsAdmin(_ field: MobileLadderCatalogField) -> Bool {
+        MasterDataProposalRules.isAdmin(text: value(for: field))
+    }
+
+    func proposal(for field: MobileLadderCatalogField) -> String {
+        proposals?[field.characteristicName] ?? ""
+    }
+
+    /// Proposals of the fields that still hold "Pflege durch Admin", which
+    /// are the ones sent as `TO_T0211` rows.
+    var outgoingProposals: [String: String] {
+        MobileLadderCatalogField.allCases.reduce(into: [:]) { result, field in
+            let proposal = MasterDataProposalRules.normalized(self.proposal(for: field))
+            if selectsAdmin(field), !proposal.isEmpty {
+                result[field.characteristicName] = proposal
+            }
+        }
     }
 }
 

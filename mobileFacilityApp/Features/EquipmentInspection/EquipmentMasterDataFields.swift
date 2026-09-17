@@ -12,7 +12,6 @@ struct EquipmentMasterDataFields: View {
 
     /// Narrower on a compact window, where the value controls need the room.
     private var labelWidth: CGFloat { layout.isCompact ? 170 : 220 }
-    private static let proposalButtonWidth: CGFloat = 56
 
     private var reservesProposalColumn: Bool {
         model.elevatorAssetCharacteristics.contains(where: \.offersProposal)
@@ -26,7 +25,7 @@ struct EquipmentMasterDataFields: View {
                     if characteristic.offersProposal {
                         proposalButton(for: characteristic)
                     } else if reservesProposalColumn {
-                        Color.clear.frame(width: Self.proposalButtonWidth, height: 1)
+                        Color.clear.frame(width: MasterDataProposalButton.width, height: 1)
                     }
                 }
             }
@@ -164,20 +163,12 @@ struct EquipmentMasterDataFields: View {
     }
 
     private func proposalButton(for characteristic: ElevatorAssetCharacteristic) -> some View {
-        let isEnabled = model.isProposalAvailable(for: characteristic)
-        let hasProposal = !model.proposal(for: characteristic).isEmpty
-        return Button {
+        MasterDataProposalButton(
+            isEnabled: model.isProposalAvailable(for: characteristic),
+            hasProposal: !model.proposal(for: characteristic).isEmpty
+        ) {
             model.proposalCharacteristicID = characteristic.name
-        } label: {
-            Image(systemName: hasProposal ? "square.and.pencil.circle.fill" : "square.and.pencil")
-                .font(.title3)
-                .foregroundStyle(isEnabled ? FacilityTheme.blue : .secondary)
-                .frame(width: Self.proposalButtonWidth, height: 48)
-                .briefingFieldChrome(invalid: false, isDisabled: !isEnabled)
         }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-        .accessibilityLabel(Text("inspection.masterData.proposal.edit"))
     }
 
     private func presentation(
@@ -194,116 +185,5 @@ struct EquipmentMasterDataFields: View {
                 }
             }
         )
-    }
-}
-
-/// `VorschlagPopover.fragment.xml` as a centered, modal editor: the title
-/// bar, the read-only "Vorgeschlagene Werte" token box (tapping the token
-/// copies it into the input), the required "Neuer Vorschlag" input (at most
-/// 80 characters) and the Cancel / Save footer. Presented over the whole
-/// inspection screen like `NotificationCommentEditorOverlay`.
-struct EquipmentMasterDataProposalOverlay: View {
-    let fieldTitle: String
-    /// The last proposal for this field, if any. The legacy `Tokenizer` is
-    /// hidden when there is nothing to show.
-    let lastProposal: String?
-    let cancel: () -> Void
-    let save: (String) -> Void
-    @State private var text: String
-    @FocusState private var isFocused: Bool
-
-    init(
-        fieldTitle: String,
-        initialText: String,
-        lastProposal: String?,
-        cancel: @escaping () -> Void,
-        save: @escaping (String) -> Void
-    ) {
-        self.fieldTitle = fieldTitle
-        self.lastProposal = lastProposal
-        self.cancel = cancel
-        self.save = save
-        _text = State(initialValue: String(initialText.prefix(80)))
-    }
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.14)
-                .ignoresSafeArea()
-                .onTapGesture(perform: cancel)
-
-            VStack(spacing: 0) {
-                VStack(spacing: 3) {
-                    Text("vorschlagPopover.title")
-                        .font(.headline)
-                        .foregroundStyle(FacilityTheme.ink)
-                    Text(verbatim: fieldTitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .padding(.horizontal, 22)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 16) {
-                    if let lastProposal, !lastProposal.isEmpty {
-                        SafetyFormField("vorschlag.history") {
-                            HStack(spacing: 8) {
-                                Button { text = String(lastProposal.prefix(80)) } label: {
-                                    Text(verbatim: lastProposal)
-                                        .font(.body)
-                                        .foregroundStyle(FacilityTheme.ink)
-                                        .lineLimit(1)
-                                        .padding(.horizontal, 10)
-                                        .frame(minHeight: 34)
-                                        .background(Color(white: 0.96), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                        .overlay {
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .stroke(.gray.opacity(0.4))
-                                        }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityHint(Text("vorschlag.new"))
-                                Spacer(minLength: 0)
-                            }
-                            .briefingFieldChrome(invalid: false, isDisabled: true)
-                        }
-                    }
-
-                    SafetyFormField("vorschlag.new", required: true) {
-                        TextField("", text: Binding(get: { text }, set: { text = String($0.prefix(80)) }))
-                            .focused($isFocused)
-                            .foregroundStyle(FacilityTheme.ink)
-                            .briefingFieldChrome(invalid: false)
-                    }
-                }
-                .padding(22)
-
-                Divider()
-
-                HStack(spacing: 28) {
-                    Spacer()
-                    Button("common.cancel", action: cancel)
-                        .frame(minHeight: 44)
-                    Button("inspection.masterData.proposal.save") { save(text) }
-                        .fontWeight(.semibold)
-                        .frame(minHeight: 44)
-                }
-                .foregroundStyle(FacilityTheme.blue)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 8)
-            }
-            .facilityDialogFrame(width: 560, padding: 0)
-            .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.gray.opacity(0.28))
-            }
-            .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
-            .accessibilityAddTraits(.isModal)
-        }
-        .onAppear { isFocused = true }
     }
 }

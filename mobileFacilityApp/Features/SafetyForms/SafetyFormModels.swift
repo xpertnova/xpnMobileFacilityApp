@@ -13,6 +13,32 @@ struct SafetyFormContext: Codable, Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
+extension SafetyFormContext {
+    /// The work locations of the instruction forms. Cordova creates them
+    /// through `SelectionCreate` for `TFMINSTRUCFORM`: an active business
+    /// entity, then one of its active buildings. The building is the work
+    /// location, which `getInfoData` prints as `STRNO`, `PLTXT` and address.
+    static func buildings(in directory: FunctionalLocationDirectory) -> [SafetyFormContext] {
+        directory.buildings.compactMap { building in
+            guard directory.businessEntity(
+                countryCode: building.countryCode,
+                businessEntityCode: building.businessEntityCode
+            ) != nil else { return nil }
+            let cityLine = [building.postalCode, building.city].filter { !$0.isEmpty }.joined(separator: ", ")
+            let place = [cityLine, building.country.isEmpty ? "" : "(\(building.country))"]
+                .filter { !$0.isEmpty }.joined(separator: " ")
+            return SafetyFormContext(
+                businessEntityID: building.businessEntityID,
+                businessEntityTitle: building.businessEntityID,
+                buildingCode: building.buildingCode,
+                buildingTitle: building.title.isEmpty ? building.buildingCode : building.title,
+                functionalLocationID: building.id,
+                functionalLocationTitle: [building.street, place].filter { !$0.isEmpty }.joined(separator: ",\n")
+            )
+        }
+    }
+}
+
 struct SafetyFormSource: Sendable {
     let contexts: [SafetyFormContext]
     let partners: [SAPBriefingPartner]
@@ -41,29 +67,10 @@ struct SafetyFormSource: Sendable {
             )
         }
 
-        let notifications = workspace.sapDataStore.notifications
-        let contexts = workspace.notificationFilterMetadata.map { metadata in
-            let notification = notifications.first { $0.structuralFilterMetadata == metadata }
-            let locationID = notification?.functionalLocationID.nonEmpty
-                ?? metadata.functionalLocationName.nonEmpty
-                ?? metadata.id
-            let locationTitle = notification?.functionalLocationName.nonEmpty
-                ?? metadata.functionalLocationName.nonEmpty
-                ?? locationID
-            return SafetyFormContext(
-                businessEntityID: metadata.businessEntityID,
-                businessEntityTitle: metadata.businessEntityID,
-                buildingCode: metadata.buildingCode,
-                buildingTitle: metadata.buildingCode,
-                functionalLocationID: locationID,
-                functionalLocationTitle: locationTitle
-            )
-        }
-
         let profile = workspace.sapDataStore.workerProfile
         let fallbackName = workspace.effectiveWorkerDisplayName.nameParts
         return Self(
-            contexts: Array(Set(contexts)).sorted { $0.id < $1.id },
+            contexts: SafetyFormContext.buildings(in: workspace.functionalLocationDirectory),
             partners: workspace.sapDataStore.cachedData.briefingPartners,
             instructorFirstName: profile?.firstName.nonEmpty ?? fallbackName.first,
             instructorLastName: profile?.lastName.nonEmpty ?? fallbackName.last,

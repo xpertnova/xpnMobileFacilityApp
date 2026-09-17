@@ -2,6 +2,16 @@ import XCTest
 @testable import mobileFacilityApp
 
 final class NotificationListIndexTests: XCTestCase {
+    private func location(
+        id: String, building: String = "", trade: String = "", title: String
+    ) -> FunctionalLocation {
+        FunctionalLocation(
+            id: id, countryCode: "DE", locationCode: "ESS", businessEntityCode: "100",
+            buildingCode: building, tradeCode: trade, title: title,
+            street: "", postalCode: "", city: "", country: ""
+        )
+    }
+
     func testFilterOptionsArePrecomputedPerHierarchyScope() {
         let options = NotificationStructuralFilterOptions(
             metadata: [
@@ -20,17 +30,32 @@ final class NotificationListIndexTests: XCTestCase {
                     buildingCode: "B", tradeCode: "EL", formCode: "TFM7",
                     functionalLocationName: "Beta building"
                 )
-            ]
+            ],
+            directory: FunctionalLocationDirectory(locations: [
+                location(id: "DE-ESS-100-A", building: "A", title: "GB A Office"),
+                location(id: "DE-ESS-100-A-FM", building: "A", trade: "FM", title: "FM Facility management")
+            ])
         )
 
         XCTAssertEqual(options.businessEntityOptions.map(\.id), ["DE-ESS-100", "DE-SAF-200"])
         XCTAssertEqual(
             options.buildingOptions(for: "DE-ESS-100").map(\.label),
-            ["A — Alpha building"]
+            ["A — GB A Office"],
+            "named by the building location, not by a notification in it"
+        )
+        XCTAssertEqual(
+            options.buildingOptions(for: "DE-SAF-200").map(\.label),
+            ["B"],
+            "a building without its location keeps its code"
         )
         XCTAssertEqual(
             options.tradeOptions(for: "DE-ESS-100", buildingCode: "A").map(\.id),
             ["FM"]
+        )
+        XCTAssertEqual(
+            options.tradeOptions(for: "DE-ESS-100", buildingCode: "A").map(\.label),
+            ["FM Facility management"],
+            "a text that starts with its code stands alone"
         )
         XCTAssertEqual(
             options.formOptions(

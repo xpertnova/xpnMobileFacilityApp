@@ -30,9 +30,6 @@ private enum DisassembledTransition: Hashable, Identifiable {
     @State private var isBuildingPickerPresented = false
     @State private var isTradePickerPresented = false
     @State private var presentedCatalogField: MobileLadderCatalogField?
-    @State private var isProposalAlertPresented = false
-    @State private var proposalTargetField: MobileLadderCatalogField?
-    @State private var proposalInputText = ""
 
     init(demo: FacilityDemoViewModel, itemID: UUID?, close: @escaping () -> Void) {
         self.demo = demo
@@ -95,6 +92,15 @@ private enum DisassembledTransition: Hashable, Identifiable {
                         comment: commentBinding(for: editingCommentID),
                         dismiss: { self.editingCommentID = nil }
                     )
+                } else if let field = model.proposalField {
+                    MasterDataProposalEditor(
+                        fieldTitle: String(localized: String.LocalizationValue(field.titleKey)),
+                        initialText: model.draft.proposal(for: field),
+                        history: model.proposalHistory(for: field),
+                        cancel: { model.proposalField = nil },
+                        save: { model.saveProposal($0, for: field) }
+                    )
+                    .id(field)
                 }
             }
         }
@@ -133,23 +139,6 @@ private enum DisassembledTransition: Hashable, Identifiable {
             confirmTitleKey: "notifications.detail.closeConfirmation.confirm"
         ) {
             Task { _ = await model.close() }
-        }
-        .alert(
-            "vorschlagPopover.title",
-            isPresented: $isProposalAlertPresented
-        ) {
-            TextField("vorschlag.new", text: $proposalInputText)
-            Button("common.cancel", role: .cancel) {
-                proposalInputText = ""
-            }
-            Button("common.ok") {
-                if let field = proposalTargetField {
-                    _ = model.saveProposal(proposalInputText, for: field)
-                }
-                proposalInputText = ""
-            }
-        } message: {
-            Text("vorschlag.history")
         }
     }
 
@@ -302,10 +291,10 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 columns: [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)],
                 spacing: 14
             ) {
-                catalogDropdownField(.material, selection: $model.draft.material)
-                catalogDropdownField(.constructionType, selection: $model.draft.constructionType)
+                catalogDropdownField(.material)
+                catalogDropdownField(.constructionType)
                 textField("mobileLadder.field.factoryNumber", text: $model.draft.factoryNumber, required: false)
-                catalogDropdownField(.manufacturer, selection: $model.draft.manufacturer)
+                catalogDropdownField(.manufacturer)
                 textField(
                     "mobileLadder.field.rungCount",
                     text: Binding(
@@ -313,9 +302,11 @@ private enum DisassembledTransition: Hashable, Identifiable {
                         set: { model.setRungCount($0) }
                     ),
                     required: true,
-                    number: true
+                    number: true,
+                    maxLength: MobileLadderCreationViewModel.rungCountMaxDigits,
+                    unit: model.rungCountUnit
                 )
-                catalogDropdownField(.clientCompany, selection: $model.draft.clientCompany)
+                catalogDropdownField(.clientCompany)
                 textField("mobileLadder.field.room", text: $model.draft.room, required: true)
                 textField("mobileLadder.field.inventoryNumber", text: $model.draft.inventoryNumber, required: false)
                 textField("mobileLadder.field.designation", text: $model.draft.designation, required: true)
@@ -339,68 +330,65 @@ private enum DisassembledTransition: Hashable, Identifiable {
         )
     }
 
-    private func catalogDropdownField(
-        _ field: MobileLadderCatalogField,
-        selection: Binding<String>
-    ) -> some View {
-        SafetyFormField(LocalizedStringKey(field.titleKey), required: true) {
-            Button {
-                isBuildingPickerPresented = false
-                isTradePickerPresented = false
-                presentedCatalogField = field
-            } label: {
-                HStack(spacing: 12) {
-                    Text(selection.wrappedValue.isEmpty ? String(localized: "mobileLadder.field.choose") : selection.wrappedValue)
-                        .foregroundStyle(selection.wrappedValue.isEmpty ? .secondary : FacilityTheme.ink)
-                        .lineLimit(1)
+    /// A catalog value list. When it offers "Pflege durch Admin", the shared
+    /// proposal button sits beside it, and the field is marked while that
+    /// entry still has no proposal.
+    private func catalogDropdownField(_ field: MobileLadderCatalogField) -> some View {
+        let value = model.draft.value(for: field)
+        return SafetyFormField(LocalizedStringKey(field.titleKey), required: true) {
+            HStack(spacing: 10) {
+                Button {
+                    isBuildingPickerPresented = false
+                    isTradePickerPresented = false
+                    presentedCatalogField = field
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(value.isEmpty ? String(localized: "mobileLadder.field.choose") : value)
+                            .foregroundStyle(value.isEmpty ? .secondary : FacilityTheme.ink)
+                            .lineLimit(1)
 
-                    Spacer(minLength: 0)
+                        Spacer(minLength: 0)
 
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(FacilityTheme.blue)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(FacilityTheme.blue)
+                    }
+                    .briefingFieldChrome(invalid: model.isMissingProposal(field))
                 }
-                .briefingFieldChrome(invalid: false)
-            }
-            .buttonStyle(.plain)
-            .facilityPopover(
-                isPresented: Binding(
-                    get: { presentedCatalogField == field },
-                    set: { if !$0 && presentedCatalogField == field { presentedCatalogField = nil } }
-                ),
-                arrowEdge: .top
-            ) {
-                catalogPicker(for: field, selection: selection)
+                .buttonStyle(.plain)
+                .facilityPopover(
+                    isPresented: Binding(
+                        get: { presentedCatalogField == field },
+                        set: { if !$0 && presentedCatalogField == field { presentedCatalogField = nil } }
+                    ),
+                    arrowEdge: .top
+                ) {
+                    catalogPicker(for: field)
+                }
+
+                if model.offersProposal(for: field) {
+                    MasterDataProposalButton(
+                        isEnabled: model.isProposalAvailable(for: field),
+                        hasProposal: !model.draft.proposal(for: field).isEmpty
+                    ) {
+                        presentedCatalogField = nil
+                        model.proposalField = field
+                    }
+                }
             }
         }
     }
 
-    private func catalogPicker(
-        for field: MobileLadderCatalogField,
-        selection: Binding<String>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private func catalogPicker(for field: MobileLadderCatalogField) -> some View {
+        let selection = model.draft.value(for: field)
+        let options = model.options(for: field)
+        return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: field.iconName)
                     .foregroundStyle(FacilityTheme.accent)
                 Text(LocalizedStringKey(field.titleKey))
                     .font(.headline)
                     .foregroundStyle(FacilityTheme.ink)
-
-                Spacer(minLength: 8)
-
-                Button {
-                    proposalTargetField = field
-                    proposalInputText = ""
-                    presentedCatalogField = nil
-                    isProposalAlertPresented = true
-                } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.title3)
-                        .foregroundStyle(FacilityTheme.blue)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("vorschlag.new"))
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
@@ -409,20 +397,12 @@ private enum DisassembledTransition: Hashable, Identifiable {
 
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    let options = model.catalog.options(for: field)
                     ForEach(options, id: \.self) { option in
-                        let isSelected = option == selection.wrappedValue
+                        let isSelected = option == selection
 
                         Button {
-                            if option == "Pflege durch Admin" {
-                                proposalTargetField = field
-                                proposalInputText = ""
-                                presentedCatalogField = nil
-                                isProposalAlertPresented = true
-                            } else {
-                                selection.wrappedValue = option
-                                presentedCatalogField = nil
-                            }
+                            presentedCatalogField = nil
+                            model.setSelection(option, for: field)
                         } label: {
                             HStack(spacing: 12) {
                                 Text(option)
@@ -459,17 +439,27 @@ private enum DisassembledTransition: Hashable, Identifiable {
         _ key: LocalizedStringKey,
         text: Binding<String>,
         required: Bool = false,
-        number: Bool = false
+        number: Bool = false,
+        maxLength: Int? = nil,
+        unit: String? = nil
     ) -> some View {
         SafetyFormField(key, required: required) {
-            Group {
-                if number {
-                    DigitsOnlyTextField(text: text)
-                } else {
-                    TextField("", text: text)
+            HStack(spacing: 8) {
+                Group {
+                    if number {
+                        DigitsOnlyTextField(text: text, maxLength: maxLength)
+                    } else {
+                        TextField("", text: text)
+                    }
+                }
+                .foregroundStyle(FacilityTheme.ink)
+
+                if let unit {
+                    Text(verbatim: unit)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .foregroundStyle(FacilityTheme.ink)
             .briefingFieldChrome(invalid: false)
         }
     }
@@ -604,49 +594,94 @@ private enum DisassembledTransition: Hashable, Identifiable {
     }
 }
 
-/// Keeps the visible editing buffer in lockstep with a digits-only value.
-/// `keyboardType` is only a keyboard preference on iPad, so this also rejects
-/// letters from a hardware keyboard and removes them immediately on paste.
-private struct DigitsOnlyTextField: View {
+/// A digits-only `UITextField`, like `MeterReadingNumberTextField`.
+/// `keyboardType` is only a keyboard preference on iPad, so the delegate
+/// rejects letters from a hardware keyboard, and digits beyond `maxLength`,
+/// before UIKit inserts them; a paste keeps only the digits that fit. Every
+/// accepted edit reaches the binding synchronously. A SwiftUI `TextField` with
+/// its own buffer mirrored the value through `onChange` one render late, so
+/// fast typing raced the full-form re-render and the field lagged.
+private struct DigitsOnlyTextField: UIViewRepresentable {
     @Binding var text: String
-    @State private var editingText: String
+    var maxLength: Int?
 
-    init(text: Binding<String>) {
-        _text = text
-        _editingText = State(initialValue: Self.digits(in: text.wrappedValue))
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField()
+        textField.delegate = context.coordinator
+        textField.keyboardType = .numberPad
+        textField.font = .preferredFont(forTextStyle: .body)
+        textField.adjustsFontForContentSizeCategory = true
+        textField.textColor = UIColor(FacilityTheme.ink)
+        textField.tintColor = UIColor(FacilityTheme.blue)
+        textField.borderStyle = .none
+        textField.autocorrectionType = .no
+        textField.autocapitalizationType = .none
+        textField.spellCheckingType = .no
+        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textField.setContentHuggingPriority(.required, for: .vertical)
+        textField.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textDidChange(_:)),
+            for: .editingChanged
+        )
+        return textField
     }
 
-    var body: some View {
-        TextField("", text: $editingText)
-            .keyboardType(.numberPad)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .onChange(of: editingText) { _, value in
-                applyDigits(from: value)
-            }
-            .onChange(of: text) { _, value in
-                let digits = Self.digits(in: value)
-                if editingText != digits {
-                    editingText = digits
-                }
-            }
-            .onAppear {
-                applyDigits(from: text)
-            }
-    }
-
-    private func applyDigits(from value: String) {
-        let digits = Self.digits(in: value)
-        if editingText != digits {
-            editingText = digits
-        }
-        if text != digits {
-            text = digits
+    func updateUIView(_ textField: UITextField, context: Context) {
+        context.coordinator.parent = self
+        textField.isEnabled = context.environment.isEnabled
+        if textField.text != text {
+            textField.text = text
         }
     }
 
-    private static func digits(in value: String) -> String {
-        String(value.filter(\.isNumber))
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: DigitsOnlyTextField
+
+        init(_ parent: DigitsOnlyTextField) {
+            self.parent = parent
+        }
+
+        func textField(
+            _ textField: UITextField,
+            shouldChangeCharactersIn range: NSRange,
+            replacementString string: String
+        ) -> Bool {
+            let current = (textField.text ?? "") as NSString
+            var accepted = string.filter(\.isNumber)
+            if let maxLength = parent.maxLength {
+                let keptCount = (current as String).count - current.substring(with: range).count
+                accepted = String(accepted.prefix(max(0, maxLength - keptCount)))
+            }
+            guard accepted != string else { return true }
+            guard !accepted.isEmpty else { return false }
+
+            textField.text = current.replacingCharacters(in: range, with: accepted)
+            let caretOffset = range.location + (accepted as NSString).length
+            if let caret = textField.position(from: textField.beginningOfDocument, offset: caretOffset) {
+                textField.selectedTextRange = textField.textRange(from: caret, to: caret)
+            }
+            textDidChange(textField)
+            return false
+        }
+
+        @objc func textDidChange(_ textField: UITextField) {
+            var digits = String((textField.text ?? "").filter(\.isNumber))
+            if let maxLength = parent.maxLength {
+                digits = String(digits.prefix(maxLength))
+            }
+            if textField.text != digits {
+                textField.text = digits
+            }
+            if parent.text != digits {
+                parent.text = digits
+            }
+        }
     }
 }
 
@@ -656,7 +691,6 @@ private extension MobileLadderCreationViewModel.Feedback {
         case .validation: "mobileLadder.validation.title"
         case .saved: "mobileLadder.feedback.saved.title"
         case .queued: "mobileLadder.feedback.queued.title"
-        case .proposalSaved: "vorschlagPopover.title"
         case .failed: "mobileLadder.error.title"
         }
     }
@@ -666,7 +700,6 @@ private extension MobileLadderCreationViewModel.Feedback {
         case .validation: "mobileLadder.validation.message"
         case .saved: "mobileLadder.feedback.saved.message"
         case .queued: "mobileLadder.feedback.queued.message"
-        case .proposalSaved: "vorschlag.speichert"
         case .failed: "mobileLadder.error.message"
         }
     }

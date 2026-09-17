@@ -18234,6 +18234,7 @@
       }
     },
     "vorschlag.history" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
