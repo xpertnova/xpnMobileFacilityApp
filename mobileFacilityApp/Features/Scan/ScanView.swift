@@ -13,7 +13,8 @@ struct ScanView: View {
         self.demo = demo
         _viewModel = State(initialValue: ScanViewModel(
             sapDataStore: demo.sapDataStore,
-            isDemoMode: demo.isDemoMode
+            isDemoMode: demo.isDemoMode,
+            openSingleMatch: { [demo] in demo.openScannedNotification($0) }
         ))
     }
 
@@ -23,7 +24,7 @@ struct ScanView: View {
                 PageHeader("scan.title", subtitle: "scan.subtitle", trailing: AnyView(modePicker))
 
                 FacilitySideColumnLayout(sideWidth: 430, minimumMainWidth: 490, spacing: 18) {
-                    scannerViewport
+                    mainColumn
                     deviceColumn
                 }
             }
@@ -31,15 +32,25 @@ struct ScanView: View {
         }
         .background(FacilityTheme.canvas)
         .onChange(of: mode) { _, _ in
+            // Switching to RFID only stops a running scan; found
+            // notifications are still listed when the technician comes back.
             viewModel.cancel()
             rfidState = .ready
         }
-        .onChange(of: viewModel.state) { _, state in
-            guard case let .results(matches) = state, matches.count == 1,
-                  let notification = matches.first else { return }
-            demo.openScannedNotification(notification)
-        }
         .onDisappear { viewModel.cancel() }
+    }
+
+    @ViewBuilder
+    private var mainColumn: some View {
+        if mode == .qrCode, case let .results(lookup) = viewModel.state {
+            ScanResultsPanel(
+                lookup: lookup,
+                rows: demo.scanResultRows(for: lookup.matches),
+                open: demo.openScannedNotification
+            )
+        } else {
+            scannerViewport
+        }
     }
 
     private var modePicker: some View {
@@ -128,7 +139,27 @@ struct ScanView: View {
         }
     }
 
+    @ViewBuilder
     private var actionButton: some View {
+        if canCancelScan {
+            Button(action: viewModel.cancel) {
+                Label("scan.action.cancel", systemImage: "xmark")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .foregroundStyle(FacilityTheme.ink)
+                    .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.gray.opacity(0.28))
+                    }
+            }
+            .buttonStyle(.plain)
+        } else {
+            primaryButton
+        }
+    }
+
+    private var primaryButton: some View {
         Button(action: performPrimaryAction) {
             HStack(spacing: 9) {
                 if primaryActionIsBusy {
@@ -161,33 +192,6 @@ struct ScanView: View {
                 if failure == .cameraPermissionDenied {
                     Button("scan.action.openSettings", action: openSettings)
                         .buttonStyle(.bordered)
-                }
-            }
-            .facilityCard()
-
-        case let .results(matches) where matches.count > 1:
-            VStack(alignment: .leading, spacing: 12) {
-                Text("scan.results.title").font(.headline)
-                Text("scan.results.subtitle").font(.subheadline).foregroundStyle(.secondary)
-                ForEach(matches) { notification in
-                    Button {
-                        demo.openScannedNotification(notification)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(notification.title.isEmpty ? notification.id : notification.title)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(FacilityTheme.ink)
-                            Text([notification.id, notification.displayLocation]
-                                .filter { !$0.isEmpty }
-                                .joined(separator: " · "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if notification.id != matches.last?.id { Divider() }
                 }
             }
             .facilityCard()
@@ -228,6 +232,12 @@ struct ScanView: View {
         default:
             return false
         }
+    }
+
+    /// While the camera is open the primary action stops it. The lookup after
+    /// a code was read is brief and only shows progress.
+    private var canCancelScan: Bool {
+        mode == .qrCode && viewModel.cameraShouldRun
     }
 
     private var isActivelyScanning: Bool {
@@ -331,5 +341,153 @@ private struct ScanDeviceRow: View {
                 .padding(.vertical, 5)
                 .background(FacilityTheme.accentSoft, in: Capsule())
         }
+    }
+}
+
+/// The notifications a scanned code resolved to, drawn like the rows of the
+/// maintenance notification list.
+private struct ScanResultsPanel: View {
+    let lookup: ScanViewModel.Lookup
+    let rows: [MaintenanceNotification]
+    let open: (SAPNotificationSummary) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+
+            ForEach(Array(zip(lookup.matches, rows)), id: \.0.id) { summary, notification in
+                ScanResultRow(summary: summary, notification: notification) {
+                    open(summary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "qrcode.viewfinder")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(FacilityTheme.accent)
+                .frame(width: 44, height: 44)
+                .background(FacilityTheme.accentSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text("scan.results.title")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(FacilityTheme.ink)
+                    Text(lookup.matches.count, format: .number)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(FacilityTheme.accent)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(FacilityTheme.accentSoft, in: Capsule())
+                }
+                Text("scan.results.scannedCode \(lookup.payload.scannedCodeDescription)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct ScanResultRow: View {
+    let summary: SAPNotificationSummary
+    let notification: MaintenanceNotification
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 16) {
+                NotificationStatusIcon(status: notification.status)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(titleLine)
+                        .font(.headline)
+                        .foregroundStyle(FacilityTheme.ink)
+                        .multilineTextAlignment(.leading)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(technicalObjectLine)
+                        if !notification.location.isEmpty, notification.location != summary.functionalLocationID {
+                            Text(notification.location)
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+
+                    HStack(alignment: .center, spacing: 6) {
+                        Text(notification.dueDate)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 8)
+
+                        if !formCode.isEmpty {
+                            FacilityTemplateBadge(text: formCode, style: .neutral)
+                        }
+
+                        NotificationStatusBadges(notification: notification)
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.tertiary)
+                            .padding(.leading, 8)
+                    }
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var titleLine: String {
+        "\(notification.title) · \(String(localized: "notifications.detail.number")) \(notification.id)"
+    }
+
+    private var technicalObjectLine: String {
+        guard !summary.equipmentID.isEmpty else { return summary.functionalLocationID }
+        return [
+            summary.functionalLocationID,
+            "\(String(localized: "notifications.detail.equipment")) \(summary.equipmentID.withoutSAPLeadingZeros)"
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " · ")
+    }
+
+    /// Form code (`STEUS`), the same grey badge the notification header shows.
+    private var formCode: String {
+        let indexedCode = notification.structuralFilterMetadata?.formCode ?? ""
+        return (indexedCode.isEmpty ? summary.legacyControlKey : indexedCode).uppercased()
+    }
+}
+
+private extension LegacyQRCodePayload {
+    var scannedCodeDescription: String {
+        switch self {
+        case let .mtfm(_, functionalLocationID, equipmentID):
+            guard let equipmentID else { return functionalLocationID }
+            return "\(functionalLocationID) · \(String(localized: "notifications.detail.equipment")) \(equipmentID.withoutSAPLeadingZeros)"
+        case let .mihm(objectNumber, technicalReference):
+            return "\(objectNumber) · \(technicalReference)"
+        }
+    }
+}
+
+private extension String {
+    /// SAP pads numeric equipment numbers with zeros; the legacy notification
+    /// list showed them without the padding.
+    var withoutSAPLeadingZeros: String {
+        guard !isEmpty, allSatisfy({ $0.isASCII && $0.isNumber }) else { return self }
+        let trimmed = drop(while: { $0 == "0" })
+        return trimmed.isEmpty ? "0" : String(trimmed)
     }
 }

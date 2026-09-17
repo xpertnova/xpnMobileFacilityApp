@@ -202,6 +202,16 @@ final class FacilityDemoViewModel {
     }
 
     var visibleNotifications: [MaintenanceNotification] {
+        applyingLocalWork(to: isDemoMode ? notifications : cachedProductionNotificationRows)
+    }
+
+    /// Rows for the notifications a QR scan found, with the same local
+    /// review and inspection state the notification list shows.
+    func scanResultRows(for summaries: [SAPNotificationSummary]) -> [MaintenanceNotification] {
+        applyingLocalWork(to: summaries.map(Self.notificationRow(from:)))
+    }
+
+    private func applyingLocalWork(to baseList: [MaintenanceNotification]) -> [MaintenanceNotification] {
         var elevatorInspectionsByNotificationID: [String: ElevatorInspectionDraftPayload] = [:]
         var reviewsByNotificationID: [String: NotificationReviewDraftPayload] = [:]
         for item in offlineWorkStore.items {
@@ -214,12 +224,6 @@ final class FacilityDemoViewModel {
                let review = item.payload.notificationReview {
                 reviewsByNotificationID[review.notificationID] = review
             }
-        }
-        let baseList: [MaintenanceNotification]
-        if isDemoMode {
-            baseList = notifications
-        } else {
-            baseList = cachedProductionNotificationRows
         }
         return baseList.map { notification in
             if let inspection = elevatorInspectionsByNotificationID[notification.id] {
@@ -285,22 +289,24 @@ final class FacilityDemoViewModel {
         guard productionNotificationRowsRevision != revision else {
             return productionNotificationRows
         }
-        productionNotificationRows = sapDataStore.notifications.map { notification in
-            MaintenanceNotification(
-                id: notification.id,
-                title: notification.title.isEmpty ? notification.id : notification.title,
-                location: notification.displayLocation,
-                dueDate: notification.displayDateRange,
-                equipment: notification.functionalLocationID,
-                sapStatus: notification.displayStatus,
-                status: .open,
-                completedChecks: 0,
-                totalChecks: 0,
-                structuralFilterMetadata: notification.structuralFilterMetadata
-            )
-        }
+        productionNotificationRows = sapDataStore.notifications.map(Self.notificationRow(from:))
         productionNotificationRowsRevision = revision
         return productionNotificationRows
+    }
+
+    private static func notificationRow(from notification: SAPNotificationSummary) -> MaintenanceNotification {
+        MaintenanceNotification(
+            id: notification.id,
+            title: notification.title.isEmpty ? notification.id : notification.title,
+            location: notification.displayLocation,
+            dueDate: notification.displayDateRange,
+            equipment: notification.functionalLocationID,
+            sapStatus: notification.displayStatus,
+            status: .open,
+            completedChecks: 0,
+            totalChecks: 0,
+            structuralFilterMetadata: notification.structuralFilterMetadata
+        )
     }
 
     var effectiveWorkerDisplayName: String {

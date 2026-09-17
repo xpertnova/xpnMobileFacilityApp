@@ -133,6 +133,8 @@ enum FacilityTemplateBadgeStyle {
     case attention
     case temporarilySaved
     case complete
+    /// Form codes such as `TFM5`, grey like the badge in the notification header.
+    case neutral
 
     var foreground: Color {
         switch self {
@@ -141,6 +143,7 @@ enum FacilityTemplateBadgeStyle {
         case .attention: Color(red: 1, green: 59 / 255, blue: 48 / 255)
         case .temporarilySaved: Color(red: 181 / 255, green: 106 / 255, blue: 0)
         case .complete: Color(red: 11 / 255, green: 125 / 255, blue: 87 / 255)
+        case .neutral: Color.secondary
         }
     }
 
@@ -151,6 +154,7 @@ enum FacilityTemplateBadgeStyle {
         case .attention: Color(red: 1, green: 236 / 255, blue: 235 / 255)
         case .temporarilySaved: Color(red: 1, green: 244 / 255, blue: 224 / 255)
         case .complete: Color(red: 230 / 255, green: 246 / 255, blue: 240 / 255)
+        case .neutral: Color(white: 0.92)
         }
     }
 }
