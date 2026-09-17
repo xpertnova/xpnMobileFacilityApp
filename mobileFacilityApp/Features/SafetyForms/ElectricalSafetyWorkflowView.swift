@@ -54,8 +54,7 @@ struct ElectricalSafetyWorkflowView: View {
                         second: .returnWorkResponsible
                     )
                 }
-                .padding(28)
-                .frame(maxWidth: 1280, alignment: .leading)
+                .facilityPageContent()
                 // Keep the parent ScrollView interactive so a closed form can
                 // still be reviewed from Local work.
                 .disabled(viewModel.isReadOnly)

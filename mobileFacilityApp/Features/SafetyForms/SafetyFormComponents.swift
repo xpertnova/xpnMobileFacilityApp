@@ -17,7 +17,7 @@ struct SafetyFormPageHeader: View {
                 .frame(minHeight: 44, alignment: .leading)
 
                 Text(title)
-                    .font(.system(size: 29, weight: .bold))
+                    .facilityPageTitleFont()
                     .foregroundStyle(FacilityTheme.ink)
                 Text(subtitle)
                     .font(.subheadline)
@@ -25,7 +25,7 @@ struct SafetyFormPageHeader: View {
             }
             Spacer(minLength: 12)
         }
-        .padding(.horizontal, 28)
+        .facilityPageHorizontalPadding()
         .padding(.vertical, 18)
         .background(FacilityTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
@@ -129,13 +129,13 @@ struct SafetyFormFieldPair<Leading: View, Trailing: View>: View {
         self.trailing = trailing()
     }
 
+    /// Two columns while each keeps about 290 pt, room for a date-and-time
+    /// picker. The layout keeps both fields' identity when it stacks them,
+    /// so a text field being edited keeps its focus as the width changes.
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) {
-                leading.frame(maxWidth: .infinity, alignment: .topLeading)
-                trailing.frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            VStack(alignment: .leading, spacing: 14) { leading; trailing }
+        FacilityColumnsLayout(columnCounts: [2, 1], minimumColumnWidth: 290, spacing: 16) {
+            leading.frame(maxWidth: .infinity, alignment: .topLeading)
+            trailing.frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 }
@@ -853,7 +853,7 @@ struct SafetyFormActionBar: View {
                     .disabled(!canComplete || isBusy)
             }
         }
-        .padding(.horizontal, 28)
+        .facilityPageHorizontalPadding()
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }

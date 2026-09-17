@@ -3,15 +3,27 @@ import SwiftUI
 // MARK: - Defect selection after closing
 
 /// Column geometry of the defect selection table.
-private enum I2DefectSelectionMetrics {
+///
+/// On a compact window the dialog sits beside the sidebar in roughly 750 pt,
+/// so the wide columns and the list height give way there instead of
+/// overflowing the frame.
+private struct I2DefectSelectionMetrics {
     static let dialogWidth: CGFloat = 980
     static let numberColumn: CGFloat = 40
-    static let flexibleColumnMinimum: CGFloat = 160
-    static let resultColumn: CGFloat = 170
-    static let categoryColumn: CGFloat = 250
     static let columnSpacing: CGFloat = 12
     static let horizontalPadding: CGFloat = 16
-    static let maximumListHeight: CGFloat = 380
+
+    let flexibleColumnMinimum: CGFloat
+    let resultColumn: CGFloat
+    let categoryColumn: CGFloat
+    let maximumListHeight: CGFloat
+
+    init(layout: FacilityLayoutMetrics) {
+        flexibleColumnMinimum = layout.isCompact ? 100 : 160
+        resultColumn = layout.isCompact ? 140 : 170
+        categoryColumn = layout.isCompact ? 210 : 250
+        maximumListHeight = layout.isCompact ? 240 : 380
+    }
 }
 
 private struct I2DefectSelectionDialogModifier: ViewModifier {
@@ -42,7 +54,6 @@ private struct I2DefectSelectionDialogModifier: ViewModifier {
                     ) {
                         I2DefectSelectionTable(selection: selection)
                     }
-                    .padding(28)
                 }
                 .transition(.opacity)
             }
@@ -71,6 +82,9 @@ private struct I2DefectSelectionTable: View {
     let selection: I2DefectSelection
 
     @State private var expandedCandidateID: String?
+    @Environment(\.facilityLayout) private var layout
+
+    private var metrics: I2DefectSelectionMetrics { I2DefectSelectionMetrics(layout: layout) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,7 +100,7 @@ private struct I2DefectSelectionTable: View {
                     }
                 }
             }
-            .frame(maxHeight: I2DefectSelectionMetrics.maximumListHeight)
+            .frame(maxHeight: metrics.maximumListHeight)
             .fixedSize(horizontal: false, vertical: true)
         }
         .background(FacilityTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -102,13 +116,13 @@ private struct I2DefectSelectionTable: View {
             Text(LocalizedStringKey(InspectionFormColumn.number))
                 .frame(width: I2DefectSelectionMetrics.numberColumn, alignment: .leading)
             Text(LocalizedStringKey(InspectionFormColumn.asset))
-                .frame(minWidth: I2DefectSelectionMetrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: metrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
             Text(LocalizedStringKey(InspectionFormColumn.result))
-                .frame(width: I2DefectSelectionMetrics.resultColumn, alignment: .leading)
+                .frame(width: metrics.resultColumn, alignment: .leading)
             Text(LocalizedStringKey(InspectionFormColumn.comment))
-                .frame(minWidth: I2DefectSelectionMetrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: metrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
             Text("i2.selection.column.category")
-                .frame(width: I2DefectSelectionMetrics.categoryColumn, alignment: .leading)
+                .frame(width: metrics.categoryColumn, alignment: .leading)
         }
         .font(.caption.weight(.bold))
         .foregroundStyle(.secondary)
@@ -131,16 +145,16 @@ private struct I2DefectSelectionTable: View {
                 .font(.body)
                 .foregroundStyle(FacilityTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: I2DefectSelectionMetrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: metrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
 
             resultText(for: candidate)
-                .frame(width: I2DefectSelectionMetrics.resultColumn, alignment: .leading)
+                .frame(width: metrics.resultColumn, alignment: .leading)
 
             Text(candidate.note.isEmpty ? "—" : candidate.note)
                 .font(.subheadline)
                 .foregroundStyle(candidate.note.isEmpty ? .secondary : FacilityTheme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(minWidth: I2DefectSelectionMetrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
+                .frame(minWidth: metrics.flexibleColumnMinimum, maxWidth: .infinity, alignment: .leading)
 
             InspectionCodePicker(
                 picker: candidate.id,
@@ -155,7 +169,7 @@ private struct I2DefectSelectionTable: View {
                     selection.setCategory(category, for: candidate.id)
                 }
             )
-            .frame(width: I2DefectSelectionMetrics.categoryColumn)
+            .frame(width: metrics.categoryColumn)
         }
         .padding(.horizontal, I2DefectSelectionMetrics.horizontalPadding)
         .padding(.vertical, 12)
@@ -225,6 +239,23 @@ private enum I2NotificationListMetrics {
     static let statusColumn: CGFloat = 72
     static let detailColumn: CGFloat = 32
     static let columnSpacing: CGFloat = 10
+    /// Gap kept between the popover and the window's side edges.
+    static let windowMargin: CGFloat = 40
+
+    /// A popover cannot scroll as a whole, so on a short window the list and
+    /// the long text give up height to keep the popover on screen.
+    static func maximumListHeight(_ layout: FacilityLayoutMetrics) -> CGFloat {
+        layout.isCompact ? 180 : 260
+    }
+
+    static func longTextHeight(_ layout: FacilityLayoutMetrics) -> CGFloat {
+        layout.isCompact ? 100 : 130
+    }
+
+    static func width(_ layout: FacilityLayoutMetrics) -> CGFloat {
+        guard layout.windowSize.width > 0 else { return width }
+        return max(0, min(width, layout.windowSize.width - windowMargin * 2))
+    }
 }
 
 /// Read-only list of the I2 notifications of one position, with the long text
@@ -236,6 +267,7 @@ struct I2NotificationListPopoverContent: View {
     let close: () -> Void
 
     @State private var selectedID: SAPI2NotificationSummary.ID?
+    @Environment(\.facilityLayout) private var layout
 
     /// The legacy title is `<group> - <position>` and prints `undefined` for
     /// a position without a group; the group is simply left out here.
@@ -254,7 +286,7 @@ struct I2NotificationListPopoverContent: View {
             longText
         }
         .padding(22)
-        .frame(width: I2NotificationListMetrics.width, alignment: .leading)
+        .frame(width: I2NotificationListMetrics.width(layout), alignment: .leading)
         .background(FacilityTheme.surface)
     }
 
@@ -325,7 +357,7 @@ struct I2NotificationListPopoverContent: View {
                     }
                 }
             }
-            .frame(maxHeight: 260)
+            .frame(maxHeight: I2NotificationListMetrics.maximumListHeight(layout))
             .fixedSize(horizontal: false, vertical: true)
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -420,7 +452,7 @@ struct I2NotificationListPopoverContent: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
             }
-            .frame(height: 130)
+            .frame(height: I2NotificationListMetrics.longTextHeight(layout))
             .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)

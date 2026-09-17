@@ -49,8 +49,7 @@ struct WartungsplanDetailView: View {
                             metadataCard
                             inspectionCard
                         }
-                        .padding(28)
-                        .frame(maxWidth: 1280, alignment: .leading)
+                        .facilityPageContent()
                     }
                 }
                 .background(FacilityTheme.canvas.ignoresSafeArea())
@@ -207,7 +206,7 @@ struct WartungsplanDetailView: View {
                     .buttonStyle(.bordered)
                     .tint(FacilityTheme.ink)
             }
-            .padding(.horizontal, 28)
+            .facilityPageHorizontalPadding()
             .padding(.vertical, 12)
             .background(.ultraThinMaterial)
             .overlay(alignment: .top) { Divider() }

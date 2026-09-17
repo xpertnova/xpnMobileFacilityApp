@@ -163,7 +163,7 @@ struct SubdistributionCreationView: View {
                 .buttonStyle(.plain).foregroundStyle(FacilityTheme.blue)
                 .frame(minHeight: 44, alignment: .leading)
                 Text("subdistribution.title")
-                    .font(.system(size: 29, weight: .bold)).foregroundStyle(FacilityTheme.ink)
+                    .facilityPageTitleFont().foregroundStyle(FacilityTheme.ink)
             }
             Spacer(minLength: 12)
             if model.draft.isOutOfOperation {
@@ -173,7 +173,7 @@ struct SubdistributionCreationView: View {
                     .background(FacilityTheme.red.opacity(0.1), in: Capsule())
             }
         }
-        .padding(.horizontal, 28).padding(.vertical, 18).background(FacilityTheme.surface)
+        .facilityPageHorizontalPadding().padding(.vertical, 18).background(FacilityTheme.surface)
     }
 
     @ViewBuilder private var content: some View {
@@ -194,7 +194,7 @@ struct SubdistributionCreationView: View {
             ScrollView {
                 VStack(spacing: 18) { contextCard; masterDataCard; inspectionCard }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(28).frame(maxWidth: 1280, alignment: .leading)
+                    .facilityPageContent()
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .disabled(model.isReadOnly)
             }
@@ -207,7 +207,7 @@ struct SubdistributionCreationView: View {
         return VStack(alignment: .leading, spacing: 18) {
             Text("subdistribution.context.title").font(.headline).foregroundStyle(FacilityTheme.ink)
             Text("subdistribution.context.subtitle").font(.subheadline).foregroundStyle(.secondary)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3), spacing: 14) {
+            FacilityColumnsLayout(columnCounts: [3, 2, 1], minimumColumnWidth: 220, spacing: 14) {
                 SafetyFormField("subdistribution.context.we", required: true) {
                     Button { isShowingBusinessEntityEditor = true } label: {
                         HStack(spacing: 12) {
@@ -423,7 +423,7 @@ struct SubdistributionCreationView: View {
                 Spacer(minLength: 12)
                 Button("common.back", action: close).buttonStyle(.bordered).tint(FacilityTheme.ink)
             }
-            .padding(.horizontal, 28)
+            .facilityPageHorizontalPadding()
             .padding(.vertical, 12)
             .background(.ultraThinMaterial)
             .overlay(alignment: .top) { Divider() }

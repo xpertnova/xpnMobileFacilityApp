@@ -377,7 +377,11 @@ private struct FacilityPopoverPresenter<PopoverContent: View>: UIViewControllerR
                     popover.delegate = context.coordinator
                     popover.sourceView = uiViewController.view
                     popover.sourceRect = uiViewController.view.bounds
-                    popover.permittedArrowDirections = arrowDirection(for: arrowEdge)
+                    popover.permittedArrowDirections = arrowDirections(
+                        for: arrowEdge,
+                        contentHeight: targetSize.height,
+                        anchor: uiViewController.view
+                    )
                     popover.popoverBackgroundViewClass = FacilityPopoverBackgroundView.self
                 }
 
@@ -435,6 +439,34 @@ private struct FacilityPopoverPresenter<PopoverContent: View>: UIViewControllerR
             }
         }
     }
+
+    /// The popover opens on the requested side of its field. When that side
+    /// has no room for the content, as for a field near the bottom of an
+    /// iPad mini screen, the opposite side is allowed as well and UIKit picks
+    /// the one that fits, instead of squeezing the list into a sliver.
+    private func arrowDirections(
+        for edge: Edge,
+        contentHeight: CGFloat,
+        anchor: UIView
+    ) -> UIPopoverArrowDirection {
+        let preferred = arrowDirection(for: edge)
+        guard edge == .top || edge == .bottom,
+              contentHeight > 0,
+              let window = anchor.window else { return preferred }
+
+        let anchorFrame = anchor.convert(anchor.bounds, to: window)
+        let usableFrame = window.bounds.inset(by: window.safeAreaInsets)
+        let availableHeight = edge == .top
+            ? usableFrame.maxY - anchorFrame.maxY
+            : anchorFrame.minY - usableFrame.minY
+        let requiredHeight = contentHeight
+            + FacilityPopoverBackgroundView.arrowHeightValue
+            + Self.screenEdgeMargin
+        return availableHeight >= requiredHeight ? preferred : [.up, .down]
+    }
+
+    /// Room UIKit keeps between a popover and the edge of the screen.
+    private static var screenEdgeMargin: CGFloat { 10 }
 
     private func arrowDirection(for edge: Edge) -> UIPopoverArrowDirection {
         switch edge {

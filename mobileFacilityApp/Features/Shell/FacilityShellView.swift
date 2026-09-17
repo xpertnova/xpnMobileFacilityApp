@@ -5,13 +5,12 @@ struct FacilityShellView: View {
     let onLogout: (() -> Void)?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.facilityLayout) private var layout
     @State private var sapPassword = ""
     @State private var notificationFilterPresentation: NotificationStructuralFilterPresentationState
     @State private var networkReachability = NetworkReachabilityMonitor()
     @State private var isShowingUserMenu = false
 
-    private let expandedSidebarWidth: CGFloat = 340
-    private let compactSidebarWidth: CGFloat = 72
     private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
     private let workDestinations: [AppDestination] = [
         .overview,
@@ -50,7 +49,7 @@ struct FacilityShellView: View {
         ZStack(alignment: .topLeading) {
             HStack(spacing: 0) {
                 Group {
-                    if demo.isSidebarExpanded {
+                    if demo.isSidebarExpanded && !layout.overlaysExpandedSidebar {
                         sidebar(selection: $demo.selection)
                             .transition(.opacity)
                     } else {
@@ -61,7 +60,7 @@ struct FacilityShellView: View {
                             .transition(.opacity)
                     }
                 }
-                .frame(width: activeSidebarWidth, alignment: .leading)
+                .frame(width: dockedSidebarWidth, alignment: .leading)
                 .clipped()
 
                 Divider()
@@ -140,6 +139,22 @@ struct FacilityShellView: View {
                     accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0),
                     value: demo.selection == .profileSettings
                 )
+            }
+
+            if demo.isSidebarExpanded && layout.overlaysExpandedSidebar {
+                Color.black.opacity(0.18)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                            isShowingUserMenu = false
+                        }
+                        demo.isSidebarExpanded = false
+                    }
+                    .transition(.opacity)
+
+                sidebar(selection: $demo.selection)
+                    .shadow(color: Color.black.opacity(0.18), radius: 20, x: 6)
+                    .transition(.move(edge: .leading))
             }
 
             if isShowingUserMenu {
@@ -226,6 +241,16 @@ struct FacilityShellView: View {
         .onDisappear {
             networkReachability.stop()
         }
+        .onChange(of: layout.tier, initial: true) { _, tier in
+            // A compact window starts with the icon rail so the screen keeps
+            // its width; the full sidebar stays one tap or swipe away.
+            guard tier == .compact, demo.isSidebarExpanded else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                demo.isSidebarExpanded = false
+            }
+        }
         .simultaneousGesture(
             DragGesture(minimumDistance: 28)
                 .onEnded { value in
@@ -235,7 +260,7 @@ struct FacilityShellView: View {
                         }
                         demo.isSidebarExpanded = false
                     } else if !demo.isSidebarExpanded,
-                              value.startLocation.x < 72,
+                              value.startLocation.x < layout.compactSidebarWidth,
                               value.translation.width > 70 {
                         demo.isSidebarExpanded = true
                     }
@@ -271,49 +296,59 @@ struct FacilityShellView: View {
                     demo.isSidebarExpanded = false
                 }
             }
-            .padding(.bottom, 28)
+            .padding(.bottom, layout.sidebarHeaderSpacing)
 
-            Text("navigation.work")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(.secondary)
-                .tracking(1)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
+            // The destinations scroll between the pinned header and the
+            // local-work card when the window is too short for all of them,
+            // rather than making the whole shell taller than the screen.
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: layout.sidebarRowSpacing) {
+                    Text("navigation.work")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.secondary)
+                        .tracking(1)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
 
-            ForEach(workDestinations) { destination in
-                SidebarButton(destination: destination, selection: selection, badge: badge(for: destination)) {
-                    withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                        isShowingUserMenu = false
+                    ForEach(workDestinations) { destination in
+                        SidebarButton(
+                            destination: destination,
+                            selection: selection,
+                            badge: badge(for: destination),
+                            onSelect: didSelectSidebarDestination
+                        )
+                    }
+
+                    Text("navigation.library")
+                        .font(.caption.weight(.heavy))
+                        .foregroundStyle(.secondary)
+                        .tracking(1)
+                        .padding(.top, 14)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
+
+                    ForEach(libraryDestinations) { destination in
+                        SidebarButton(
+                            destination: destination,
+                            selection: selection,
+                            badge: badge(for: destination),
+                            onSelect: didSelectSidebarDestination
+                        )
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            Text("navigation.library")
-                .font(.caption.weight(.heavy))
-                .foregroundStyle(.secondary)
-                .tracking(1)
-                .padding(.top, 14)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 4)
-
-            ForEach(libraryDestinations) { destination in
-                SidebarButton(destination: destination, selection: selection, badge: badge(for: destination)) {
-                    withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                        isShowingUserMenu = false
-                    }
-                }
-            }
-
-            Spacer(minLength: 18)
+            .scrollBounceBehavior(.basedOnSize)
 
             localWorkStatusCard
+                .padding(.top, 22)
 
             profileButton
                 .padding(.top, 8)
         }
         .padding(16)
         .safeAreaPadding(.top, 4)
-        .frame(width: expandedSidebarWidth)
+        .frame(width: layout.expandedSidebarWidth)
         .background(FacilityTheme.sidebar)
         .animation(.snappy(duration: 0.22, extraBounce: 0), value: isShowingUserMenu)
     }
@@ -330,41 +365,52 @@ struct FacilityShellView: View {
             ) {
                 demo.isSidebarExpanded = true
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, layout.railSectionSpacing - CompactSidebarButton.badgeOverhang)
 
-            VStack(spacing: 12) {
-                ForEach(workDestinations) { destination in
-                    CompactSidebarButton(
-                        destination: destination,
-                        selection: selection,
-                        badge: badge(for: destination)
-                    ) {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                            isShowingUserMenu = false
+            // Same rule as the expanded sidebar: scroll the destinations, not
+            // the shell, when the window is too short for all of them.
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    VStack(spacing: layout.railItemSpacing) {
+                        ForEach(workDestinations) { destination in
+                            CompactSidebarButton(
+                                destination: destination,
+                                selection: selection,
+                                badge: badge(for: destination)
+                            ) {
+                                withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                                    isShowingUserMenu = false
+                                }
+                            }
+                        }
+                    }
+
+                    Divider()
+                        .frame(width: 32)
+                        .padding(.vertical, layout.railDividerPadding)
+
+                    VStack(spacing: layout.railItemSpacing) {
+                        ForEach(libraryDestinations) { destination in
+                            CompactSidebarButton(
+                                destination: destination,
+                                selection: selection,
+                                badge: badge(for: destination)
+                            ) {
+                                withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                                    isShowingUserMenu = false
+                                }
+                            }
                         }
                     }
                 }
+                // Keeps the first button's badge, which sits above its
+                // corner, inside the scroll view's clipping bounds.
+                .padding(.top, CompactSidebarButton.badgeOverhang)
+                .frame(maxWidth: .infinity)
             }
-
-            Divider()
-                .frame(width: 32)
-                .padding(.vertical, 16)
-
-            VStack(spacing: 12) {
-                ForEach(libraryDestinations) { destination in
-                    CompactSidebarButton(
-                        destination: destination,
-                        selection: selection,
-                        badge: badge(for: destination)
-                    ) {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
-                            isShowingUserMenu = false
-                        }
-                    }
-                }
-            }
-
-            Spacer(minLength: 12)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+            .padding(.bottom, 12)
 
             if !demo.isDemoMode {
                 Divider()
@@ -379,7 +425,7 @@ struct FacilityShellView: View {
         }
         .padding(.vertical, 14)
         .safeAreaPadding(.top, 4)
-        .frame(width: compactSidebarWidth)
+        .frame(width: layout.compactSidebarWidth)
         .background(FacilityTheme.sidebar)
     }
 
@@ -490,8 +536,8 @@ struct FacilityShellView: View {
 
     private var userActionMenuOverlay: some View {
         userActionMenu
-            .frame(width: demo.isSidebarExpanded ? expandedSidebarWidth - 32 : 280)
-            .padding(.leading, demo.isSidebarExpanded ? 16 : compactSidebarWidth + 8)
+            .frame(width: demo.isSidebarExpanded ? layout.expandedSidebarWidth - 32 : 280)
+            .padding(.leading, demo.isSidebarExpanded ? 16 : layout.compactSidebarWidth + 8)
             .padding(.bottom, demo.isSidebarExpanded ? 76 : 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             .transition(.scale(scale: 0.95, anchor: .bottomLeading).combined(with: .opacity))
@@ -506,6 +552,9 @@ struct FacilityShellView: View {
             ) {
                 withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
                     isShowingUserMenu = false
+                }
+                if layout.overlaysExpandedSidebar {
+                    demo.isSidebarExpanded = false
                 }
                 demo.openProfileSettings()
             }
@@ -656,7 +705,24 @@ struct FacilityShellView: View {
     }
 
     private var activeSidebarWidth: CGFloat {
-        demo.isSidebarExpanded ? expandedSidebarWidth : compactSidebarWidth
+        demo.isSidebarExpanded ? layout.expandedSidebarWidth : layout.compactSidebarWidth
+    }
+
+    /// Width the sidebar takes from the screen. An overlaid full sidebar
+    /// leaves the rail's width in place underneath it.
+    private var dockedSidebarWidth: CGFloat {
+        layout.overlaysExpandedSidebar ? layout.compactSidebarWidth : activeSidebarWidth
+    }
+
+    private func didSelectSidebarDestination() {
+        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+            isShowingUserMenu = false
+        }
+        // A sidebar laid over the screen has done its job once a
+        // destination is picked.
+        if layout.overlaysExpandedSidebar {
+            demo.isSidebarExpanded = false
+        }
     }
 
     @ViewBuilder
@@ -680,6 +746,9 @@ struct FacilityShellView: View {
 }
 
 private struct CompactSidebarButton: View {
+    /// How far the badge reaches above the button's top edge.
+    static let badgeOverhang: CGFloat = 5
+
     let destination: AppDestination
     @Binding var selection: AppDestination
     let badge: Int?
@@ -710,7 +779,7 @@ private struct CompactSidebarButton: View {
                             .padding(.horizontal, 5)
                             .frame(minWidth: 18, minHeight: 18)
                             .background(isSelected ? .white : badgeTint, in: Capsule())
-                            .offset(x: 6, y: -5)
+                            .offset(x: 6, y: -Self.badgeOverhang)
                     }
                 }
                 .contentShape(Rectangle())
@@ -741,6 +810,7 @@ private struct SidebarButton: View {
     @Binding var selection: AppDestination
     let badge: Int?
     var onSelect: (() -> Void)? = nil
+    @Environment(\.facilityLayout) private var layout
 
     private var isSelected: Bool { selection == destination }
 
@@ -767,7 +837,7 @@ private struct SidebarButton: View {
             }
             .foregroundStyle(isSelected ? .white : FacilityTheme.ink)
             .padding(.horizontal, 12)
-            .frame(minHeight: 48)
+            .frame(minHeight: layout.sidebarRowMinHeight)
             .background(isSelected ? FacilityTheme.accent : .clear, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -789,3 +859,56 @@ private struct UserMenuButtonStyle: ButtonStyle {
             )
     }
 }
+
+#if DEBUG
+/// Mock-only workspace for layout previews, built exactly like the demo route.
+@MainActor
+private func makeLayoutPreviewWorkspace(selection: AppDestination = .overview) -> FacilityDemoViewModel {
+    let workspace = FacilityDemoViewModel(
+        isDemoMode: true,
+        offlineWorkStore: OfflineWorkStore(
+            repository: InMemoryOfflineWorkRepository(),
+            workerID: "demo"
+        ),
+        sapDataStore: SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(
+                seed: TechnicalObjectDemoData.cachedData,
+                i2NotificationsByObjectID: I2NotificationDemoData.notificationsByObjectID
+            ),
+            refreshService: nil,
+            localWorkerID: "demo"
+        ),
+        meterReferenceProvider: DemoMeterReferenceProvider(),
+        photoAttachmentStore: InMemoryPhotoAttachmentStore(),
+        workerDisplayName: "Alex Morgan",
+        workerRole: .technician
+    )
+    workspace.selection = selection
+    return workspace
+}
+
+#Preview("iPad mini, landscape", traits: .fixedLayout(width: 1_133, height: 744)) {
+    FacilityShellView(demo: makeLayoutPreviewWorkspace())
+        .facilityLayoutRoot()
+}
+
+#Preview("iPad Pro 13-inch, landscape", traits: .fixedLayout(width: 1_376, height: 1_032)) {
+    FacilityShellView(demo: makeLayoutPreviewWorkspace())
+        .facilityLayoutRoot()
+}
+
+#Preview("Narrowest window", traits: .fixedLayout(width: 700, height: 744)) {
+    FacilityShellView(demo: makeLayoutPreviewWorkspace())
+        .facilityLayoutRoot()
+}
+
+#Preview("Notifications, iPad mini", traits: .fixedLayout(width: 1_133, height: 744)) {
+    FacilityShellView(demo: makeLayoutPreviewWorkspace(selection: .notifications))
+        .facilityLayoutRoot()
+}
+
+#Preview("Notifications, narrowest window", traits: .fixedLayout(width: 700, height: 744)) {
+    FacilityShellView(demo: makeLayoutPreviewWorkspace(selection: .notifications))
+        .facilityLayoutRoot()
+}
+#endif

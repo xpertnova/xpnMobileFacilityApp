@@ -69,8 +69,7 @@ struct EquipmentInspectionView: View {
                             }
                             inspectionCard
                         }
-                        .padding(28)
-                        .frame(maxWidth: 1280, alignment: .leading)
+                        .facilityPageContent()
                     }
                 }
                 .background(FacilityTheme.canvas.ignoresSafeArea())
@@ -481,7 +480,6 @@ struct EquipmentInspectionView: View {
                 ],
                 cancel: {}
             )
-            .padding(28)
         }
         .accessibilityAddTraits(.isModal)
     }

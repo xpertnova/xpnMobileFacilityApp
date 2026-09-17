@@ -78,8 +78,7 @@ struct SAPRefreshPasswordDialog: View {
                     .disabled(password.isEmpty || isRefreshing)
             }
         }
-        .padding(32)
-        .frame(width: 520, alignment: .leading)
+        .facilityDialogFrame(width: 520, padding: 32)
         .background(.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.28), radius: 32, y: 18)
         .onAppear { isPasswordFocused = true }
@@ -147,9 +146,8 @@ private struct SAPRefreshProgressDialog: View {
                 .controlSize(.large)
                 .tint(FacilityTheme.accent)
         }
-        .frame(width: 420)
-        .frame(minHeight: 150)
-        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 150)
+        .facilityDialogFrame(width: 476, padding: 28, alignment: .center)
         .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -263,3 +261,22 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
         String(localized: "sap.refresh.error.generic")
     }
 }
+
+#if DEBUG
+/// An iPad mini with the keyboard up leaves roughly this much room.
+#Preview("iPad mini with keyboard", traits: .fixedLayout(width: 1_133, height: 330)) {
+    ZStack {
+        Color.black.opacity(0.42)
+        SAPRefreshPasswordDialog(
+            password: .constant(""),
+            isRefreshing: false,
+            stage: nil,
+            error: .invalidCredentials,
+            failureContext: nil,
+            refresh: {},
+            cancel: {}
+        )
+    }
+    .facilityLayoutRoot()
+}
+#endif

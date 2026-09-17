@@ -200,8 +200,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 masterDataCard
                 inspectionCard
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
             // Disable only form interactions for a closed ladder. The parent
             // ScrollView must stay enabled so technicians can review all data.
             .disabled(model.isReadOnly)
@@ -220,10 +219,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                     .foregroundStyle(.secondary)
             }
 
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 3),
-                spacing: 14
-            ) {
+            FacilityColumnsLayout(columnCounts: [3, 2, 1], minimumColumnWidth: 220, spacing: 14) {
                 SafetyFormField("mobileLadder.address.businessEntity") {
                     Button {
                         isShowingBusinessEntityEditor = true
@@ -536,7 +532,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                     .buttonStyle(.bordered)
                     .tint(FacilityTheme.ink)
             }
-            .padding(.horizontal, 28)
+            .facilityPageHorizontalPadding()
             .padding(.vertical, 12)
             .background(.ultraThinMaterial)
             .overlay(alignment: .top) { Divider() }

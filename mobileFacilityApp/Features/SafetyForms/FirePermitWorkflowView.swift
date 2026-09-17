@@ -36,8 +36,7 @@ struct FirePermitWorkflowView: View {
                     alarm
                     permit
                 }
-                .padding(28)
-                .frame(maxWidth: 1280, alignment: .leading)
+                .facilityPageContent()
             }
             .scrollDismissesKeyboard(.interactively)
             .alert("forms.fire.title", isPresented: Binding(

@@ -130,17 +130,16 @@ struct BriefingPartnerSelectionEditor: View {
                     .foregroundStyle(.secondary)
             }
 
-            ViewThatFits(in: .horizontal) {
-                if !dynamicTypeSize.isAccessibilitySize {
-                    HStack(alignment: .top, spacing: 16) {
-                        contactCard.frame(minWidth: 340)
-                        addressCard.frame(minWidth: 300)
-                    }
-                }
-                VStack(spacing: 16) {
-                    contactCard
-                    addressCard
-                }
+            // Side by side while each card keeps 340 pt. The layout keeps the
+            // text fields' identity when it stacks them, so a field being
+            // edited keeps its focus if the dialog changes width.
+            FacilityColumnsLayout(
+                columnCounts: dynamicTypeSize.isAccessibilitySize ? [1] : [2, 1],
+                minimumColumnWidth: 340,
+                spacing: 16
+            ) {
+                contactCard
+                addressCard
             }
 
             HStack(spacing: 12) {

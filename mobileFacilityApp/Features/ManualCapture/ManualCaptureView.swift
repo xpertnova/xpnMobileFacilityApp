@@ -49,8 +49,7 @@ struct ManualCaptureView: View {
                         actionCards
                         selectedForm
                     }
-                    .padding(28)
-                    .frame(maxWidth: 1280, alignment: .leading)
+                    .facilityPageContent()
                     .animation(.snappy(duration: 0.3, extraBounce: 0), value: demo.manualCaptureRoute)
                 }
                 .scrollDismissesKeyboard(.interactively)
@@ -85,39 +84,55 @@ struct ManualCaptureView: View {
         }
     }
 
+    /// Three tiles while each keeps about 225 pt, enough for "Stammdaten
+    /// pflegen" on one line; on a narrower screen the same actions become
+    /// compact rows instead of tall, cramped tiles.
     private var actionCards: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)], spacing: 18) {
-            ManualCaptureActionCard(
-                titleKey: "manual.action.defect.title",
-                subtitleKey: "manual.action.defect.subtitle",
-                symbol: "exclamationmark.triangle",
-                tint: FacilityTheme.red,
-                selected: isDefectSelected
-            ) {
-                withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
-                    demo.openManualDefect()
-                }
+        ViewThatFits(in: .horizontal) {
+            FacilityColumnsLayout(columnCounts: [3], minimumColumnWidth: 225, spacing: 18) {
+                actionCardButtons(style: .tile)
             }
-            ManualCaptureActionCard(
-                titleKey: "manual.action.meter.title",
-                subtitleKey: "manual.action.meter.subtitle",
-                symbol: "number",
-                tint: FacilityTheme.blue,
-                selected: isMeterSelected
-            ) {
-                withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
-                    demo.openMeterReading()
-                }
+            VStack(spacing: 12) {
+                actionCardButtons(style: .row)
             }
-            ManualCaptureActionCard(
-                titleKey: "manual.action.masterData.title",
-                subtitleKey: "manual.action.masterData.subtitle",
-                symbol: "tag.fill",
-                tint: FacilityTheme.accent,
-                selected: false
-            ) {
-                demo.open(.technicalPlaces)
+        }
+    }
+
+    @ViewBuilder
+    private func actionCardButtons(style: ManualCaptureActionCard.Style) -> some View {
+        ManualCaptureActionCard(
+            titleKey: "manual.action.defect.title",
+            subtitleKey: "manual.action.defect.subtitle",
+            symbol: "exclamationmark.triangle",
+            tint: FacilityTheme.red,
+            selected: isDefectSelected,
+            style: style
+        ) {
+            withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
+                demo.openManualDefect()
             }
+        }
+        ManualCaptureActionCard(
+            titleKey: "manual.action.meter.title",
+            subtitleKey: "manual.action.meter.subtitle",
+            symbol: "number",
+            tint: FacilityTheme.blue,
+            selected: isMeterSelected,
+            style: style
+        ) {
+            withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
+                demo.openMeterReading()
+            }
+        }
+        ManualCaptureActionCard(
+            titleKey: "manual.action.masterData.title",
+            subtitleKey: "manual.action.masterData.subtitle",
+            symbol: "tag.fill",
+            tint: FacilityTheme.accent,
+            selected: false,
+            style: style
+        ) {
+            demo.open(.technicalPlaces)
         }
     }
 
@@ -997,41 +1012,73 @@ struct ManualCaptureView: View {
 }
 
 private struct ManualCaptureActionCard: View {
+    /// A tall tile in the three-column row, or a compact row on a narrow screen.
+    enum Style {
+        case tile
+        case row
+    }
+
     let titleKey: LocalizedStringKey
     let subtitleKey: LocalizedStringKey
     let symbol: String
     let tint: Color
     let selected: Bool
+    let style: Style
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 13) {
-                Image(systemName: symbol)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 54, height: 54)
-                    .background(tint.opacity(0.11), in: RoundedRectangle(cornerRadius: 15))
-                Text(titleKey).font(.title3.weight(.bold)).foregroundStyle(FacilityTheme.ink)
-                Text(subtitleKey)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, minHeight: 174, alignment: .topLeading)
-            .padding(20)
-            .background(Color.white, in: RoundedRectangle(cornerRadius: 22))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22)
-                    .stroke(selected ? tint : Color.black.opacity(0.06), lineWidth: selected ? 2 : 1)
-            }
-            .shadow(color: selected ? tint.opacity(0.12) : Color.black.opacity(0.06), radius: selected ? 12 : 10, y: 5)
-            .animation(.easeInOut(duration: 0.22), value: selected)
+            content
+                .padding(style == .tile ? 20 : 16)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 22))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22)
+                        .stroke(selected ? tint : Color.black.opacity(0.06), lineWidth: selected ? 2 : 1)
+                }
+                .shadow(color: selected ? tint.opacity(0.12) : Color.black.opacity(0.06), radius: selected ? 12 : 10, y: 5)
+                .animation(.easeInOut(duration: 0.22), value: selected)
         }
         .buttonStyle(ScalePressButtonStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch style {
+        case .tile:
+            VStack(alignment: .leading, spacing: 13) {
+                icon(size: 54)
+                Text(titleKey).font(.title3.weight(.bold)).foregroundStyle(FacilityTheme.ink)
+                subtitle
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, minHeight: 174, alignment: .topLeading)
+        case .row:
+            HStack(spacing: 14) {
+                icon(size: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(titleKey).font(.headline).foregroundStyle(FacilityTheme.ink)
+                    subtitle
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func icon(size: CGFloat) -> some View {
+        Image(systemName: symbol)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.11), in: RoundedRectangle(cornerRadius: 15))
+    }
+
+    private var subtitle: some View {
+        Text(subtitleKey)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

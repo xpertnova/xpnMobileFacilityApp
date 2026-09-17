@@ -20,6 +20,7 @@ struct NotificationsView: View {
     let filterPresentation: NotificationStructuralFilterPresentationState
     @State private var appliedSearchQuery = ""
     @State private var filterSelection: NotificationFilter = .all
+    @Environment(\.facilityLayout) private var layout
 
     init(
         demo: FacilityDemoViewModel,
@@ -80,8 +81,7 @@ struct NotificationsView: View {
                 PageHeader("notifications.title", subtitle: "notifications.subtitle", trailing: AnyView(headerTrailing))
                 searchBar
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
             #if DEBUG
             .keyboardDebugFrame("header+search")
             #endif
@@ -228,7 +228,8 @@ struct NotificationsView: View {
                 demo: demo,
                 filterPresentation: filterPresentation,
                 filterSelection: filterSelection,
-                appliedSearchQuery: appliedSearchQuery
+                appliedSearchQuery: appliedSearchQuery,
+                pagePadding: layout.pagePadding
             )
         )
     }
@@ -331,6 +332,9 @@ private struct NotificationListContent: View, Equatable {
     let filterPresentation: NotificationStructuralFilterPresentationState
     let filterSelection: NotificationsView.NotificationFilter
     let appliedSearchQuery: String
+    /// Passed in rather than read from the environment, so the equatable
+    /// list redraws with the header when the window changes size.
+    let pagePadding: CGFloat
 
     private let notificationPrefetchThreshold = 8
 
@@ -339,6 +343,7 @@ private struct NotificationListContent: View, Equatable {
             && lhs.filterPresentation === rhs.filterPresentation
             && lhs.filterSelection == rhs.filterSelection
             && lhs.appliedSearchQuery == rhs.appliedSearchQuery
+            && lhs.pagePadding == rhs.pagePadding
     }
 
     private var visibleNotifications: [MaintenanceNotification] {
@@ -446,9 +451,9 @@ private struct NotificationListContent: View, Equatable {
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
-            .frame(maxWidth: 1280, alignment: .leading)
+            .frame(maxWidth: FacilityLayoutMetrics.pageMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
-        .listRowInsets(EdgeInsets(top: 0, leading: 28, bottom: bottomInset, trailing: 28))
+        .listRowInsets(EdgeInsets(top: 0, leading: pagePadding, bottom: bottomInset, trailing: pagePadding))
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
     }
@@ -508,6 +513,8 @@ struct NotificationStructuralFilterOverlay: View {
     let demo: FacilityDemoViewModel
     let presentation: NotificationStructuralFilterPresentationState
 
+    @Environment(\.facilityLayout) private var layout
+
     var body: some View {
         GeometryReader { proxy in
             ZStack {
@@ -516,13 +523,24 @@ struct NotificationStructuralFilterOverlay: View {
                     .onTapGesture(perform: dismiss)
 
                 filterCard
-                    .frame(width: min(max(proxy.size.width * 0.72, 760), 1_040))
-                    .frame(height: min(590, max(320, proxy.size.height - 48)))
-                    .padding(28)
+                    .frame(width: cardWidth(in: proxy.size), height: cardHeight(in: proxy.size))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .accessibilityAddTraits(.isModal)
+    }
+
+    /// 72 % of the space, between 760 and 1040 pt, but never closer to the
+    /// edges than the dialog margin: a Split View pane can be narrower than
+    /// the 760 pt the filter prefers.
+    private func cardWidth(in size: CGSize) -> CGFloat {
+        let preferred = min(max(size.width * 0.72, 760), 1_040)
+        return max(0, min(preferred, size.width - layout.dialogMargin * 2))
+    }
+
+    private func cardHeight(in size: CGSize) -> CGFloat {
+        let preferred = min(590, max(320, size.height - 48))
+        return max(0, min(preferred, size.height - layout.dialogMargin * 2))
     }
 
     private var filterCard: some View {

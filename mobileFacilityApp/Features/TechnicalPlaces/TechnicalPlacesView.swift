@@ -136,7 +136,7 @@ struct TechnicalPlacesView: View {
                 }
                 hierarchyContent(model)
                     .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.state)
-            }.padding(28).frame(maxWidth: 1280, alignment: .leading)
+            }.facilityPageContent()
         }.scrollDismissesKeyboard(.interactively)
     }
 
@@ -309,27 +309,26 @@ private struct TechnicalObjectDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    Button {
-                        withAnimation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24)) {
-                            model.closeDetail()
-                        }
-                    } label: { Label("places.detail.back", systemImage: "chevron.left") }
-                        .buttonStyle(.plain).foregroundStyle(.blue).frame(minHeight: 44)
-                    Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
-                    if !detail.object.displayStatus.isEmpty { ObjectBadge(detail.object.displayStatus, color: FacilityTheme.accent) }
-                    PhotoWorkspaceButton(count: photoCount, action: openPhotos)
-                    if geometry.size.width >= 900 {
-                        HStack(alignment: .top, spacing: 16) { primaryCard; sideCards.frame(width: 405) }
-                    } else {
-                        VStack(spacing: 16) { primaryCard; sideCards }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Button {
+                    withAnimation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24)) {
+                        model.closeDetail()
                     }
-                }.padding(28).frame(maxWidth: 1280, alignment: .leading)
-            }.scrollDismissesKeyboard(.interactively)
-        }
+                } label: { Label("places.detail.back", systemImage: "chevron.left") }
+                    .buttonStyle(.plain).foregroundStyle(.blue).frame(minHeight: 44)
+                Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
+                Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
+                if !detail.object.displayStatus.isEmpty { ObjectBadge(detail.object.displayStatus, color: FacilityTheme.accent) }
+                PhotoWorkspaceButton(count: photoCount, action: openPhotos)
+                // The equipment fields keep their focus when the side cards
+                // move under them as the window or sidebar changes width.
+                FacilitySideColumnLayout(sideWidth: 405, minimumMainWidth: 420, spacing: 16) {
+                    primaryCard
+                    sideCards
+                }
+            }.facilityPageContent()
+        }.scrollDismissesKeyboard(.interactively)
     }
 
     private var breadcrumbs: [TechnicalObjectNode] {

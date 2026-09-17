@@ -106,6 +106,7 @@ struct NotificationCommentEditorOverlay: View {
     let dismiss: () -> Void
     @State private var initialComment: String
     @FocusState private var isEditorFocused: Bool
+    @Environment(\.facilityLayout) private var layout
 
     init(comment: Binding<String>, dismiss: @escaping () -> Void) {
         _comment = comment
@@ -159,7 +160,7 @@ struct NotificationCommentEditorOverlay: View {
                         .focused($isEditorFocused)
                         .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
                 }
-                .frame(height: 190)
+                .frame(height: layout.commentEditorHeight)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -173,15 +174,13 @@ struct NotificationCommentEditorOverlay: View {
                         .tint(FacilityTheme.accent)
                 }
             }
-            .padding(22)
-            .frame(maxWidth: 460)
+            .facilityDialogFrame(width: 460, padding: 22)
             .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .stroke(.gray.opacity(0.24))
             }
             .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
-            .padding(28)
         }
         .onAppear { isEditorFocused = true }
     }

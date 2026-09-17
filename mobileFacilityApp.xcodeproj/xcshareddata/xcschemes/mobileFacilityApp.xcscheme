@@ -71,7 +71,7 @@
          </CommandLineArgument>
          <CommandLineArgument
             argument = "-SkipLoginForTesting"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
       </CommandLineArguments>
    </LaunchAction>

@@ -4,22 +4,18 @@ struct DashboardView: View {
     let demo: FacilityDemoViewModel
     let networkStatus: NetworkReachabilityStatus
 
-    private let metricColumns = Array(
-        repeating: GridItem(.flexible(minimum: 0), spacing: 14),
-        count: 4
-    )
-    private let actionColumns = [
-        GridItem(.flexible(minimum: 190), spacing: 14),
-        GridItem(.flexible(minimum: 190), spacing: 14),
-        GridItem(.flexible(minimum: 190), spacing: 14)
-    ]
+    /// A metric card needs about 230 pt to keep its longest German label,
+    /// "Zwischengespeichert", on one line beside the icon.
+    private let metricColumns = FacilityColumnsLayout(columnCounts: [4, 2, 1], minimumColumnWidth: 230, spacing: 14)
+    /// An action card needs about 220 pt for "Einweisung & Scheine".
+    private let actionColumns = FacilityColumnsLayout(columnCounts: [3, 2, 1], minimumColumnWidth: 220, spacing: 14)
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 dashboardHeader
 
-                LazyVGrid(columns: metricColumns, spacing: 14) {
+                metricColumns {
                     MetricCard(count: demo.allNotificationCount, titleKey: "dashboard.metrics.notifications", icon: "📋", tint: FacilityTheme.blue) {
                         demo.open(.notifications)
                     }
@@ -38,8 +34,7 @@ struct DashboardView: View {
                 quickAccess
                 latestActivity
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
         }
     }
 
@@ -48,7 +43,7 @@ struct DashboardView: View {
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 VStack(alignment: .leading, spacing: 5) {
                     Text(DashboardGreeting.greeting(for: context.date).formatted(workerName: demo.effectiveWorkerDisplayName))
-                        .font(.system(size: 29, weight: .bold, design: .rounded))
+                        .facilityPageTitleFont(design: .rounded)
                         .foregroundStyle(FacilityTheme.ink)
                     Text(dashboardContext(for: context.date))
                         .font(.subheadline)
@@ -88,7 +83,7 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            LazyVGrid(columns: actionColumns, spacing: 14) {
+            actionColumns {
                 DashboardActionCard(titleKey: "dashboard.tile.scan", subtitleKey: "dashboard.tile.scan.subtitle", icon: "⌗", tint: FacilityTheme.accent) {
                     demo.open(.scan)
                 }

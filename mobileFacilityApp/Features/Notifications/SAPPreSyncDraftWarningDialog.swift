@@ -125,8 +125,7 @@ struct SAPPreSyncDraftWarningDialog: View {
             }
             .padding(.top, 4)
         }
-        .padding(28)
-        .frame(width: 500, alignment: .leading)
+        .facilityDialogFrame(width: 500, padding: 28)
         .background(.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.24), radius: 28, y: 14)
     }

@@ -22,19 +22,12 @@ struct ScanView: View {
             VStack(alignment: .leading, spacing: 18) {
                 PageHeader("scan.title", subtitle: "scan.subtitle", trailing: AnyView(modePicker))
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 18) {
-                        scannerViewport
-                        deviceColumn
-                    }
-                    VStack(alignment: .leading, spacing: 18) {
-                        scannerViewport
-                        deviceColumn
-                    }
+                FacilitySideColumnLayout(sideWidth: 430, minimumMainWidth: 490, spacing: 18) {
+                    scannerViewport
+                    deviceColumn
                 }
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
         }
         .background(FacilityTheme.canvas)
         .onChange(of: mode) { _, _ in
@@ -108,7 +101,7 @@ struct ScanView: View {
                 .padding(.bottom, 24)
             }
         }
-        .frame(minWidth: 490, maxWidth: .infinity, minHeight: 400)
+        .frame(maxWidth: .infinity, minHeight: 400)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(LocalizedStringKey(viewportMessageKey)))
     }
@@ -133,7 +126,6 @@ struct ScanView: View {
             }
             .facilityCard()
         }
-        .frame(width: 430)
     }
 
     private var actionButton: some View {

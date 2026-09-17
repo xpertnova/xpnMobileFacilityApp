@@ -6,11 +6,7 @@ struct FormsView: View {
     @State private var selectedPreviewForm: FacilityForm?
     @State private var selectedActiveForm: FacilityForm?
 
-    private let columns = [
-        GridItem(.flexible(minimum: 240), spacing: 15),
-        GridItem(.flexible(minimum: 240), spacing: 15),
-        GridItem(.flexible(minimum: 240), spacing: 15)
-    ]
+    private let columns = FacilityColumnsLayout(columnCounts: [3, 2, 1], minimumColumnWidth: 240, spacing: 15)
 
     var body: some View {
         Group {
@@ -22,7 +18,7 @@ struct FormsView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         PageHeader("forms.title", subtitle: "forms.subtitle")
 
-                        LazyVGrid(columns: columns, spacing: 15) {
+                        columns {
                             ForEach(demo.forms) { form in
                                 Button {
                                     demo.selectedBriefingDraftID = nil
@@ -42,8 +38,7 @@ struct FormsView: View {
                             }
                         }
                     }
-                    .padding(28)
-                    .frame(maxWidth: 1280, alignment: .leading)
+                    .facilityPageContent()
                 }
                 .transition(.opacity)
             }

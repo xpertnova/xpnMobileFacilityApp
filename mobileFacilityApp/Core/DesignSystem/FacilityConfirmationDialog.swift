@@ -84,8 +84,7 @@ struct FacilityConfirmationDialog<Content: View>: View {
             content
             actionButtons
         }
-        .padding(28)
-        .frame(width: width, alignment: .leading)
+        .facilityDialogFrame(width: width, padding: 28)
         .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         // The same defined edge the other centered overlays use
         // (`NotificationCommentEditorOverlay`), not a barely-there hairline.
@@ -253,7 +252,6 @@ private struct FacilityConfirmationDialogModifier: ViewModifier {
                         },
                         cancel: { isPresented = false }
                     )
-                    .padding(28)
                 }
                 .transition(.opacity)
             }

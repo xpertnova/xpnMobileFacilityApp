@@ -88,3 +88,13 @@ Dependency direction: Views → ViewModels/Stores → Repositories/Services → 
 ### Localization
 
 `Resources/Localizable.xcstrings` is the single String Catalog for German (product-default) and English (source language for the catalog). Every new user-facing string needs both translations; German strings should be checked for layout/wrap in the iPad landscape UI, not just translated.
+
+### Adaptive layout
+
+The app runs in any window size from an iPad Pro 13" down to a 700 × 500 pt window (iPad mini, Split View, Stage Manager); `UIRequiresFullScreen` is deprecated and must not be added. `facilityLayoutRoot()` in `AppRootView` measures the window, sets that minimum window size and publishes `FacilityLayoutMetrics` as `@Environment(\.facilityLayout)`: `regular` keeps the original 13" values, `compact` applies below 1180 × 800 pt.
+
+- Put sizes that depend on the window into `FacilityLayoutMetrics`, not inline numbers. Screens use `facilityPageContent()` for their content column, `facilityPageHorizontalPadding()` for pinned headers and action bars, and `facilityPageTitleFont()` for titles.
+- Centered dialogs use `facilityDialogFrame(width:padding:)`, which caps them to the available space and scrolls when the keyboard leaves too little height.
+- To switch between side-by-side and stacked, use `FacilityColumnsLayout` or `FacilitySideColumnLayout`. Avoid `ViewThatFits` or an `if` on a measured width around text inputs: both rebuild the fields and drop focus when the width changes.
+- Inspection checklist tables (`InspectionFormTable`) intentionally scroll sideways when too narrow.
+- Check new screens in the `FacilityShellView` previews at 1376 × 1032, 1133 × 744 and 700 × 744 pt.

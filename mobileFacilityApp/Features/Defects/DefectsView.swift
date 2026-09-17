@@ -37,8 +37,7 @@ struct DefectsView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
                 }
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
             .animation(defectContentAnimation, value: demo.offlineWorkStore.state)
             .animation(defectContentAnimation, value: demo.offlineWorkStore.closedDefectNotificationItems)
             .animation(defectContentAnimation, value: demo.offlineWorkStore.defectItems)
@@ -109,6 +108,18 @@ struct DefectsView: View {
     }
 }
 
+/// The text and badges of a defect card: side by side on a wide card, with
+/// the badges under the text once they would squeeze it.
+private struct DefectCardColumns<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        FacilitySideColumnLayout(sideWidth: nil, minimumMainWidth: 220, spacing: 12, alignment: .center) {
+            content
+        }
+    }
+}
+
 private struct ManualDefectCard: View {
     let item: OfflineWorkItem
     let defect: DefectDraftPayload
@@ -118,33 +129,36 @@ private struct ManualDefectCard: View {
         Button(action: action) {
             HStack(spacing: 16) {
                 DefectPhotoTile(photoCount: defect.attachmentIDs.count)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(defect.shortText)
-                        .font(.headline)
-                        .foregroundStyle(FacilityTheme.ink)
-                    Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                    Text(item.updatedAt, format: .dateTime.day().month(.twoDigits).year())
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 12)
-                HStack(spacing: 8) {
-                    if let din = defect.dinGroup {
-                        FacilityTemplateBadge(text: "KG \(din)", style: .open)
+                DefectCardColumns {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(defect.shortText)
+                            .font(.headline)
+                            .foregroundStyle(FacilityTheme.ink)
+                        Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        Text(item.updatedAt, format: .dateTime.day().month(.twoDigits).year())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    FacilityTemplateBadge(
-                        localized: .init(defect.priority.titleKey),
-                        style: defect.priority == .high ? .attention : .temporarilySaved
-                    )
-                    FacilityTemplateBadge(
-                        localized: .init(item.status.titleKey),
-                        style: item.status == .draft ? .temporarilySaved : .open
-                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 8) {
+                        if let din = defect.dinGroup {
+                            FacilityTemplateBadge(text: "KG \(din)", style: .open)
+                        }
+                        FacilityTemplateBadge(
+                            localized: .init(defect.priority.titleKey),
+                            style: defect.priority == .high ? .attention : .temporarilySaved
+                        )
+                        FacilityTemplateBadge(
+                            localized: .init(item.status.titleKey),
+                            style: item.status == .draft ? .temporarilySaved : .open
+                        )
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
-                .fixedSize(horizontal: true, vertical: false)
             }
             .contentShape(Rectangle())
         }
@@ -173,42 +187,43 @@ private struct ClosedDefectNotificationCard: View {
             HStack(alignment: .center, spacing: 16) {
                 DefectPhotoTile(photoCount: review.photoAttachments.count)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundStyle(FacilityTheme.ink)
-                        .lineLimit(2)
+                DefectCardColumns {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(FacilityTheme.ink)
+                            .lineLimit(2)
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 14) {
-                            notificationMetadata
-                            technicalPlaceMetadata
-                            updatedAtMetadata
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
+                        ViewThatFits(in: .horizontal) {
                             HStack(spacing: 14) {
                                 notificationMetadata
                                 technicalPlaceMetadata
+                                updatedAtMetadata
                             }
-                            updatedAtMetadata
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 14) {
+                                    notificationMetadata
+                                    technicalPlaceMetadata
+                                }
+                                updatedAtMetadata
+                            }
                         }
                     }
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 12)
-
-                HStack(spacing: 8) {
-                    FacilityTemplateBadge(
-                        localized: .init(WorkStatus.attention.titleKey),
-                        style: .attention
-                    )
-                    FacilityTemplateBadge(
-                        localized: .init(WorkStatus.closedLocally.titleKey),
-                        style: .complete
-                    )
+                    HStack(spacing: 8) {
+                        FacilityTemplateBadge(
+                            localized: .init(WorkStatus.attention.titleKey),
+                            style: .attention
+                        )
+                        FacilityTemplateBadge(
+                            localized: .init(WorkStatus.closedLocally.titleKey),
+                            style: .complete
+                        )
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
                 }
-                .fixedSize(horizontal: true, vertical: false)
             }
             .contentShape(Rectangle())
         }
