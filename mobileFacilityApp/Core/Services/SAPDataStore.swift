@@ -119,6 +119,11 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         return locations + equipment
     }
 
+    func resolveQRCode(_ payload: LegacyQRCodePayload) async throws -> [SAPNotificationSummary] {
+        guard hasCache else { throw QRCodeResolutionError.synchronizationRequired }
+        return try await repository.resolveQRCode(payload, for: localWorkerID)
+    }
+
     func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
         guard !workerID.isEmpty,
               let provider = repository as? any MobileLadderCreationProviding else {

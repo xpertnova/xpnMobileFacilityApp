@@ -689,7 +689,7 @@ extension OfflineNotificationSnapshot {
     }
 }
 
-protocol SAPDataCacheRepository: TechnicalObjectRepository {
+protocol SAPDataCacheRepository: TechnicalObjectRepository, QRCodeNotificationResolving {
     func load(for localWorkerID: String) async throws -> SAPCachedData
     func loadNotifications(
         for localWorkerID: String,
@@ -961,6 +961,36 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
         dataByWorkerID[localWorkerID]?.notifications.compactMap(\.structuralFilterMetadata) ?? []
     }
 
+    func resolveQRCode(
+        _ payload: LegacyQRCodePayload,
+        for localWorkerID: String
+    ) async throws -> [SAPNotificationSummary] {
+        let notifications = dataByWorkerID[localWorkerID]?.notifications ?? []
+        let matches = notifications.filter { notification in
+            switch payload {
+            case let .mtfm(controlKey, functionalLocationID, equipmentID):
+                guard notification.functionalLocationID == functionalLocationID else { return false }
+                if let equipmentID {
+                    guard notification.equipmentID.hasSuffix(equipmentID) else { return false }
+                } else {
+                    guard notification.equipmentID.isEmpty else { return false }
+                }
+                if let controlKey {
+                    return notification.legacyControlKey == controlKey
+                }
+                return true
+            case let .mihm(objectNumber, technicalReference):
+                return notification.legacyString(named: "TPWEH") == objectNumber
+                    && notification.legacyString(named: "EQFNR") == technicalReference
+            }
+        }
+        var uniqueMatches: [String: SAPNotificationSummary] = [:]
+        for match in matches where uniqueMatches[match.id] == nil {
+            uniqueMatches[match.id] = match
+        }
+        return uniqueMatches.values.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+    }
+
     func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
         guard let profile = dataByWorkerID[workerID]?.workerProfile else { return nil }
         return SAPUserProfile(
@@ -1151,6 +1181,13 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
         throw SAPReadError.serviceUnavailable
     }
 
+    func resolveQRCode(
+        _ payload: LegacyQRCodePayload,
+        for localWorkerID: String
+    ) async throws -> [SAPNotificationSummary] {
+        throw SAPReadError.serviceUnavailable
+    }
+
     func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
         throw SAPReadError.serviceUnavailable
     }
@@ -1185,5 +1222,43 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
         refreshedAt: Date
     ) async throws -> SAPCachedData {
         throw SAPReadError.serviceUnavailable
+    }
+}
+
+extension SAPNotificationSummary {
+    func legacyString(named key: String) -> String {
+        guard
+            let data = rawPayloadJSON.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return "" }
+
+        let value = object.first {
+            $0.key.caseInsensitiveCompare(key) == .orderedSame
+        }?.value
+        switch value {
+        case let string as String:
+            return string.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let number as NSNumber:
+            return number.stringValue
+        default:
+            return ""
+        }
+    }
+
+    var legacyControlKey: String {
+        guard
+            let data = rawPayloadJSON.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let positions = object.first(where: {
+                $0.key.caseInsensitiveCompare("T_PLPOD") == .orderedSame
+            })?.value as? [[String: Any]],
+            let firstPosition = positions.first
+        else { return legacyString(named: "STEUS") }
+
+        let value = firstPosition.first {
+            $0.key.caseInsensitiveCompare("STEUS") == .orderedSame
+        }?.value
+        return (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? legacyString(named: "STEUS")
     }
 }

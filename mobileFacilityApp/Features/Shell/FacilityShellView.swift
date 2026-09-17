@@ -228,6 +228,7 @@ struct FacilityShellView: View {
                 await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
                 await demo.sapDataStore.loadCachedData()
             }
+            await demo.technicalPlacesStore.load()
         }
         .task(id: scenePhase) {
             print("[SAP Connection] 📱 App scenePhase changed to: \(scenePhase)")
@@ -728,7 +729,7 @@ struct FacilityShellView: View {
     private func mainContent(networkStatus: NetworkReachabilityStatus) -> some View {
         switch activeMainDestination {
         case .overview: DashboardView(demo: demo, networkStatus: networkStatus)
-        case .scan: ScanView()
+        case .scan: ScanView(demo: demo)
         case .notifications:
             NotificationsView(
                 demo: demo,

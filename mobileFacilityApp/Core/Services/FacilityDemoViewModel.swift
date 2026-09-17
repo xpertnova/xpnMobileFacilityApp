@@ -425,6 +425,12 @@ final class FacilityDemoViewModel {
         return true
     }
 
+    func openScannedNotification(_ notification: SAPNotificationSummary) {
+        selectedNotificationID = nil
+        selectedOfflineNotificationDetail = SAPNotificationDetail(summary: notification)
+        offlineNotificationReturnDestination = .scan
+    }
+
     func openSavedElevatorInspection(_ inspection: ElevatorInspectionDraftPayload) async -> Bool {
         let returnDestination = selection
         if let snapshot = inspection.notificationSnapshot {
