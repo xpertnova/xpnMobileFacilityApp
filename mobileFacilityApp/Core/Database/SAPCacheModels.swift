@@ -66,7 +66,14 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
     private let tradeOptionsByBuilding: [Scope: [NotificationStructuralFilterOption]]
     private let formOptionsByTrade: [Scope: [NotificationStructuralFilterOption]]
 
-    init(metadata: [NotificationStructuralFilterMetadata]) {
+    /// - Parameter directory: names buildings and trades by their own
+    ///   functional locations, as Cordova's `getFormatSTRNO` resolves them
+    ///   through `techPlatzMap`. A notification's location text can be a
+    ///   trade or an object and never names its building.
+    init(
+        metadata: [NotificationStructuralFilterMetadata],
+        directory: FunctionalLocationDirectory = .empty
+    ) {
         var businessEntityCandidates: [NotificationStructuralFilterOption] = []
         var buildingCandidates: [Scope: [NotificationStructuralFilterOption]] = [:]
         var tradeCandidates: [Scope: [NotificationStructuralFilterOption]] = [:]
@@ -83,11 +90,13 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
                 buildingCode: "",
                 tradeCode: ""
             )
-            let buildingLabel = value.functionalLocationName.isEmpty
-                ? value.buildingCode
-                : "\(value.buildingCode) — \(value.functionalLocationName)"
+            let building = directory.building(
+                countryCode: value.countryCode,
+                businessEntityCode: value.businessEntityCode,
+                buildingCode: value.buildingCode
+            )
             buildingCandidates[buildingScope, default: []].append(
-                .init(id: value.buildingCode, label: buildingLabel)
+                .init(id: value.buildingCode, label: Self.label(code: value.buildingCode, title: building?.title))
             )
 
             guard !value.tradeCode.isEmpty else { continue }
@@ -96,8 +105,14 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
                 buildingCode: value.buildingCode,
                 tradeCode: ""
             )
+            let trade = directory.trade(
+                countryCode: value.countryCode,
+                businessEntityCode: value.businessEntityCode,
+                buildingCode: value.buildingCode,
+                tradeCode: value.tradeCode
+            )
             tradeCandidates[tradeScope, default: []].append(
-                .init(id: value.tradeCode, label: value.tradeCode)
+                .init(id: value.tradeCode, label: Self.label(code: value.tradeCode, title: trade?.title))
             )
 
             guard !value.formCode.isEmpty else { continue }
@@ -144,6 +159,13 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
                 tradeCode: tradeCode
             )
         ] ?? []
+    }
+
+    /// "01 — GB01_Rauschermühle_G8 Hauptlager"; a text that already starts
+    /// with its code, like "350 Leitern und Tritte", stands alone.
+    private static func label(code: String, title: String?) -> String {
+        guard let title, !title.isEmpty else { return code }
+        return title.hasPrefix(code) ? title : "\(code) — \(title)"
     }
 
     private static func uniqueOptions(
@@ -710,6 +732,9 @@ protocol SAPDataCacheRepository: TechnicalObjectRepository, QRCodeNotificationRe
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata]
+    /// Active SAP functional locations by level, for location value helps and
+    /// the names of business entities, buildings and trades.
+    func loadFunctionalLocationDirectory(for localWorkerID: String) async throws -> FunctionalLocationDirectory
     func loadUserProfile(for workerID: String) async throws -> SAPUserProfile?
 }
 
@@ -906,16 +931,19 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
     /// I2 notifications keyed by equipment, or by functional location for
     /// objects without equipment.
     private let i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]]
+    private let functionalLocationDirectory: FunctionalLocationDirectory
 
     init(
         seed: SAPCachedData? = nil,
         workerID: String = "demo",
-        i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]] = [:]
+        i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]] = [:],
+        functionalLocationDirectory: FunctionalLocationDirectory = .empty
     ) {
         if let seed {
             dataByWorkerID[workerID] = seed
         }
         self.i2NotificationsByObjectID = i2NotificationsByObjectID
+        self.functionalLocationDirectory = functionalLocationDirectory
     }
 
     func loadI2Notifications(
@@ -968,6 +996,10 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata] {
         dataByWorkerID[localWorkerID]?.notifications.compactMap(\.structuralFilterMetadata) ?? []
+    }
+
+    func loadFunctionalLocationDirectory(for localWorkerID: String) async throws -> FunctionalLocationDirectory {
+        dataByWorkerID[localWorkerID] == nil ? .empty : functionalLocationDirectory
     }
 
     func resolveQRCode(
@@ -1187,6 +1219,10 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadFunctionalLocationDirectory(for localWorkerID: String) async throws -> FunctionalLocationDirectory {
         throw SAPReadError.serviceUnavailable
     }
 

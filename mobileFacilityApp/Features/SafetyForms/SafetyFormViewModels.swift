@@ -30,12 +30,6 @@ final class FirePermitViewModel {
             .sorted { $0.buildingTitle < $1.buildingTitle }
     }
 
-    var functionalLocations: [SafetyFormContext] {
-        source.contexts.filter {
-            $0.businessEntityID == selectedBusinessEntityID && $0.buildingCode == selectedBuildingCode
-        }.sorted { $0.functionalLocationTitle < $1.functionalLocationTitle }
-    }
-
     var firstValidationIssue: FirePermitValidationIssue? {
         let ordered: [FirePermitValidationIssue] = [
             .context, .coordinator, .partner, .executionRange, .workDescription, .instructedPerson
@@ -71,13 +65,8 @@ final class FirePermitViewModel {
         record.partnerEmail = ""
     }
 
-    func selectBuilding(_ code: String) {
-        guard selectedBuildingCode != code else { return }
-        selectedBuildingCode = code
-        record.context = nil
-    }
-
-    func selectContext(_ context: SafetyFormContext) {
+    /// The building is the work location (`SelectionCreate`).
+    func selectBuilding(_ context: SafetyFormContext) {
         selectedBusinessEntityID = context.businessEntityID
         selectedBuildingCode = context.buildingCode
         record.context = context
@@ -229,12 +218,6 @@ final class ElectricalSafetyViewModel {
             .sorted { $0.buildingTitle < $1.buildingTitle }
     }
 
-    var functionalLocations: [SafetyFormContext] {
-        source.contexts.filter {
-            $0.businessEntityID == selectedBusinessEntityID && $0.buildingCode == selectedBuildingCode
-        }.sorted { $0.functionalLocationTitle < $1.functionalLocationTitle }
-    }
-
     var firstValidationIssue: ElectricalSafetyValidationIssue? {
         let ordered: [ElectricalSafetyValidationIssue] = [
             .context, .coordinator, .partner, .executionRange, .workDescription, .instructedPerson,
@@ -272,13 +255,8 @@ final class ElectricalSafetyViewModel {
         draft.partnerEmail = ""
     }
 
-    func selectBuilding(_ code: String) {
-        guard selectedBuildingCode != code else { return }
-        selectedBuildingCode = code
-        draft.context = nil
-    }
-
-    func selectContext(_ context: SafetyFormContext) {
+    /// The building is the work location (`SelectionCreate`).
+    func selectBuilding(_ context: SafetyFormContext) {
         selectedBusinessEntityID = context.businessEntityID
         selectedBuildingCode = context.buildingCode
         draft.context = context

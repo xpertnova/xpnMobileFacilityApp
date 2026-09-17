@@ -4,38 +4,8 @@ import Foundation
 /// from the legacy `HeaderFormBuilder.js`: `_buildHeaderForm` (controls),
 /// `onChangeHeader` (stored values), `validateMasterData` (close validation),
 /// `checkMasterDataChange` / `_updateClobData` / `runSetMasterdata4Header`
-/// (the `TO_T0266` / `TO_T0265` write) and the `Vorschlag` popover
-/// (`TO_T0211` proposals).
-
-/// The two special value-list entries of `util.constanten`
-/// (`constSTAMMDATEN_ADMIN`, `constSTAMMDATEN_UNKNOWN`).
-enum EquipmentMasterDataCatalog {
-    static let adminKey = "PFLEGE DURCH ADMIN"
-    static let adminText = "Pflege durch Admin"
-    static let unknownText = "nicht bekannt"
-
-    static func isAdmin(_ option: ElevatorInspectionValueOption) -> Bool {
-        matches(option.text, adminText) || matches(option.code, adminKey)
-    }
-
-    static func isUnknown(_ option: ElevatorInspectionValueOption) -> Bool {
-        matches(option.text, unknownText)
-    }
-
-    /// `_buildHeaderForm` adds the regular entries in SAP order, then calls
-    /// `insertItem(unknown, -1)` and `insertItem(admin, -1)`. UI5 clamps a
-    /// negative index to 0, so both land on top: "Pflege durch Admin" first,
-    /// "nicht bekannt" second.
-    static func ordered(_ options: [ElevatorInspectionValueOption]) -> [ElevatorInspectionValueOption] {
-        options.filter(isAdmin)
-            + options.filter(isUnknown)
-            + options.filter { !isAdmin($0) && !isUnknown($0) }
-    }
-
-    private static func matches(_ value: String, _ constant: String) -> Bool {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == constant.uppercased()
-    }
-}
+/// (the `TO_T0266` / `TO_T0265` write). "Pflege durch Admin" and its
+/// `Vorschlag` follow the shared `MasterDataProposalRules`.
 
 /// The control `_buildHeaderForm` builds for a characteristic.
 enum EquipmentMasterDataControl: Equatable, Sendable {
@@ -71,7 +41,7 @@ extension ElevatorAssetCharacteristic {
     /// The value list offers "Pflege durch Admin", so the field carries the
     /// proposal button.
     var offersProposal: Bool {
-        selectableOptions.contains(where: EquipmentMasterDataCatalog.isAdmin)
+        selectableOptions.contains { MasterDataProposalRules.isAdmin(text: $0.text, code: $0.code) }
     }
 
     /// Longest text a field accepts (`ANZST`, `0` = unlimited).
@@ -144,7 +114,7 @@ enum EquipmentMasterDataRules {
     static func selectsAdmin(_ characteristic: ElevatorAssetCharacteristic, value: String) -> Bool {
         let codes = selectedCodes(for: characteristic, value: value)
         return characteristic.selectableOptions.contains {
-            EquipmentMasterDataCatalog.isAdmin($0) && codes.contains($0.code)
+            MasterDataProposalRules.isAdmin(text: $0.text, code: $0.code) && codes.contains($0.code)
         }
     }
 
@@ -219,8 +189,6 @@ enum EquipmentMasterDataRules {
         Set(characteristics.compactMap { characteristic -> String? in
             guard isEditable(characteristic) else { return nil }
             let value = values[characteristic.name]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let hasProposal = !(proposals[characteristic.name]?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? "").isEmpty
             switch characteristic.control {
             case .number:
                 guard characteristic.isRequired else { return nil }
@@ -232,7 +200,12 @@ enum EquipmentMasterDataRules {
                 return characteristic.isRequired && date(fromSAP: value) == nil ? characteristic.name : nil
             case .singleSelect, .multiSelect:
                 if selectedCodes(for: characteristic, value: value).isEmpty { return characteristic.name }
-                if selectsAdmin(characteristic, value: value) && !hasProposal { return characteristic.name }
+                if MasterDataProposalRules.isMissingProposal(
+                    selectsAdmin: selectsAdmin(characteristic, value: value),
+                    proposal: proposals[characteristic.name]
+                ) {
+                    return characteristic.name
+                }
                 return nil
             }
         })

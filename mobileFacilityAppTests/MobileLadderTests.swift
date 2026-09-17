@@ -9,7 +9,7 @@ final class MobileLadderTests: XCTestCase {
     }
 
     @MainActor
-    func testRungCountRetainsDigitsOnly() {
+    func testRungCountRetainsAtMostThreeDigitsWithPieceUnit() {
         let model = MobileLadderCreationViewModel(
             provider: DemoMobileLadderCreationProvider(),
             offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo"),
@@ -20,6 +20,11 @@ final class MobileLadderTests: XCTestCase {
         model.setRungCount("12 steps-3")
 
         XCTAssertEqual(model.draft.rungCount, "123")
+
+        model.setRungCount("12345")
+
+        XCTAssertEqual(model.draft.rungCount, "123")
+        XCTAssertEqual(model.rungCountUnit, "ST")
     }
 
     @MainActor
@@ -124,7 +129,7 @@ final class MobileLadderTests: XCTestCase {
     }
 
     @MainActor
-    func testSavingProposalAddsItToCatalogAndSelectsIt() async {
+    func testAdminSelectionKeepsTheValueAndAsksForAProposal() async {
         let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo")
         let model = MobileLadderCreationViewModel(
             provider: DemoMobileLadderCreationProvider(),
@@ -133,11 +138,34 @@ final class MobileLadderTests: XCTestCase {
             item: nil
         )
         await model.load()
+        complete(model)
+        XCTAssertEqual(model.options(for: .material).first, MasterDataProposalRules.adminText)
+        XCTAssertTrue(model.offersProposal(for: .material))
+        XCTAssertFalse(model.isProposalAvailable(for: .material))
 
-        XCTAssertTrue(model.saveProposal("Custom Ladder Material", for: .material))
-        XCTAssertEqual(model.draft.material, "Custom Ladder Material")
-        XCTAssertTrue(model.catalog.options(for: .material).contains("Custom Ladder Material"))
-        XCTAssertEqual(model.feedback?.id, "proposalSaved")
+        model.setSelection(MasterDataProposalRules.adminText, for: .material)
+        XCTAssertEqual(model.draft.material, MasterDataProposalRules.adminText)
+        XCTAssertEqual(model.proposalField, .material)
+        XCTAssertTrue(model.isProposalAvailable(for: .material))
+        XCTAssertTrue(model.isMissingProposal(.material))
+        XCTAssertFalse(model.isReadyToClose, "`isVorschlagValid`")
+
+        model.saveProposal("  Glasfaser verstärkt  ", for: .material)
+        XCTAssertNil(model.proposalField)
+        XCTAssertEqual(model.draft.material, MasterDataProposalRules.adminText, "the proposal is not a list value")
+        XCTAssertEqual(model.draft.proposal(for: .material), "Glasfaser verstärkt")
+        XCTAssertFalse(model.options(for: .material).contains("Glasfaser verstärkt"))
+        XCTAssertEqual(model.proposalHistory(for: .material), ["Glasfaser verstärkt"])
+        XCTAssertTrue(model.isReadyToClose)
+
+        model.saveProposal("   ", for: .material)
+        XCTAssertEqual(model.draft.proposal(for: .material), "", "an empty text deletes the proposal")
+
+        model.saveProposal("Glasfaser verstärkt", for: .material)
+        model.setSelection("Aluminium", for: .material)
+        XCTAssertEqual(model.draft.proposal(for: .material), "", "`deleteVorschlag` when admin is replaced")
+        XCTAssertNil(model.proposalField)
+        XCTAssertTrue(model.isReadyToClose)
     }
 
     @MainActor
@@ -266,14 +294,24 @@ final class MobileLadderTests: XCTestCase {
         let creationData = try await DemoMobileLadderCreationProvider()
             .loadMobileLadderCreationData(for: "S50828")
         var draft = MobileLadderDraftPayload(localDraftID: "draft-2")
-        draft.context = try XCTUnwrap(creationData.contexts.first)
+        draft.context = try withCharacteristics(try XCTUnwrap(creationData.contexts.first), [[
+            "position": 2, "name": "TFMMOBLEITER_BAUART", "title": "Mob.Leitern Bauart",
+            "unit": "", "required": true,
+            "values": [["value": "PLATTFORMLEITER", "title": "Plattformleiter"]]
+        ]])
         draft.material = "Aluminium"
-        draft.constructionType = "Stehleiter"
+        draft.constructionType = "Plattformleiter"
         draft.manufacturer = "ZARGES"
         draft.rungCount = "8"
         draft.clientCompany = "Westnetz GmbH"
         draft.room = "Workshop"
         draft.designation = "ML-01"
+        draft.manufacturer = MasterDataProposalRules.adminText
+        draft.proposals = [
+            "TFMMOBLEITER_HERSTELLER": "Leitern Müller",
+            // A proposal left behind by a field that no longer holds admin.
+            "TFMMOBLEITER_WERKSTOFF": "Stale"
+        ]
         draft.isDisassembled = true
         draft.disassembledComment = "Removed for repair"
         draft.inspectionItems = draft.context!.legacyContext.template.inspectionItems.enumerated().map {
@@ -325,12 +363,27 @@ final class MobileLadderTests: XCTestCase {
         XCTAssertEqual(equipmentPayload["EQART_TO"] as? String, "TFMLEITERN")
         let classData = try XCTUnwrap(equipmentPayload["T_CLASS_EQ"] as? [String: Any])
         XCTAssertEqual(classData["KLASSE"] as? String, "TFMMOBLEITER")
+        let classValues = try XCTUnwrap(classData["T_CLOBJDAT"] as? [[String: Any]])
+        XCTAssertEqual(
+            classValues.first { $0["ATNAM"] as? String == "TFMMOBLEITER_BAUART" }?["ATWRT"] as? String,
+            "PLATTFORMLEITER",
+            "the SAP key of the selected text"
+        )
         let document = try XCTUnwrap(batch.documents.first)
         XCTAssertEqual(document.metadata["ELEMENTNR"], firstInspection.commentElementID)
         XCTAssertEqual(document.metadata["DMS_CONTENTTYPE"], "D_TFM_Dokumentation")
         XCTAssertEqual(document.metadata["DMS_DOCID"], "TFM001")
         let statusDocument = try XCTUnwrap(batch.documents.first { $0.metadata["DOCID"] == "STATUS-DOCUMENT-1" })
         XCTAssertEqual(statusDocument.metadata["ELEMENTNR"], "TFM5-0000-9B")
+        XCTAssertEqual(batch.proposals.count, 1)
+        let proposal = try XCTUnwrap(batch.proposals.first)
+        XCTAssertEqual(proposal["ELEMENTNR"], "TFMMOBLEITER_HERSTELLER")
+        XCTAssertEqual(proposal["FELDWERT"], "Leitern Müller")
+        XCTAssertEqual(proposal["VORGANGSNR"], "PROCESS-1")
+        XCTAssertEqual(proposal["QMNUM"], "NEU-12345678")
+        XCTAssertEqual(proposal["EQUNR"], "NEU-12345678901234")
+        XCTAssertEqual(proposal["STRNO"], "")
+        XCTAssertEqual(proposal["AKTIV"], "X")
     }
 
     func testSQLiteProviderDecodesAddressTemplateAndValueHelp() async throws {
@@ -343,9 +396,26 @@ final class MobileLadderTests: XCTestCase {
             "USR00": "POSITION", "STEUS": "TFM5", "VORNR": "0010",
             "LTXA1": "Rails", "LTXA2": "Visual check"
         ]]])
+        // The shape SAP delivers: each value list nested in its characteristic.
+        // `WERKSTOFF` uses the class-level fallback list.
         let classData = try SAPLegacyDataExchangeCodec.packedFeldwert([
             "KLART": "002", "KLASSE": "TFMMOBLEITER", "KLAGR": "TFM",
-            "T_CHARA": [["ATNAM": "TFMMOBLEITER_WERKSTOFF", "ATBEZ": "Material"]],
+            "T_CHARA": [
+                ["POSNR": "1", "ATNAM": "TFMMOBLEITER_WERKSTOFF", "ATBEZ": "Material"],
+                [
+                    "POSNR": "2", "ATNAM": "TFMMOBLEITER_BAUART", "ATBEZ": "Mob.Leitern Bauart", "ATERF": "X",
+                    "T_CHARVAL": [
+                        ["ATWRT": "Anlegeleiter", "ATWTB": "Anlegeleiter"],
+                        ["ATWRT": "Pflege durch Admin", "ATWTB": "Pflege durch Admin"],
+                        ["ATWRT": "PLATTFORMLEITER", "ATWTB": "Plattformleiter"],
+                        ["ATWRT": "Tritt", "ATWTB": "Tritt"]
+                    ]
+                ],
+                [
+                    "POSNR": "5", "ATNAM": "TFMMOBLEITER_ANZAHLSPROSSEN", "ATBEZ": "Mob.Leitern Anzahl Sprossen",
+                    "ATFOR": "NUM", "ANZST": "3", "ATSCH": "___", "MSEHI": "ST"
+                ]
+            ],
             "T_CHARVAL": [["ATNAM": "TFMMOBLEITER_WERKSTOFF", "ATWRT": "AL", "ATWTB": "Aluminium"]]
         ])
         let equipment = try SAPLegacyDataExchangeCodec.packedFeldwert(["EQART_TO": "TFMLEITERN"])
@@ -353,20 +423,60 @@ final class MobileLadderTests: XCTestCase {
         try await repository.insertLegacyRows([["EQART": "TFMLEITERN", "KLART": "002", "CLASS": "TFMMOBLEITER", "FELDWERT": classData]], into: "FROM_T0263")
         try await repository.insertLegacyRows([["LKEY": "EQUIPMENT", "LPAR": "TFMLEITERN", "FELDWERT": equipment]], into: "FROM_T0268")
         try await repository.insertLegacyRows([[
-            "MANDT": "100", "STRNO": "DE-ESS-100-01-350", "TPLND": "DE", "TPORT": "ESS",
-            "TPWEH": "100", "TPGEB": "01", "TPGSG": "350", "PLTXT": "Building 01",
-            "IWERK": "1000", "INGRP": "001", "GEWRK": "FM", "USTXT": "iBet"
-        ]], into: "FROM_T0272")
+            "MANDT": "100", "TPGSG": "350", "TPUSG": "", "EQART": "TFMLEITERN", "KTX01": "Leitern"
+        ]], into: "FROM_T0269")
+        func location(_ strno: String, building: String = "", trade: String = "", sub: String = "",
+                      text: String, status: String = "iBet") -> LegacySAPRow {
+            [
+                "MANDT": "100", "STRNO": strno, "TPLND": "DE", "TPORT": "ESS", "TPWEH": "100",
+                "TPGEB": building, "TPGSG": trade, "TPUSG": sub, "PLTXT": text,
+                "POST_CODE1": "45127", "CITY1": "Essen", "STREET": "Main St 1",
+                "IWERK": "1000", "INGRP": "001", "GEWRK": "FM", "USTXT": status
+            ]
+        }
+        try await repository.insertLegacyRows([
+            location("DE-ESS-100", text: "Site Essen"),
+            location("DE-ESS-100-01", building: "01", text: "GB01 Office"),
+            location("DE-ESS-100-01-350", building: "01", trade: "350", text: "350 Leitern und Tritte"),
+            // Other trades and sub-locations are not ladder addresses.
+            location("DE-ESS-100-01-330", building: "01", trade: "330", text: "330 Außenwände"),
+            location("DE-ESS-100-01-330-001", building: "01", trade: "330", sub: "001", text: "Sektionaltor"),
+            // A building without a ladder trade is not offered.
+            location("DE-ESS-100-02", building: "02", text: "GB02 Warehouse"),
+            location("DE-ESS-100-02-330", building: "02", trade: "330", text: "330 Außenwände"),
+            // An inactive building is not offered either.
+            location("DE-ESS-100-03", building: "03", text: "GB03 Closed", status: "aBet"),
+            location("DE-ESS-100-03-350", building: "03", trade: "350", text: "350 Leitern und Tritte")
+        ], into: "FROM_T0272")
 
         try await repository.insertLegacyRows([[
             "MANDT": "100", "REQID": "1", "PERSNR": "S50828", "GESELLSCHAFT": "Custom Client Org"
         ]], into: "USER")
 
         let data = try await repository.loadMobileLadderCreationData(for: "S50828")
+        XCTAssertEqual(data.contexts.count, 1)
+        let context = try XCTUnwrap(data.contexts.first)
+        XCTAssertEqual(context.businessEntity, "DE-ESS-100 · 45127 Essen · Main St 1")
+        XCTAssertEqual(context.building, "01 · GB01 Office", "the building location's own text")
+        XCTAssertEqual(context.trade, "DE-ESS-100-01-350 · 350 Leitern und Tritte")
+        XCTAssertEqual(context.legacyContext.trade, "350")
         XCTAssertEqual(data.contexts.first?.legacyContext.functionalLocation, "DE-ESS-100-01-350")
         XCTAssertEqual(data.contexts.first?.legacyContext.template.formCode, "TFM5")
         XCTAssertEqual(data.catalog.options(for: .material), ["Aluminium"])
-        XCTAssertTrue(data.catalog.options(for: .clientCompany).contains("Custom Client Org"))
+        XCTAssertEqual(
+            data.catalog.options(for: .constructionType),
+            ["Anlegeleiter", "Pflege durch Admin", "Plattformleiter", "Tritt"]
+        )
+        XCTAssertFalse(
+            data.catalog.options(for: .clientCompany).contains("Custom Client Org"),
+            "the user's company is not part of the SAP value list"
+        )
+        let characteristics = try XCTUnwrap(data.contexts.first?.legacyContext.template.characteristics)
+        let constructionType = try XCTUnwrap(characteristics.first { $0.name == "TFMMOBLEITER_BAUART" })
+        XCTAssertEqual(constructionType.position, 2)
+        XCTAssertTrue(constructionType.required)
+        XCTAssertEqual(constructionType.values.first { $0.title == "Plattformleiter" }?.value, "PLATTFORMLEITER")
+        XCTAssertEqual(characteristics.first { $0.name == "TFMMOBLEITER_ANZAHLSPROSSEN" }?.unit, "ST")
     }
 
     func testCatalogMaterialOptionsFallbackToLegacyReferenceMatchingOlderApp() {
@@ -386,6 +496,25 @@ final class MobileLadderTests: XCTestCase {
         XCTAssertEqual(catalog.options(for: .constructionType), ["Anlegeleiter", "Stehleiter", "Podestleiter"])
         XCTAssertEqual(catalog.options(for: .manufacturer), ["ZARGES", "HYMER", "KRAUSE"])
         XCTAssertEqual(catalog.options(for: .clientCompany), ["Pflege durch Admin"])
+    }
+
+    /// The demo context with SAP class characteristics.
+    private nonisolated func withCharacteristics(
+        _ context: MobileLadderCreationContext,
+        _ characteristics: [[String: Any]]
+    ) throws -> MobileLadderCreationContext {
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(context)) as? [String: Any]
+        )
+        var legacyContext = try XCTUnwrap(object["legacyContext"] as? [String: Any])
+        var template = try XCTUnwrap(legacyContext["template"] as? [String: Any])
+        template["characteristics"] = characteristics
+        legacyContext["template"] = template
+        object["legacyContext"] = legacyContext
+        return try JSONDecoder().decode(
+            MobileLadderCreationContext.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
     }
 
     @MainActor

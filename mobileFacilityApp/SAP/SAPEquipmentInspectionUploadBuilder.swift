@@ -224,22 +224,16 @@ enum SAPEquipmentInspectionUploadBuilder {
             ))
         }
 
-        // `insertSaveProcessVorschlag`: one `TO_T0211` row per proposal. The
-        // legacy type leaves `MANDT` empty.
-        let proposals: [LegacySAPRow] = (masterData?.proposals ?? [:])
-            .filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .sorted { $0.key < $1.key }
-            .map { elementID, proposal in
-                [
-                    "MANDT": "", "REQID": "", "VORGANGSNR": processID,
-                    "ELEMENTNR": elementID, "QMNUM": inspection.notificationID,
-                    "STRNO": masterData?.functionalLocationID ?? "",
-                    "EQUNR": masterData?.equipmentID ?? "",
-                    "CREATEDBY": userID, "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
-                    "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime, "MODIFIEDBY": userID,
-                    "FELDWERT": proposal, "AKTIV": "X"
-                ]
-            }
+        let proposals = SAPMasterDataProposalRows.rows(
+            proposals: masterData?.proposals ?? [:],
+            processID: processID,
+            notificationID: inspection.notificationID,
+            equipmentID: masterData?.equipmentID ?? "",
+            functionalLocationID: masterData?.functionalLocationID ?? "",
+            userID: userID,
+            date: createdDate,
+            time: createdTime
+        )
 
         // `runSetMasterdata4Header`: the whole master record, packed like
         // every `FELDWERT`, to `TO_T0266` for an equipment and `TO_T0265` for

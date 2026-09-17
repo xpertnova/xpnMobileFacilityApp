@@ -97,12 +97,10 @@ struct EquipmentInspectionView: View {
                     dismiss: { self.editingCommentID = nil }
                 )
             } else if let characteristic = proposalCharacteristic {
-                EquipmentMasterDataProposalOverlay(
+                MasterDataProposalEditor(
                     fieldTitle: characteristic.title,
-                    // `vorschlagBeforeOpen` fills the input only with this
-                    // inspection's proposal; earlier ones are suggestions.
                     initialText: model.proposal(for: characteristic),
-                    lastProposal: model.lastProposal(for: characteristic),
+                    history: model.proposalHistory(for: characteristic),
                     cancel: { model.proposalCharacteristicID = nil },
                     save: { model.saveProposal($0, for: characteristic) }
                 )

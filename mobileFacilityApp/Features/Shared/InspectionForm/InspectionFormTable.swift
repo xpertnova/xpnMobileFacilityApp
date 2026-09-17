@@ -170,8 +170,15 @@ struct InspectionFormTable: View {
                         Divider()
                         rows
                     }
-                    .frame(minWidth: minimumTableWidth)
+                    // A horizontal scroll view proposes no width, so the rows
+                    // would keep their ideal width and leave an empty strip on
+                    // a wide window. Fill the visible width, and scroll only
+                    // below the intrinsic width.
+                    .containerRelativeFrame(.horizontal, alignment: .leading) { length, _ in
+                        max(length, minimumTableWidth)
+                    }
                 }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             } else {
                 headerRow
                 Divider()

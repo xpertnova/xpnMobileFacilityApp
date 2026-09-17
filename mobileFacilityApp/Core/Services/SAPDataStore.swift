@@ -30,6 +30,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     private(set) var isLoadingMoreNotifications = false
     private(set) var notificationFilterMetadata: [NotificationStructuralFilterMetadata] = []
     private(set) var notificationFilterOptions = NotificationStructuralFilterOptions.empty
+    private(set) var functionalLocationDirectory = FunctionalLocationDirectory.empty
     private(set) var notificationPageRevision = 0
     private var nextNotificationOffset: Int?
     private var notificationSearchText = ""
@@ -449,11 +450,13 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         let metadata = try await repository.loadNotificationFilterMetadata(
             for: localWorkerID
         )
+        let directory = try await repository.loadFunctionalLocationDirectory(for: localWorkerID)
         let options = await Task.detached(priority: .utility) {
-            NotificationStructuralFilterOptions(metadata: metadata)
+            NotificationStructuralFilterOptions(metadata: metadata, directory: directory)
         }.value
         notificationFilterMetadata = metadata
         notificationFilterOptions = options
+        functionalLocationDirectory = directory
     }
 
     private func resetNotificationPage() {
@@ -464,6 +467,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         totalNotificationCount = 0
         notificationFilterMetadata = []
         notificationFilterOptions = .empty
+        functionalLocationDirectory = .empty
         nextNotificationOffset = nil
     }
 }

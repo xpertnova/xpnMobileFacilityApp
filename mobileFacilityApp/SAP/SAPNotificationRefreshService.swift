@@ -1122,22 +1122,28 @@ enum SAPLegacyDataExchangeCodec {
         } ?? [:]
         let classJSON = jsonStringValue(classPayload) ?? "{}"
         let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
-        let characteristicValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
+        let topLevelValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
         let characteristics = characteristicRows.enumerated().compactMap { index, row -> MobileLadderLegacyCharacteristic? in
             let name = firstSAPString(["ATNAM", "CHARACTERISTIC"], from: row)
             guard !name.isEmpty else { return nil }
-            let values = characteristicValues.compactMap { value -> MobileLadderLegacyValue? in
-                guard firstSAPString(["ATNAM", "CHARACTERISTIC"], from: value) == name else { return nil }
+            // SAP delivers each value list inside its characteristic, which
+            // `_buildHeaderForm` reads as `fieldRow.T_CHARVAL`. A class-level
+            // list filtered by `ATNAM` is only a fallback.
+            let nestedValues = value(named: "T_CHARVAL", in: row) as? [[String: Any]] ?? []
+            let valueRows = nestedValues.isEmpty
+                ? topLevelValues.filter { firstSAPString(["ATNAM", "CHARACTERISTIC"], from: $0) == name }
+                : nestedValues
+            let values = valueRows.compactMap { value -> MobileLadderLegacyValue? in
                 let code = firstSAPString(["ATWRT", "VALUE"], from: value)
                 guard !code.isEmpty else { return nil }
                 let title = firstSAPString(["ATWTB", "VALUE_TEXT"], from: value)
                 return MobileLadderLegacyValue(value: code, title: title.isEmpty ? code : title)
             }
             return MobileLadderLegacyCharacteristic(
-                position: Int(firstSAPString(["ATINN", "POSNR"], from: row)) ?? index,
+                position: Int(firstSAPString(["POSNR", "ATINN"], from: row)) ?? index,
                 name: name, title: firstSAPString(["ATBEZ", "TITLE"], from: row),
                 unit: firstSAPString(["MSEHI", "UNIT"], from: row),
-                required: firstSAPString(["PFLICHT", "REQUIRED"], from: row).uppercased() == "X",
+                required: firstSAPString(["ATERF", "PFLICHT", "REQUIRED"], from: row).uppercased() == "X",
                 values: values
             )
         }
@@ -1226,12 +1232,17 @@ enum SAPLegacyDataExchangeCodec {
 
         let classJSON = jsonStringValue(classPayload) ?? "{}"
         let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
-        let characteristicValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
+        let topLevelValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
         let characteristics = characteristicRows.enumerated().compactMap { index, row -> SubdistributionCharacteristic? in
             let name = firstSAPString(["ATNAM", "CHARACTERISTIC"], from: row)
             guard !name.isEmpty else { return nil }
-            let values = characteristicValues.compactMap { value -> SubdistributionValue? in
-                guard firstSAPString(["ATNAM", "CHARACTERISTIC"], from: value) == name else { return nil }
+            // As for TFM5: SAP nests each value list in its characteristic
+            // (`fieldRow.T_CHARVAL`); a class-level list is only a fallback.
+            let nestedValues = value(named: "T_CHARVAL", in: row) as? [[String: Any]] ?? []
+            let valueRows = nestedValues.isEmpty
+                ? topLevelValues.filter { firstSAPString(["ATNAM", "CHARACTERISTIC"], from: $0) == name }
+                : nestedValues
+            let values = valueRows.compactMap { value -> SubdistributionValue? in
                 let code = firstSAPString(["ATWRT", "VALUE"], from: value)
                 guard !code.isEmpty else { return nil }
                 let title = firstSAPString(["ATWTB", "VALUE_TEXT"], from: value)
@@ -1240,7 +1251,9 @@ enum SAPLegacyDataExchangeCodec {
             let dataType = firstSAPString(["ATFOR", "DATA_TYPE"], from: row).uppercased()
             let kind: SubdistributionCharacteristicKind = !values.isEmpty ? .choice : (dataType == "NUM" ? .numeric : .text)
             return SubdistributionCharacteristic(
-                position: Int(firstSAPString(["ATINN", "POSNR"], from: row)) ?? index,
+                // `_buildHeaderForm` sorts by `POSNR`; `ATINN` is SAP's
+                // internal characteristic number.
+                position: Int(firstSAPString(["POSNR", "ATINN"], from: row)) ?? index,
                 name: name, title: firstSAPString(["ATBEZ", "TITLE"], from: row), kind: kind,
                 maximumLength: Int(firstSAPString(["ANZST", "LENGTH"], from: row)) ?? 0,
                 unit: firstSAPString(["MSEHI", "UNIT"], from: row),

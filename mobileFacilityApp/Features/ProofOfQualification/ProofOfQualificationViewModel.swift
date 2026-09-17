@@ -114,13 +114,6 @@ final class ProofOfQualificationViewModel {
     .sorted { $0.buildingTitle < $1.buildingTitle }
   }
 
-  var functionalLocations: [SafetyFormContext] {
-    contexts.filter {
-      $0.businessEntityID == selectedBusinessEntityID && $0.buildingCode == selectedBuildingCode
-    }
-    .sorted { $0.functionalLocationTitle < $1.functionalLocationTitle }
-  }
-
   var instructorName: String {
     [instructorFirstName, instructorLastName]
       .filter { !$0.isEmpty }
@@ -177,14 +170,8 @@ final class ProofOfQualificationViewModel {
     partnerEmail = ""
   }
 
-  func selectBuilding(_ code: String) {
-    guard selectedBuildingCode != code else { return }
-    selectedBuildingCode = code
-    selectedContext = nil
-    workLocation = ""
-  }
-
-  func selectContext(_ context: SafetyFormContext) {
+  /// The building is the work location (`SelectionCreate`).
+  func selectBuilding(_ context: SafetyFormContext) {
     selectedBusinessEntityID = context.businessEntityID
     selectedBuildingCode = context.buildingCode
     selectedContext = context
