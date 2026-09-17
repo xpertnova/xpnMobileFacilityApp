@@ -263,19 +263,24 @@ struct PhotoWorkspace: View {
             header
 
             GeometryReader { geometry in
-                if geometry.size.width >= 720 {
-                    HStack(spacing: 0) {
-                        photoList
-                            .frame(width: min(310, max(230, geometry.size.width * 0.29)))
-                        Divider()
-                        preview
+                let isWide = geometry.size.width >= 720
+                // Switching the layout, not the view tree, keeps the preview's
+                // name and description fields in place when the width crosses
+                // the threshold.
+                let layout = isWide
+                    ? AnyLayout(HStackLayout(spacing: 0))
+                    : AnyLayout(VStackLayout(spacing: 0))
+                layout {
+                    Group {
+                        if isWide {
+                            photoList
+                                .frame(width: min(310, max(230, geometry.size.width * 0.29)))
+                        } else {
+                            compactPhotoStrip
+                        }
                     }
-                } else {
-                    VStack(spacing: 0) {
-                        compactPhotoStrip
-                        Divider()
-                        preview
-                    }
+                    Divider()
+                    preview
                 }
             }
         }

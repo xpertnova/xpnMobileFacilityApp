@@ -44,8 +44,7 @@ struct NotificationDetailView: View {
                             metadataCard
                             inspectionCard
                         }
-                        .padding(28)
-                        .frame(maxWidth: 1280, alignment: .leading)
+                        .facilityPageContent()
                     }
                 }
                 .background(FacilityTheme.canvas.ignoresSafeArea())

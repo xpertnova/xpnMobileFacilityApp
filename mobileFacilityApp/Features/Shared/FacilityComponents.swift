@@ -35,7 +35,7 @@ struct PageHeader: View {
     private var title: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(LocalizedStringKey(titleKey))
-                .font(.system(size: 29, weight: .bold))
+                .facilityPageTitleFont()
                 .foregroundStyle(FacilityTheme.ink)
             Text(LocalizedStringKey(subtitleKey))
                 .font(.subheadline)
@@ -187,6 +187,7 @@ struct FacilityCommentEditorOverlay: View {
     @Binding var comment: String
     let dismiss: () -> Void
     @FocusState private var isEditorFocused: Bool
+    @Environment(\.facilityLayout) private var layout
 
     var body: some View {
         ZStack {
@@ -216,7 +217,7 @@ struct FacilityCommentEditorOverlay: View {
                         .focused($isEditorFocused)
                         .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
                 }
-                .frame(height: 190)
+                .frame(height: layout.commentEditorHeight)
                 .background(Color(white: 0.89), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 HStack {
@@ -226,11 +227,9 @@ struct FacilityCommentEditorOverlay: View {
                         .tint(FacilityTheme.accent)
                 }
             }
-            .padding(22)
-            .frame(maxWidth: 460)
+            .facilityDialogFrame(width: 460, padding: 22)
             .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
-            .padding(28)
         }
         .onAppear { isEditorFocused = true }
     }
@@ -266,7 +265,7 @@ struct FacilityInspectionActionBar: View {
                 .tint(FacilityTheme.accent)
                 .disabled(!isCloseNotificationEnabled)
         }
-        .padding(.horizontal, 28)
+        .facilityPageHorizontalPadding()
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }

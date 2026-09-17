@@ -13,20 +13,12 @@ struct ScanView: View {
                     trailing: AnyView(modePicker)
                 )
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 18) {
-                        scannerViewport
-                        deviceColumn
-                    }
-
-                    VStack(alignment: .leading, spacing: 18) {
-                        scannerViewport
-                        deviceColumn
-                    }
+                FacilitySideColumnLayout(sideWidth: 430, minimumMainWidth: 490, spacing: 18) {
+                    scannerViewport
+                    deviceColumn
                 }
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
         }
     }
 
@@ -75,7 +67,7 @@ struct ScanView: View {
                     .padding(.bottom, 24)
             }
         }
-        .frame(minWidth: 490, maxWidth: .infinity, minHeight: 400)
+        .frame(maxWidth: .infinity, minHeight: 400)
     }
 
     private var deviceColumn: some View {
@@ -114,7 +106,6 @@ struct ScanView: View {
             }
             .facilityCard()
         }
-        .frame(width: 430)
     }
 
     private func simulateScan() {

@@ -67,8 +67,7 @@ struct DraftsView: View {
                         .foregroundStyle(.secondary)
                 }
                     }
-                    .padding(28)
-                    .frame(maxWidth: 1280, alignment: .leading)
+                    .facilityPageContent()
                 }
                 .transition(PhotoWorkspaceMotion.source)
             }

@@ -27,8 +27,7 @@ struct ProfileSettingsView: View {
                 header
                 languageCard
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
+            .facilityPageContent()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(FacilityTheme.canvas.ignoresSafeArea())

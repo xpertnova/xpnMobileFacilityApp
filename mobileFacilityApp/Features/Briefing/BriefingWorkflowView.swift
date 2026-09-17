@@ -75,8 +75,7 @@ private struct BriefingFormScreen: View {
                         checklist
                         signatureFields
                     }
-                    .padding(28)
-                    .frame(maxWidth: 1280, alignment: .leading)
+                    .facilityPageContent()
                     // Do not disable ScrollView: completed forms must remain
                     // fully reviewable from Local work.
                     .disabled(viewModel.isReadOnly)
@@ -136,7 +135,7 @@ private struct BriefingFormScreen: View {
                 .frame(minHeight: 44, alignment: .leading)
 
                 Text("briefing.form.title")
-                    .font(.system(size: 29, weight: .bold))
+                    .facilityPageTitleFont()
                     .foregroundStyle(FacilityTheme.ink)
 
                 Text("briefing.form.subtitle")
@@ -146,7 +145,7 @@ private struct BriefingFormScreen: View {
 
             Spacer(minLength: 12)
         }
-        .padding(.horizontal, 28)
+        .facilityPageHorizontalPadding()
         .padding(.vertical, 18)
         .background(FacilityTheme.surface)
         .overlay(alignment: .bottom) { Divider() }
@@ -503,7 +502,7 @@ private struct BriefingFormScreen: View {
                     .disabled(!viewModel.canComplete || viewModel.isRenderingPDF)
             }
         }
-        .padding(.horizontal, 28)
+        .facilityPageHorizontalPadding()
         .padding(.vertical, 12)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider() }
@@ -659,16 +658,23 @@ struct BriefingInlineSignatureField: View {
 }
 
 private struct BriefingChecklistTableHeader: View {
+    @Environment(\.facilityLayout) private var layout
+
     var body: some View {
+        let metrics = BriefingChecklistMetrics(layout: layout)
         HStack(spacing: 0) {
-            Text("briefing.checklist.number").frame(width: 70)
+            Text("briefing.checklist.number").frame(width: metrics.numberColumn)
             Text("briefing.checklist.type").frame(maxWidth: .infinity, alignment: .leading)
-            Text("notifications.detail.result.no").frame(width: 96)
-            Text("//").frame(width: 28)
-            Text("notifications.detail.result.yes").frame(width: 96)
-            Color.clear.frame(width: 54)
-            Text("briefing.checklist.info").frame(width: 64)
-            Text("briefing.checklist.comment").frame(width: 96)
+            Text("notifications.detail.result.no").frame(width: metrics.answerHalfColumn)
+            Text("//").frame(width: metrics.answerSeparatorColumn)
+            Text("notifications.detail.result.yes").frame(width: metrics.answerHalfColumn)
+            Color.clear.frame(width: metrics.documentColumn)
+            Text("briefing.checklist.info").frame(width: metrics.informationColumn)
+            // "Kommentar" is slightly wider than the compact column.
+            Text("briefing.checklist.comment")
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: metrics.commentColumn)
         }
         .font(.subheadline.weight(.medium))
         .foregroundStyle(FacilityTheme.ink)
@@ -708,6 +714,7 @@ private struct BriefingChecklistRow: View {
     let setComment: (String) -> Void
     @State private var referenceDocument: BriefingReferenceDocument?
     @State private var isEditingComment = false
+    @Environment(\.facilityLayout) private var layout
 
     var body: some View {
         tableRow
@@ -722,11 +729,12 @@ private struct BriefingChecklistRow: View {
     }
 
     private var tableRow: some View {
-        HStack(alignment: .center, spacing: 0) {
+        let metrics = BriefingChecklistMetrics(layout: layout)
+        return HStack(alignment: .center, spacing: 0) {
             Text(number)
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .frame(width: 70)
+                .frame(width: metrics.numberColumn)
             Text(item.title)
                 .font(.subheadline)
                 .lineSpacing(2)
@@ -736,13 +744,13 @@ private struct BriefingChecklistRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 20)
             answerControl
-                .frame(width: 220)
+                .frame(width: metrics.answerColumn)
             documentControl
-                .frame(width: 54, height: 48)
+                .frame(width: metrics.documentColumn, height: 48)
             informationControl
-                .frame(width: 64, height: 48)
+                .frame(width: metrics.informationColumn, height: 48)
             commentControl
-                .frame(width: 96, height: 72)
+                .frame(width: metrics.commentColumn, height: 72)
         }
         .padding(.horizontal, 12)
         .frame(minHeight: 88, alignment: .top)

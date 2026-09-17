@@ -235,9 +235,12 @@ struct InspectionFormTable: View {
     @ViewBuilder
     private var toolbar: some View {
         if performedOn != nil || outOfService != nil {
-            HStack(alignment: .center, spacing: 20) {
-                if let performedOn {
-                    HStack(spacing: 12) {
+            // The status group moves under the date on a narrow window
+            // instead of being clipped at the card edge; the table below
+            // scrolls sideways, but this band does not.
+            FacilitySideColumnLayout(sideWidth: nil, minimumMainWidth: 280, spacing: 12, alignment: .center) {
+                HStack(spacing: 12) {
+                    if let performedOn {
                         Text(LocalizedStringKey(InspectionFormColumn.performedOn))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(FacilityTheme.ink)
@@ -259,8 +262,7 @@ struct InspectionFormTable: View {
                         }
                     }
                 }
-
-                Spacer(minLength: 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 outOfService
             }

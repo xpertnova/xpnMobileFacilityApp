@@ -130,7 +130,7 @@ struct NotificationFormHeaderBar: View {
                 .frame(minHeight: 44, alignment: .leading)
 
                 Text(info.title)
-                    .font(.system(size: 29, weight: .bold))
+                    .facilityPageTitleFont()
                     .foregroundStyle(FacilityTheme.ink)
 
                 if !info.subtitle.isEmpty {
@@ -170,7 +170,7 @@ struct NotificationFormHeaderBar: View {
                 }
             }
         }
-        .padding(.horizontal, 28)
+        .facilityPageHorizontalPadding()
         .padding(.vertical, 18)
         .background(FacilityTheme.surface)
     }

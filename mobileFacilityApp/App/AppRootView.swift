@@ -18,7 +18,14 @@ struct AppRootView: View {
             case .authentication:
                 if let authenticationWorkspace {
                     ZStack {
-                        FacilityShellView(demo: authenticationWorkspace)
+                        // The dimmed workspace behind the login keeps its
+                        // keyboard-free size. Otherwise, once the keyboard
+                        // leaves less height than the workspace needs, the
+                        // stack overflows and is centered, pushing the login
+                        // form down behind the keyboard.
+                        KeyboardStableContainer(isEnabled: true) {
+                            FacilityShellView(demo: authenticationWorkspace)
+                        }
                         Color.black.opacity(0.62)
                             .ignoresSafeArea()
                         RoleSelectionView { role, user in
@@ -94,6 +101,7 @@ struct AppRootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: phase)
+        .facilityLayoutRoot()
     }
 
     @ViewBuilder

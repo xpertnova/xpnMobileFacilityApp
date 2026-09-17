@@ -73,8 +73,7 @@ private struct ProofOfQualificationFormScreen: View {
             checklist
             signatures
           }
-          .padding(28)
-          .frame(maxWidth: 1280, alignment: .leading)
+          .facilityPageContent()
           // Disable only controls. The ScrollView remains enabled for review.
           .disabled(viewModel.isReadOnly)
         }
@@ -276,13 +275,20 @@ private struct ProofOfQualificationFormScreen: View {
 }
 
 private struct QualificationChecklistHeader: View {
+  @Environment(\.facilityLayout) private var layout
+
   var body: some View {
+    let metrics = BriefingChecklistMetrics(layout: layout)
     HStack(spacing: 0) {
-      Text("briefing.checklist.number").frame(width: 70)
+      Text("briefing.checklist.number").frame(width: metrics.numberColumn)
       Text("briefing.checklist.type").frame(maxWidth: .infinity, alignment: .leading)
-      Text("qualification.checklist.answer").frame(width: 220)
-      Text("briefing.checklist.info").frame(width: 64)
-      Text("briefing.checklist.comment").frame(width: 96)
+      Text("qualification.checklist.answer").frame(width: metrics.answerColumn)
+      Text("briefing.checklist.info").frame(width: metrics.informationColumn)
+      // "Kommentar" is slightly wider than the compact column.
+      Text("briefing.checklist.comment")
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .frame(width: metrics.commentColumn)
     }
     .font(.subheadline.weight(.medium))
     .foregroundStyle(FacilityTheme.ink)
@@ -322,18 +328,20 @@ private struct QualificationChecklistRow: View {
   let setComment: (String) -> Void
   @State private var referenceDocument: BriefingReferenceDocument?
   @State private var isEditingComment = false
+  @Environment(\.facilityLayout) private var layout
 
   var body: some View {
+    let metrics = BriefingChecklistMetrics(layout: layout)
     HStack(alignment: .center, spacing: 0) {
       Text(number)
         .font(.subheadline.monospacedDigit())
         .foregroundStyle(.secondary)
-        .frame(width: 70)
+        .frame(width: metrics.numberColumn)
       itemText
         .padding(.vertical, 20)
-      answerControl.frame(width: 220)
-      documentControl.frame(width: 64, height: 48)
-      commentControl.frame(width: 96, height: 72)
+      answerControl.frame(width: metrics.answerColumn)
+      documentControl.frame(width: metrics.informationColumn, height: 48)
+      commentControl.frame(width: metrics.commentColumn, height: 72)
     }
     .padding(.horizontal, 12)
     .frame(minHeight: 88, alignment: .top)

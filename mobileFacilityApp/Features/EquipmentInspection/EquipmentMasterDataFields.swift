@@ -8,8 +8,10 @@ struct EquipmentMasterDataFields: View {
     @Bindable var model: EquipmentInspectionViewModel
     @State private var presentedDropdownID: String?
     @State private var presentedDateID: String?
+    @Environment(\.facilityLayout) private var layout
 
-    private static let labelWidth: CGFloat = 220
+    /// Narrower on a compact window, where the value controls need the room.
+    private var labelWidth: CGFloat { layout.isCompact ? 170 : 220 }
     private static let proposalButtonWidth: CGFloat = 56
 
     private var reservesProposalColumn: Bool {
@@ -48,7 +50,7 @@ struct EquipmentMasterDataFields: View {
                 isRequired: characteristic.isRequired,
                 isEnabled: model.canEditCharacteristic(characteristic),
                 isInvalid: model.isMasterDataInvalid(characteristic),
-                labelPlacement: .leading(width: Self.labelWidth),
+                labelPlacement: .leading(width: labelWidth),
                 isPresented: presentation($presentedDropdownID, for: characteristic),
                 onSelect: { model.selectMasterDataOption($0.id, for: characteristic) }
             )
@@ -66,7 +68,7 @@ struct EquipmentMasterDataFields: View {
         return SafetyFormField(
             label: Text(verbatim: characteristic.title),
             required: characteristic.isRequired,
-            labelPlacement: .leading(width: Self.labelWidth)
+            labelPlacement: .leading(width: labelWidth)
         ) {
             HStack(spacing: 8) {
                 TextField(
@@ -108,7 +110,7 @@ struct EquipmentMasterDataFields: View {
         return SafetyFormField(
             label: Text(verbatim: characteristic.title),
             required: characteristic.isRequired,
-            labelPlacement: .leading(width: Self.labelWidth)
+            labelPlacement: .leading(width: labelWidth)
         ) {
             Button {
                 isPresented.wrappedValue = true
@@ -293,14 +295,13 @@ struct EquipmentMasterDataProposalOverlay: View {
                 .padding(.horizontal, 22)
                 .padding(.vertical, 8)
             }
-            .frame(maxWidth: 560)
+            .facilityDialogFrame(width: 560, padding: 0)
             .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(.gray.opacity(0.28))
             }
             .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
-            .padding(28)
             .accessibilityAddTraits(.isModal)
         }
         .onAppear { isFocused = true }

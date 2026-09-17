@@ -48,111 +48,131 @@ struct RoleSelectionView: View {
     @State private var validationMessage: LocalizedStringKey?
     @FocusState private var focusedField: CredentialField?
 
-    @State private var maxScreenHeight: CGFloat = 0
+    /// Height of this screen the docked keyboard covers.
+    @State private var keyboardOverlap: CGFloat = 0
+    /// Height of the whole card, measured while its introduction is shown.
+    @State private var fullCardHeight: CGFloat = 0
+
+    private static let cardOuterPadding: CGFloat = 16
+    private static let keyboardCardOuterPadding: CGFloat = 8
 
     var body: some View {
         GeometryReader { proxy in
-            let effectiveHeight = max(maxScreenHeight, proxy.size.height)
-            let metrics = LoginCardMetrics.metrics(for: CGSize(width: proxy.size.width, height: effectiveHeight))
+            // The screen ignores the keyboard's safe area, so its size, and
+            // the card metrics with it, stay the same while typing. The
+            // keyboard is handled below from its reported frame instead.
+            let metrics = LoginCardMetrics.metrics(for: proxy.size)
+            let visibleHeight = max(0, proxy.size.height - keyboardOverlap)
+            // With the keyboard up, the logo, title and roles make way for
+            // the sign-in fields when the whole card would not fit above it.
+            let showsIntroduction = keyboardOverlap == 0
+                || fullCardHeight + Self.cardOuterPadding * 2 <= visibleHeight
 
-            ScrollViewReader { scrollProxy in
-                ScrollView(.vertical, showsIndicators: false) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    if showsIntroduction {
+                        introduction(metrics: metrics)
+                    }
+
                     VStack(spacing: 0) {
-                        XPNMark(height: metrics.badgeHeight)
-                            .id("topBadge")
-                            .padding(.bottom, metrics.badgeBottomPadding)
+                        authenticationSectionPicker
+                            .padding(.top, metrics.pickerTopPadding)
 
-                        Text("role.selection.title")
-                            .font(.system(size: metrics.titleSize, weight: .bold, design: .rounded))
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(FacilityTheme.ink)
+                        credentials(metrics: metrics)
 
-                        Text("role.selection.subtitle")
-                            .font(metrics.subtitleSize)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.top, 4)
-                            .padding(.bottom, metrics.subtitleBottomPadding)
-
-                        VStack(spacing: metrics.roleSpacing) {
-                            ForEach(FacilityUserRole.allCases) { role in
-                                RoleChoiceCard(
-                                    role: role,
-                                    isSelected: selectedRole == role,
-                                    isEnabled: role == .technician,
-                                    metrics: metrics
-                                ) {
-                                    selectedRole = role
-                                }
-                            }
+                        Button {
+                            focusedField = nil
+                            submit()
+                        } label: {
+                            Text(authenticationSection.actionKey)
+                                .font(.headline.weight(.semibold))
+                                .frame(maxWidth: .infinity, minHeight: metrics.buttonMinHeight)
                         }
+                        .buttonStyle(.borderedProminent)
+                        .tint(FacilityTheme.accent)
+                        .padding(.top, metrics.buttonTopPadding)
+                    }
 
-                        VStack(spacing: 0) {
-                            authenticationSectionPicker
-                                .padding(.top, metrics.pickerTopPadding)
-
-                            credentials(metrics: metrics)
-
-                            Button {
-                                focusedField = nil
-                                submit()
-                            } label: {
-                                Text(authenticationSection.actionKey)
-                                    .font(.headline.weight(.semibold))
-                                    .frame(maxWidth: .infinity, minHeight: metrics.buttonMinHeight)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(FacilityTheme.accent)
-                            .padding(.top, metrics.buttonTopPadding)
-                        }
-                        .id("formSection")
-
+                    if showsIntroduction {
                         Text("role.selection.footer")
                             .font(metrics.footerFont)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.top, metrics.footerTopPadding)
                     }
-                    .padding(.horizontal, metrics.cardHorizontalPadding)
-                    .padding(.vertical, metrics.cardVerticalPadding)
-                    .frame(width: metrics.cardWidth)
-                    .background(.white, in: RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
-                    .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .center)
                 }
-                .scrollBounceBehavior(.basedOnSize)
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: focusedField) { _, newField in
-                    if newField != nil {
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 120_000_000)
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                scrollProxy.scrollTo("formSection", anchor: .center)
-                            }
-                        }
-                    } else {
-                        Task { @MainActor in
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                scrollProxy.scrollTo("topBadge", anchor: .top)
-                            }
-                        }
+                .padding(.horizontal, metrics.cardHorizontalPadding)
+                .padding(
+                    .vertical,
+                    showsIntroduction ? metrics.cardVerticalPadding : min(metrics.cardVerticalPadding, 16)
+                )
+                .frame(width: metrics.cardWidth)
+                .background(.white, in: RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    if showsIntroduction {
+                        fullCardHeight = height
                     }
                 }
+                .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+                .padding(
+                    .vertical,
+                    showsIntroduction ? Self.cardOuterPadding : Self.keyboardCardOuterPadding
+                )
+                .padding(.horizontal, Self.cardOuterPadding)
+                .frame(maxWidth: .infinity, minHeight: visibleHeight, alignment: .center)
+                .background {
+                    // Tapping the dimmed area around the card dismisses the
+                    // keyboard. A tap gesture over the whole screen also fired
+                    // for taps on the fields and could clear their focus again.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { focusedField = nil }
+                }
             }
-            .onAppear {
-                maxScreenHeight = max(maxScreenHeight, proxy.size.height)
-            }
-            .onChange(of: proxy.size.height) { _, newHeight in
-                if focusedField == nil {
-                    maxScreenHeight = max(maxScreenHeight, newHeight)
+            .frame(height: visibleHeight)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .background {
+            KeyboardOverlapReader { overlap, animationDuration in
+                withAnimation(animationDuration > 0 ? .easeOut(duration: animationDuration) : nil) {
+                    keyboardOverlap = overlap
                 }
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            focusedField = nil
+        .ignoresSafeArea(.keyboard)
+    }
+
+    private func introduction(metrics: LoginCardMetrics) -> some View {
+        VStack(spacing: 0) {
+            XPNMark(height: metrics.badgeHeight)
+                .padding(.bottom, metrics.badgeBottomPadding)
+
+            Text("role.selection.title")
+                .font(.system(size: metrics.titleSize, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(FacilityTheme.ink)
+
+            Text("role.selection.subtitle")
+                .font(metrics.subtitleSize)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 4)
+                .padding(.bottom, metrics.subtitleBottomPadding)
+
+            VStack(spacing: metrics.roleSpacing) {
+                ForEach(FacilityUserRole.allCases) { role in
+                    RoleChoiceCard(
+                        role: role,
+                        isSelected: selectedRole == role,
+                        isEnabled: role == .technician,
+                        metrics: metrics
+                    ) {
+                        selectedRole = role
+                    }
+                }
+            }
         }
     }
 
