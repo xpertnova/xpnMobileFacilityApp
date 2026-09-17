@@ -434,10 +434,25 @@ final class FacilityDemoViewModel {
     func openSavedElevatorInspection(_ inspection: ElevatorInspectionDraftPayload) async -> Bool {
         let returnDestination = selection
         if let snapshot = inspection.notificationSnapshot {
+            // Older snapshots omitted the T_PROPS dropdowns and action/material
+            // mappings. Recover those from the local cache, never from SAP.
+            var fallbackRawPayloadJSON = ""
+            if snapshot.rawPayloadJSON?.isEmpty != false {
+                let cachedSummary: SAPNotificationSummary?
+                if isDemoMode {
+                    cachedSummary = MockFacilityData.sapNotifications.first { $0.id == inspection.notificationID }
+                } else {
+                    cachedSummary = await sapDataStore.cachedNotification(id: inspection.notificationID)
+                }
+                guard let cachedSummary else { return false }
+                fallbackRawPayloadJSON = cachedSummary.rawPayloadJSON
+            }
             selectedNotificationID = nil
             selectedOfflineNotificationDetail = SAPNotificationDetail(
                 offlineSnapshot: snapshot,
-                notificationID: inspection.notificationID
+                notificationID: inspection.notificationID,
+                fallbackFormCode: inspection.form.formCode,
+                fallbackRawPayloadJSON: fallbackRawPayloadJSON
             )
             offlineNotificationReturnDestination = returnDestination
             return true

@@ -4,6 +4,7 @@ struct ElectricalSafetyWorkflowView: View {
     let workspace: FacilityDemoViewModel
     let onClose: () -> Void
     @State private var viewModel: ElectricalSafetyViewModel
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var isShowingPartnerPicker = false
     @State private var isShowingBusinessEntityPicker = false
 
@@ -79,9 +80,7 @@ struct ElectricalSafetyWorkflowView: View {
                 canComplete: viewModel.draft.context != nil,
                 isBusy: viewModel.isSaving,
                 saveDraft: {
-                    Task {
-                        _ = await viewModel.saveDraft(using: workspace.offlineWorkStore)
-                    }
+                    isSaveDraftConfirmationPresented = true
                 },
                 complete: {
                     Task { await viewModel.complete() }
@@ -89,6 +88,14 @@ struct ElectricalSafetyWorkflowView: View {
                 isReadOnly: viewModel.isReadOnly,
                 back: onClose
             )
+        }
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            Task {
+                if await viewModel.saveDraft(using: workspace.offlineWorkStore) {
+                    viewModel.dismissAlert()
+                    onClose()
+                }
+            }
         }
         .overlay {
             ZStack {

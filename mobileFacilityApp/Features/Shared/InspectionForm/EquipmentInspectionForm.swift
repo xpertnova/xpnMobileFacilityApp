@@ -274,10 +274,13 @@ extension SAPNotificationSummary {
 
 extension SAPNotificationDetail {
     var equipmentInspectionForm: EquipmentInspectionForm? {
-        summary.equipmentInspectionForm
+        if !formCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return EquipmentInspectionForm(formCode: formCode)
+        }
+        return summary.equipmentInspectionForm
     }
 
     var isTFM2ElevatorInspection: Bool {
-        summary.isTFM2ElevatorInspection
+        equipmentInspectionForm == .elevator
     }
 }

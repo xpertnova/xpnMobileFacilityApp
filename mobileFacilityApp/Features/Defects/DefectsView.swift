@@ -87,6 +87,11 @@ struct DefectsView: View {
                             open(review)
                         }
                         .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
+                    } else if let inspection = item.payload.elevatorInspection {
+                        ClosedDefectNotificationCard(item: item, inspection: inspection) {
+                            open(inspection)
+                        }
+                        .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
                     }
                 }
             }
@@ -97,6 +102,15 @@ struct DefectsView: View {
     private func open(_ review: NotificationReviewDraftPayload) {
         Task {
             guard await demo.openSavedNotificationReview(review) else {
+                showsUnavailableNotificationAlert = true
+                return
+            }
+        }
+    }
+
+    private func open(_ inspection: ElevatorInspectionDraftPayload) {
+        Task {
+            guard await demo.openSavedElevatorInspection(inspection) else {
                 showsUnavailableNotificationAlert = true
                 return
             }
@@ -169,23 +183,44 @@ private struct ManualDefectCard: View {
 
 private struct ClosedDefectNotificationCard: View {
     let item: OfflineWorkItem
-    let review: NotificationReviewDraftPayload
+    let notificationID: String
+    let snapshot: OfflineNotificationSnapshot?
+    let photoCount: Int
+    let fallbackTitleKey: String
     let action: () -> Void
 
+    init(item: OfflineWorkItem, review: NotificationReviewDraftPayload, action: @escaping () -> Void) {
+        self.item = item
+        notificationID = review.notificationID
+        snapshot = review.notificationSnapshot
+        photoCount = review.photoAttachments.count
+        fallbackTitleKey = "drafts.notification.title"
+        self.action = action
+    }
+
+    init(item: OfflineWorkItem, inspection: ElevatorInspectionDraftPayload, action: @escaping () -> Void) {
+        self.item = item
+        notificationID = inspection.notificationID
+        snapshot = inspection.notificationSnapshot
+        photoCount = inspection.photoAttachments.count
+        fallbackTitleKey = inspection.form.titleKey
+        self.action = action
+    }
+
     private var title: String {
-        let title = review.notificationSnapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return title.isEmpty ? String(localized: "drafts.notification.title") : title
+        let title = snapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? String(localized: String.LocalizationValue(fallbackTitleKey)) : title
     }
 
     private var technicalPlace: String {
-        guard let snapshot = review.notificationSnapshot else { return review.notificationID }
+        guard let snapshot else { return notificationID }
         return snapshot.functionalLocationID.isEmpty ? snapshot.functionalLocationName : snapshot.functionalLocationID
     }
 
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center, spacing: 16) {
-                DefectPhotoTile(photoCount: review.photoAttachments.count)
+                DefectPhotoTile(photoCount: photoCount)
 
                 DefectCardColumns {
                     VStack(alignment: .leading, spacing: 5) {
@@ -233,7 +268,7 @@ private struct ClosedDefectNotificationCard: View {
     }
 
     private var notificationMetadata: some View {
-        Text(review.notificationID)
+        Text(notificationID)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .lineLimit(1)

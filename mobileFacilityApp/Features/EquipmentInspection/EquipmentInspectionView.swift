@@ -17,6 +17,7 @@ struct EquipmentInspectionView: View {
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: EquipmentInspectionViewModel
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
     @State private var photoWorkspaceItemID: String?
     @State private var isMasterDataErrorPresented = false
@@ -138,6 +139,14 @@ struct EquipmentInspectionView: View {
                     }
                 }
             )
+        }
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            Task {
+                if await model.save(closed: false) {
+                    model.feedback = nil
+                    dismiss()
+                }
+            }
         }
         .facilityConfirmationDialog(
             isPresented: $model.isCloseConfirmationPresented,
@@ -447,7 +456,7 @@ struct EquipmentInspectionView: View {
     private var actionBar: some View {
         FacilityInspectionActionBar(
             markEverythingOkay: { model.applyAllGood() },
-            saveDraft: { Task { await model.save(closed: false) } },
+            saveDraft: { isSaveDraftConfirmationPresented = true },
             closeNotification: { model.handleCloseTapped() },
             // `setValues4AnwStatus` disables "Alles OK" while the form is out
             // of service.

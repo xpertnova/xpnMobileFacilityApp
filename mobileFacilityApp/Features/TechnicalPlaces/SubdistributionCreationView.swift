@@ -14,9 +14,9 @@ struct SubdistributionCreationView: View {
     @State private var model: SubdistributionCreationViewModel
     @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var photoWorkspaceExclusionID: String?
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
     @State private var outOfOperationTransition: OutOfOperationTransition?
-    @State private var isTemporarySaveConfirmationPresented = false
     @State private var isCloseConfirmationPresented = false
     @State private var isDefectResolutionPresented = false
     @State private var isShowingBusinessEntityEditor = false
@@ -118,10 +118,12 @@ struct SubdistributionCreationView: View {
         } message: {
             Text(demo.isDemoMode ? "subdistribution.queued.demo.message" : "subdistribution.queued.message")
         }
-        .alert("subdistribution.save.title", isPresented: $isTemporarySaveConfirmationPresented) {
-            Button("common.ok", action: close)
-        } message: {
-            Text("subdistribution.save.message")
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            Task {
+                if await model.saveTemporarily() {
+                    close()
+                }
+            }
         }
         .facilityConfirmationDialog(
             isPresented: $isCloseConfirmationPresented,
@@ -431,11 +433,7 @@ struct SubdistributionCreationView: View {
             FacilityInspectionActionBar(
                 markEverythingOkay: { model.markEverythingOkay() },
                 saveDraft: {
-                    Task {
-                        if await model.saveTemporarily() {
-                            isTemporarySaveConfirmationPresented = true
-                        }
-                    }
+                    isSaveDraftConfirmationPresented = true
                 },
                 closeNotification: requestNotificationClose,
                 isMarkEverythingOkayEnabled: !model.draft.inspectionItems.isEmpty && !model.draft.isOutOfOperation && !model.isSaving,
@@ -494,4 +492,3 @@ struct SubdistributionCreationView: View {
         }
     }
 }
-

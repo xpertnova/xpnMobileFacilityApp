@@ -4,6 +4,120 @@ import XCTest
 
 final class ElevatorInspectionTests: XCTestCase {
 
+    @MainActor
+    func testSavedEquipmentFormsRetainRoutingAndChecklistMetadata() throws {
+        let source = try XCTUnwrap(MockFacilityData.sapNotifications.first { $0.id == "4710000012" })
+        for form in EquipmentInspectionForm.allCases {
+            let summary = SAPNotificationSummary(
+                id: source.id, client: source.client, title: source.title,
+                functionalLocationID: source.functionalLocationID,
+                functionalLocationName: source.functionalLocationName,
+                equipmentID: source.equipmentID,
+                startDate: source.startDate, endDate: source.endDate,
+                systemStatus: source.systemStatus, userStatus: source.userStatus,
+                rawPayloadJSON: source.rawPayloadJSON.replacingOccurrences(of: "TFM2", with: form.formCode)
+            )
+            let detail = SAPNotificationDetail(summary: summary)
+            let snapshot = try JSONDecoder().decode(
+                OfflineNotificationSnapshot.self,
+                from: JSONEncoder().encode(OfflineNotificationSnapshot(detail: detail))
+            )
+            let restored = SAPNotificationDetail(offlineSnapshot: snapshot, notificationID: source.id)
+            XCTAssertEqual(restored.equipmentInspectionForm, form)
+            XCTAssertEqual(restored.isTFM2ElevatorInspection, form == .elevator)
+            XCTAssertEqual(restored.summary.equipmentID, source.equipmentID)
+            XCTAssertEqual(restored.summary.equipmentInspectionForm, form)
+            let originalItems = ElevatorInspectionDecoder.decodeItems(from: summary.rawPayloadJSON)
+            let model = EquipmentInspectionViewModel(
+                detail: restored,
+                offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo"),
+                photoStore: InMemoryPhotoAttachmentStore()
+            )
+            XCTAssertFalse(model.items.isEmpty)
+            XCTAssertEqual(model.items, originalItems)
+        }
+    }
+
+    func testSnapshotFormCodeKeepsTFM1AndTFM3OutOfEquipmentScreen() throws {
+        let source = try XCTUnwrap(MockFacilityData.sapNotifications.first { $0.id == "4710000012" })
+        for code in ["TFM1", "TFM3"] {
+            let snapshot = OfflineNotificationSnapshot(
+                title: "Inspection", functionalLocationID: "FL-1", functionalLocationName: "Building",
+                startDate: "", endDate: "", systemStatus: "", userStatus: "", structure: "",
+                equipmentID: "", inspectionItems: [], formCode: code,
+                rawPayloadJSON: source.rawPayloadJSON
+            )
+            let restored = SAPNotificationDetail(offlineSnapshot: snapshot, notificationID: source.id)
+            XCTAssertEqual(restored.formCode, code)
+            XCTAssertNil(restored.equipmentInspectionForm)
+        }
+    }
+
+    @MainActor
+    func testSavedElevatorReopensAnswersAndLegacySnapshotRecoversFromDemoCache() async throws {
+        let summary = try XCTUnwrap(MockFacilityData.sapNotifications.first { $0.id == "4710000012" })
+        let detail = SAPNotificationDetail(summary: summary)
+        let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo")
+        let photos = InMemoryPhotoAttachmentStore()
+        let model = EquipmentInspectionViewModel(detail: detail, offlineWorkStore: store, photoStore: photos)
+        await model.load()
+        let item = try XCTUnwrap(model.items.first)
+        model.results[item.id] = "4"
+        model.actions[item.id] = "7"
+        model.materials[item.id] = true
+        model.comments[item.id] = "Saved note"
+        let saved = await model.save(closed: false)
+        XCTAssertTrue(saved)
+        XCTAssertFalse(model.isClosedLocally)
+        XCTAssertEqual(store.savedNotificationItems.first?.status, .draft)
+        let draft = try XCTUnwrap(store.elevatorInspection(notificationID: summary.id))
+        let app = FacilityDemoViewModel(
+            isDemoMode: true, offlineWorkStore: store,
+            sapDataStore: SAPDataStore(repository: InMemorySAPDataCacheRepository(), refreshService: nil, localWorkerID: "demo"),
+            meterReferenceProvider: DemoMeterReferenceProvider(), photoAttachmentStore: photos
+        )
+        app.open(.drafts)
+        let opened = await app.openSavedElevatorInspection(draft)
+        XCTAssertTrue(opened)
+        let restored = try XCTUnwrap(app.selectedOfflineNotificationDetail)
+        XCTAssertEqual(restored.equipmentInspectionForm, .elevator)
+        XCTAssertEqual(app.offlineNotificationDetailReturnDestination, .drafts)
+        let reopened = EquipmentInspectionViewModel(detail: restored, offlineWorkStore: store, photoStore: photos)
+        await reopened.load()
+        XCTAssertEqual(reopened.results[item.id], "4")
+        XCTAssertEqual(reopened.actions[item.id], "7")
+        XCTAssertEqual(reopened.materials[item.id], true)
+        XCTAssertEqual(reopened.comments[item.id], "Saved note")
+
+        var legacyJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        var snapshotJSON = try XCTUnwrap(legacyJSON["notificationSnapshot"] as? [String: Any])
+        snapshotJSON.removeValue(forKey: "rawPayloadJSON")
+        snapshotJSON.removeValue(forKey: "formCode")
+        legacyJSON["notificationSnapshot"] = snapshotJSON
+        let legacyDraft = try JSONDecoder().decode(ElevatorInspectionDraftPayload.self, from: JSONSerialization.data(withJSONObject: legacyJSON))
+        let legacyOpened = await app.openSavedElevatorInspection(legacyDraft)
+        XCTAssertTrue(legacyOpened)
+        XCTAssertEqual(app.selectedOfflineNotificationDetail?.equipmentInspectionForm, .elevator)
+        XCTAssertEqual(app.selectedOfflineNotificationDetail?.summary.rawPayloadJSON, summary.rawPayloadJSON)
+    }
+
+    @MainActor
+    func testEquipmentDraftSaveReportsFailureWithoutClaimingSuccess() async throws {
+        let summary = try XCTUnwrap(MockFacilityData.sapNotifications.first { $0.id == "4710000012" })
+        let model = EquipmentInspectionViewModel(
+            detail: SAPNotificationDetail(summary: summary),
+            offlineWorkStore: OfflineWorkStore(repository: UnavailableOfflineWorkRepository(), workerID: "demo"),
+            photoStore: InMemoryPhotoAttachmentStore()
+        )
+        await model.load()
+        let saved = await model.save(closed: false)
+        XCTAssertFalse(saved)
+        guard case .saveFailed? = model.feedback else {
+            return XCTFail("Expected a visible save failure")
+        }
+        XCTAssertFalse(model.isClosedLocally)
+    }
+
     // MARK: - 1. Routing & Detection
 
     func testTFM2DetectionByFormnr() throws {

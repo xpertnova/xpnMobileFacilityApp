@@ -22,9 +22,9 @@ private enum DisassembledTransition: Hashable, Identifiable {
     @State private var model: MobileLadderCreationViewModel
     @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var photoWorkspaceExclusionID: String?
+    @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
     @State private var disassembledTransition: DisassembledTransition?
-    @State private var isDraftSavedConfirmationPresented = false
     @State private var isCloseConfirmationPresented = false
     @State private var isShowingBusinessEntityEditor = false
     @State private var isBuildingPickerPresented = false
@@ -118,6 +118,13 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 },
                 secondaryButton: .cancel(Text("common.cancel"))
             )
+        }
+        .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
+            Task {
+                if await model.saveTemporarily() {
+                    close()
+                }
+            }
         }
         .facilityConfirmationDialog(
             isPresented: $isCloseConfirmationPresented,
@@ -540,11 +547,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
             FacilityInspectionActionBar(
                 markEverythingOkay: { model.markEverythingOkay() },
                 saveDraft: {
-                    Task {
-                        if await model.saveTemporarily() {
-                            isDraftSavedConfirmationPresented = true
-                        }
-                    }
+                    isSaveDraftConfirmationPresented = true
                 },
                 closeNotification: {
                     if demo.isDemoMode {
@@ -557,14 +560,6 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 isSaveDraftEnabled: !model.isSaving,
                 isCloseNotificationEnabled: !model.isSaving && model.isReadyToClose
             )
-            .alert(
-                "mobileLadder.feedback.saved.title",
-                isPresented: $isDraftSavedConfirmationPresented
-            ) {
-                Button("common.ok") { close() }
-            } message: {
-                Text("mobileLadder.feedback.saved.message")
-            }
         }
     }
 

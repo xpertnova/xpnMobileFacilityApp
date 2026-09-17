@@ -232,8 +232,8 @@ enum NotificationReviewResult: String, Codable, Equatable, Sendable {
 }
 
 /// The minimum notification detail required to reopen an inspection without
-/// depending on the current SAP cache. It deliberately contains no SAP SDK
-/// types or transport payload.
+/// depending on the current SAP cache. The retained source JSON preserves
+/// SAP checklist options and element mappings without importing SDK types.
 struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
     struct InspectionItem: Codable, Equatable, Sendable {
         let id: String
@@ -274,6 +274,7 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
     let inspectionItems: [InspectionItem]
     let address: String?
     let formCode: String?
+    let rawPayloadJSON: String?
 
     init(
         title: String,
@@ -287,7 +288,8 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
         equipmentID: String,
         inspectionItems: [InspectionItem],
         address: String? = nil,
-        formCode: String? = nil
+        formCode: String? = nil,
+        rawPayloadJSON: String? = nil
     ) {
         self.title = title
         self.functionalLocationID = functionalLocationID
@@ -301,6 +303,7 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
         self.inspectionItems = inspectionItems
         self.address = address
         self.formCode = formCode
+        self.rawPayloadJSON = rawPayloadJSON
     }
 
     init(from decoder: Decoder) throws {
@@ -317,6 +320,7 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
         inspectionItems = try container.decode([InspectionItem].self, forKey: .inspectionItems)
         address = try container.decodeIfPresent(String.self, forKey: .address)
         formCode = try container.decodeIfPresent(String.self, forKey: .formCode)
+        rawPayloadJSON = try container.decodeIfPresent(String.self, forKey: .rawPayloadJSON)
     }
 }
 

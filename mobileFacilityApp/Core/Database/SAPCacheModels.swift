@@ -552,7 +552,9 @@ struct SAPNotificationDetail: Equatable, Sendable {
             address = streetPart.isEmpty ? cityPart : streetPart
         }
 
-        let directFormCode = Self.stringValue(named: "STEUS", in: payload)
+        let directFormCode = ["FORMNR", "STEUS"]
+            .map { Self.stringValue(named: $0, in: payload) }
+            .first { !$0.isEmpty } ?? ""
         let rows = Self.value(named: "T_PLPOD", in: payload) as? [[String: Any]] ?? []
 
         if !directFormCode.isEmpty {
@@ -618,23 +620,29 @@ struct SAPNotificationDetail: Equatable, Sendable {
         }
     }
 
-    init(offlineSnapshot: OfflineNotificationSnapshot, notificationID: String) {
+    init(
+        offlineSnapshot: OfflineNotificationSnapshot,
+        notificationID: String,
+        fallbackFormCode: String = "",
+        fallbackRawPayloadJSON: String = ""
+    ) {
         summary = SAPNotificationSummary(
             id: notificationID,
             client: "",
             title: offlineSnapshot.title,
             functionalLocationID: offlineSnapshot.functionalLocationID,
             functionalLocationName: offlineSnapshot.functionalLocationName,
+            equipmentID: offlineSnapshot.equipmentID,
             startDate: offlineSnapshot.startDate,
             endDate: offlineSnapshot.endDate,
             systemStatus: offlineSnapshot.systemStatus,
             userStatus: offlineSnapshot.userStatus,
-            rawPayloadJSON: ""
+            rawPayloadJSON: offlineSnapshot.rawPayloadJSON.flatMap { $0.isEmpty ? nil : $0 } ?? fallbackRawPayloadJSON
         )
         structure = offlineSnapshot.structure
         equipmentID = offlineSnapshot.equipmentID
         address = offlineSnapshot.address ?? ""
-        formCode = offlineSnapshot.formCode ?? ""
+        formCode = offlineSnapshot.formCode.flatMap { $0.isEmpty ? nil : $0 } ?? fallbackFormCode
         inspectionItems = offlineSnapshot.inspectionItems.map {
             InspectionItem(
                 id: $0.id,
@@ -676,6 +684,7 @@ extension OfflineNotificationSnapshot {
         equipmentID = detail.equipmentID
         address = detail.address
         formCode = detail.formCode
+        rawPayloadJSON = detail.summary.rawPayloadJSON.isEmpty ? nil : detail.summary.rawPayloadJSON
         inspectionItems = detail.inspectionItems.map {
             InspectionItem(
                 id: $0.id,

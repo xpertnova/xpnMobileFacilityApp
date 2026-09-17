@@ -9698,6 +9698,7 @@
       }
     },
     "mobileLadder.feedback.saved.message" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11176,6 +11177,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SAP"
+          }
+        }
+      }
+    },
+    "notifications.detail.saveDraftConfirmation.message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Möchten Sie diese Meldung lokal zwischenspeichern? Sie können sie später weiterbearbeiten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Do you want to save this notification locally as a draft? You can continue editing it later."
+          }
+        }
+      }
+    },
+    "notifications.detail.saveDraftConfirmation.title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldung zwischenspeichern?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save draft?"
           }
         }
       }
@@ -18066,6 +18101,7 @@
       }
     },
     "subdistribution.save.message" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
