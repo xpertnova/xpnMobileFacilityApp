@@ -5,6 +5,7 @@ struct SAPRefreshPasswordDialog: View {
     let isRefreshing: Bool
     let stage: SAPReadRefreshStage?
     let error: SAPReadError?
+    let failureContext: SAPRefreshFailureContext?
     let refresh: () -> Void
     let cancel: () -> Void
     @FocusState private var isPasswordFocused: Bool
@@ -48,13 +49,19 @@ struct SAPRefreshPasswordDialog: View {
                 }
 
             if let error {
-                Label {
-                    Text(sapRefreshErrorMessage(error))
-                } icon: {
-                    Image(systemName: "exclamationmark.circle.fill")
-                }
+                VStack(alignment: .leading, spacing: 10) {
+                    Label {
+                        Text(sapRefreshErrorMessage(error))
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                    }
                     .font(.footnote)
                     .foregroundStyle(FacilityTheme.red)
+
+                    if let failureContext {
+                        SAPRefreshFailureDetailsView(context: failureContext)
+                    }
+                }
             }
 
             HStack(spacing: 12) {
@@ -76,6 +83,53 @@ struct SAPRefreshPasswordDialog: View {
         .background(.white, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: .black.opacity(0.28), radius: 32, y: 18)
         .onAppear { isPasswordFocused = true }
+    }
+}
+
+private struct SAPRefreshFailureDetailsView: View {
+    let context: SAPRefreshFailureContext
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("sap.refresh.details.title", systemImage: "info.circle")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(FacilityTheme.ink)
+
+            detailRow("sap.refresh.details.stage", value: context.stage.messageText)
+            detailRow("sap.refresh.details.operation", value: context.operationText)
+
+            if case let .httpStatus(status) = context.error {
+                detailRow(
+                    "sap.refresh.details.response",
+                    value: String.localizedStringWithFormat(
+                        String(localized: "sap.refresh.details.httpStatus"),
+                        status
+                    )
+                )
+            }
+
+            if context.isForbidden {
+                Text("sap.refresh.details.forbiddenExplanation")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(FacilityTheme.red.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func detailRow(_ title: LocalizedStringKey, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(FacilityTheme.ink)
+        }
     }
 }
 
@@ -114,6 +168,12 @@ private extension SAPReadRefreshStage {
             String(localized: "sap.refresh.stage.authenticating")
         case .uploadingOutgoingMetadata:
             String(localized: "sap.refresh.stage.uploading")
+        case let .uploadingOutgoingDocuments(current, total):
+            String(
+                format: String(localized: "sap.refresh.stage.uploadingDocuments"),
+                current,
+                total
+            )
         case .postingOutgoingData:
             String(localized: "sap.refresh.stage.posting")
         case .waitingForOutgoingAcknowledgement:
@@ -129,6 +189,45 @@ private extension SAPReadRefreshStage {
         case .savingSnapshot:
             String(localized: "sap.refresh.stage.saving")
         }
+    }
+}
+
+private extension SAPRefreshFailureContext {
+    var operationText: String {
+        switch stage {
+        case .authenticating:
+            switch authenticationMethod {
+            case .password:
+                String(localized: "sap.refresh.details.passwordOperation")
+            case .savedToken:
+                String(localized: "sap.refresh.details.savedTokenOperation")
+            }
+        case .uploadingOutgoingMetadata:
+            String(localized: "sap.refresh.details.uploadMetadataOperation")
+        case .uploadingOutgoingDocuments:
+            String(localized: "sap.refresh.details.uploadDocumentOperation")
+        case .postingOutgoingData:
+            String(localized: "sap.refresh.details.postOperation")
+        case .waitingForOutgoingAcknowledgement:
+            String(localized: "sap.refresh.details.postAcknowledgementOperation")
+        case .checkingAppVersion:
+            String(localized: "sap.refresh.details.versionOperation")
+        case .preparingIncomingData:
+            String(localized: "sap.refresh.details.prepareIncomingOperation")
+        case .waitingForIncomingData:
+            String(localized: "sap.refresh.details.incomingAcknowledgementOperation")
+        case .receivingIncomingPackages:
+            String(localized: "sap.refresh.details.receivePackageOperation")
+        case .savingSnapshot:
+            String(localized: "sap.refresh.details.saveSnapshotOperation")
+        }
+    }
+
+    var isForbidden: Bool {
+        if case .httpStatus(403) = error {
+            return true
+        }
+        return false
     }
 }
 

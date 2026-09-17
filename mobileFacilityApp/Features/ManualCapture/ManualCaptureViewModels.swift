@@ -28,6 +28,7 @@ final class DefectCaptureViewModel {
 
     private(set) var state: LoadState = .idle
     private(set) var editingID: UUID?
+    private(set) var isExistingDraft = false
     private(set) var itemStatus: OfflineWorkStatus?
     private(set) var objects: [DefectObjectOption] = []
     private(set) var isSaving = false
@@ -62,7 +63,8 @@ final class DefectCaptureViewModel {
     func load(itemID: UUID?) async {
         await discardStagedPhotos()
         resetFields()
-        editingID = itemID
+        isExistingDraft = itemID != nil
+        editingID = itemID ?? UUID()
         if objects.isEmpty {
             state = .loading
         }
@@ -184,6 +186,7 @@ final class DefectCaptureViewModel {
 
     private func resetFields() {
         editingID = nil
+        isExistingDraft = false
         itemStatus = nil
         selectedObjectID = nil
         priority = .medium
@@ -208,6 +211,7 @@ final class MeterReadingViewModel {
     let isShowingPreviewData: Bool
     private(set) var state: LoadState = .idle
     private(set) var editingID: UUID?
+    private(set) var itemStatus: OfflineWorkStatus?
     private(set) var references: [MeterReference] = []
     private(set) var isSaving = false
     var kind: MeterKind = .electricity
@@ -244,22 +248,29 @@ final class MeterReadingViewModel {
         Self.parseDecimal(valueText)
     }
 
+    var isReadOnly: Bool {
+        guard let itemStatus else { return false }
+        return itemStatus != .draft
+    }
+
     var isBelowPreviousValue: Bool {
         guard let selectedReference, let parsedValue else { return false }
         return parsedValue < selectedReference.previousValue
     }
 
     var canSave: Bool {
-        !isSaving && selectedReference != nil && parsedValue != nil
+        !isReadOnly && !isSaving && selectedReference != nil && parsedValue != nil
     }
 
     func load(itemID: UUID?) async {
-        editingID = itemID
+        editingID = itemID ?? UUID()
         valueText = ""
         note = ""
         saveFailed = false
         await offlineWorkStore.load()
-        let payload = offlineWorkStore.item(id: itemID)?.payload.meterReading
+        let item = offlineWorkStore.item(id: itemID)
+        itemStatus = item?.status
+        let payload = item?.payload.meterReading
         kind = payload?.meter.kind ?? .electricity
         await loadReferences(preserving: payload?.meter)
         if let payload {
@@ -270,7 +281,7 @@ final class MeterReadingViewModel {
     }
 
     func selectKind(_ newKind: MeterKind) async {
-        guard kind != newKind else { return }
+        guard !isReadOnly, kind != newKind else { return }
         kind = newKind
         valueText = ""
         note = ""
@@ -278,7 +289,7 @@ final class MeterReadingViewModel {
     }
 
     func save(status: OfflineWorkStatus) async -> Bool {
-        guard canSave, let meter = selectedReference, let value = parsedValue else { return false }
+        guard !isReadOnly, canSave, let meter = selectedReference, let value = parsedValue else { return false }
         isSaving = true
         saveFailed = false
         defer { isSaving = false }
@@ -293,6 +304,7 @@ final class MeterReadingViewModel {
                 status: status
             )
             editingID = item.id
+            itemStatus = item.status
             return true
         } catch {
             saveFailed = true

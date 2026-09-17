@@ -1,7 +1,24 @@
 import CryptoKit
 import Foundation
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore {
+/// The legacy synchronization protocol uses shared `TMP_FROM_*` tables. More
+/// than one repository can be composed for the same worker cache while the app
+/// changes roots, so the lease is process-wide rather than actor-local.
+private actor LegacyIncomingSynchronizationRegistry {
+    private var activeDatabasePaths: Set<String> = []
+
+    func acquire(databasePath: String) -> Bool {
+        activeDatabasePaths.insert(databasePath).inserted
+    }
+
+    func release(databasePath: String) {
+        activeDatabasePaths.remove(databasePath)
+    }
+}
+
+private let legacyIncomingSynchronizationRegistry = LegacyIncomingSynchronizationRegistry()
+
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, I2NotificationReading, I2NotificationTemplateProviding, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -25,16 +42,23 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
 
     nonisolated let databaseURL: URL
     private let localWorkerID: String?
+    private let notificationListIndex: SQLiteNotificationListIndex?
     private var database: OpaquePointer?
     private var stagedOutgoingRowIDs: [String: [Int64]] = [:]
     private var stagedOutgoingRequestID: String?
     private var incomingUserRows: [LegacySAPRow] = []
     private var incomingSawUserTable = false
     private var incomingSawLastPackage = false
+    private var incomingSynchronizationIsActive = false
 
     init(databaseURL: URL, workerID: String? = nil) throws {
         self.databaseURL = databaseURL
         localWorkerID = workerID
+        notificationListIndex = try? SQLiteNotificationListIndex(
+            databaseURL: databaseURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("notification-list-index.sqlite")
+        )
         try FileManager.default.createDirectory(
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -87,6 +111,14 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     func load(for localWorkerID: String) async throws -> SAPCachedData {
         try validateWorker(localWorkerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
+        let metadata = try Self.metadata(on: database)
+        if let metadata {
+            await rebuildNotificationListIndexIfNeeded(
+                for: localWorkerID,
+                metadata: metadata,
+                on: database
+            )
+        }
         let profile = try Self.rows(in: "USER", on: database)
             .compactMap(SAPLegacyDataExchangeCodec.workerProfile(from:))
             .first
@@ -101,9 +133,358 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             workerProfile: profile,
             briefingPartners: partners,
             briefingTemplates: templates,
-            technicalObjects: try Self.technicalObjects(on: database),
-            metadata: try Self.metadata(on: database)
+            technicalObjects: [],
+            metadata: metadata
         )
+    }
+
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
+        try validateWorker(workerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return try Self.rows(in: "USER", on: database)
+            .compactMap(SAPLegacyDataExchangeCodec.userProfile(from:))
+            .first
+    }
+
+    func loadI2Notifications(
+        for object: I2NotificationObjectReference
+    ) async throws -> [SAPI2NotificationSummary] {
+        try validateWorker(localWorkerID ?? "")
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        guard !object.isEmpty else { return [] }
+        let schema = try Self.schema(named: "FROM_T0271")
+        var conditions = ["QMART = 'I2'"]
+        var bindings: [String?] = []
+        if !object.client.isEmpty {
+            conditions.append("MANDT = ?")
+            bindings.append(object.client)
+        }
+        if !object.equipmentID.isEmpty {
+            conditions.append("EQUNR = ?")
+            bindings.append(object.equipmentID)
+        } else {
+            conditions.append("TPLNR = ?")
+            bindings.append(object.functionalLocationID)
+        }
+        let columns = ["QMNUM", "QMTXT", "QMNAM", "STRMN", "STRUR", "REFNUM", "STTXT", "FELDWERT"]
+        return try Self.query(
+            on: database,
+            "SELECT \(columns.joined(separator: ", ")) FROM \(schema.name) "
+                + "WHERE \(conditions.joined(separator: " AND ")) ORDER BY STRMN, STRUR, QMNUM",
+            bindings: bindings
+        ) { statement in
+            SAPI2NotificationSummary(
+                id: Self.string(at: 0, from: statement),
+                shortText: Self.string(at: 1, from: statement),
+                reporter: Self.string(at: 2, from: statement),
+                startDate: Self.string(at: 3, from: statement),
+                startTime: Self.string(at: 4, from: statement),
+                referenceID: Self.string(at: 5, from: statement),
+                systemStatus: Self.string(at: 6, from: statement),
+                longText: SAPLegacyDataExchangeCodec.longText(fromFeldwert: Self.string(at: 7, from: statement))
+            )
+        }
+    }
+
+    func loadNewNotificationTemplateJSON() async throws -> String? {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let schema = try Self.schema(named: "FROM_T0268")
+        let feldwert = try Self.query(
+            on: database,
+            "SELECT FELDWERT FROM \(schema.name) WHERE LKEY = 'MELDUNG' AND LPAR = 'MELDUNG'"
+        ) { Self.string(at: 0, from: $0) }.first
+        guard let feldwert,
+              let template = SAPLegacyDataExchangeCodec.decodedFeldwertObject(feldwert),
+              let data = try? JSONSerialization.data(withJSONObject: template, options: [.sortedKeys])
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
+        try validateWorker(workerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let templates = SAPLegacyDataExchangeCodec.mobileLadderTemplates(
+            planRows: try Self.rows(in: "FROM_T0267", on: database),
+            classRows: try Self.rows(in: "FROM_T0263", on: database),
+            equipmentRows: try Self.rows(in: "FROM_T0268", on: database)
+        )
+        guard !templates.isEmpty else { return .empty }
+
+        let contexts = try Self.rows(in: "FROM_T0272", on: database).compactMap { row -> MobileLadderCreationContext? in
+            func string(_ key: String) -> String { row[key] as? String ?? "" }
+            let deletionFlag = string("LVORM").uppercased()
+            let userStatus = string("USTXT")
+            guard deletionFlag != "X", userStatus.isEmpty || userStatus.localizedCaseInsensitiveContains("iBet") else {
+                return nil
+            }
+            let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
+            let trade = string("TPGSG")
+            guard !functionalLocation.isEmpty, !trade.isEmpty else { return nil }
+            let template = templates.first {
+                ($0.plant.isEmpty || $0.plant == string("IWERK"))
+                    && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
+            } ?? templates.first
+            guard let template,
+                  let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
+                  let sourceJSON = String(data: sourceData, encoding: .utf8) else { return nil }
+
+            let cityLine = [string("POST_CODE1"), string("CITY1")].filter { !$0.isEmpty }.joined(separator: " ")
+            let businessCode = [string("TPLND"), string("TPORT"), string("TPWEH")]
+                .filter { !$0.isEmpty }.joined(separator: "-")
+            let businessTitle = [businessCode, cityLine, string("STREET")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let buildingTitle = [string("TPGEB"), string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let tradeTitle = [trade, functionalLocation].filter { !$0.isEmpty }.joined(separator: " · ")
+            return MobileLadderCreationContext(
+                businessEntity: businessTitle.isEmpty ? string("TPWEH") : businessTitle,
+                building: buildingTitle.isEmpty ? functionalLocation : buildingTitle,
+                trade: tradeTitle,
+                legacyContext: MobileLadderLegacyContext(
+                    client: string("MANDT"), functionalLocation: functionalLocation,
+                    country: string("TPLND"), location: string("TPORT"), businessEntity: string("TPWEH"),
+                    building: string("TPGEB"), trade: trade, plant: string("IWERK"),
+                    plannerGroup: string("INGRP"), workCenter: string("GEWRK").isEmpty ? string("ARBPL") : string("GEWRK"),
+                    addressNumber: string("ADRNR"), contactName: string("NAME_LIST"), city: string("CITY1"),
+                    postalCode: string("POST_CODE1"), street: string("STREET"),
+                    sourceNotificationJSON: sourceJSON, template: template
+                )
+            )
+        }
+        let uniqueContexts = Dictionary(grouping: contexts, by: \MobileLadderCreationContext.id)
+            .compactMap { $0.value.first }
+            .sorted { ($0.businessEntity, $0.building, $0.trade) < ($1.businessEntity, $1.building, $1.trade) }
+        let catalogPairs: [(MobileLadderCatalogField, String)] = [
+            (.material, "TFMMOBLEITER_WERKSTOFF"),
+            (.constructionType, "TFMMOBLEITER_BAUART"),
+            (.manufacturer, "TFMMOBLEITER_HERSTELLER"),
+            (.clientCompany, "TFMMOBLEITER_GESELLSCHAFT")
+        ]
+        var catalog: [MobileLadderCatalogField: [String]] = [:]
+        for (field, characteristicName) in catalogPairs {
+            var values = templates
+                .flatMap(\.characteristics)
+                .filter { $0.name.caseInsensitiveCompare(characteristicName) == .orderedSame }
+                .flatMap(\.values)
+                .map { $0.title.isEmpty ? $0.value : $0.title }
+                .uniquedAndSorted()
+
+            if field == .clientCompany {
+                if let userRows = try? Self.rows(in: "USER", on: database) {
+                    for row in userRows {
+                        if let company = (row["GESELLSCHAFT"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !company.isEmpty,
+                           !values.contains(where: { $0.caseInsensitiveCompare(company) == .orderedSame }) {
+                            values.append(company)
+                        }
+                    }
+                }
+                if !values.contains(where: { $0.caseInsensitiveCompare("Pflege durch Admin") == .orderedSame }) {
+                    values.insert("Pflege durch Admin", at: 0)
+                }
+            }
+
+            catalog[field] = values.isEmpty ? MobileLadderCatalog.legacyReference.options(for: field) : values
+        }
+        return MobileLadderCreationData(contexts: uniqueContexts, catalog: MobileLadderCatalog(options: catalog))
+    }
+
+    /// Rebuilds the read-only master-data header of a shared equipment
+    /// inspection (TFM2, TFM4, TFM6, TFM8) from the same legacy cache tables used by
+    /// Cordova: T0263 describes the class, while T0266 (or T0265 for a
+    /// technical-place assignment) supplies the asset values. The accepted
+    /// equipment types come from the notification's `EquipmentInspectionForm`.
+    func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
+        try validateWorker(localWorkerID ?? "")
+        guard let database else { throw SAPReadError.serviceUnavailable }
+
+        func value(named key: String, in row: [String: Any]) -> Any? {
+            row.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
+        }
+
+        func string(named key: String, in row: [String: Any]) -> String {
+            switch value(named: key, in: row) {
+            case let value as String:
+                value.trimmingCharacters(in: .whitespacesAndNewlines)
+            case let value as NSNumber:
+                value.stringValue
+            default:
+                ""
+            }
+        }
+
+        func dictionaries(named key: String, in dictionary: [String: Any]) -> [[String: Any]] {
+            guard let rawValue = value(named: key, in: dictionary) else { return [] }
+            if let dicts = rawValue as? [[String: Any]] { return dicts }
+            if let list = rawValue as? [Any] { return list.compactMap { $0 as? [String: Any] } }
+            return []
+        }
+
+        func decodedPayload(from row: [String: Any]) -> [String: Any]? {
+            let fieldValue = string(named: "FELDWERT", in: row)
+            guard !fieldValue.isEmpty else { return nil }
+            return SAPLegacyDataExchangeCodec.decodedFeldwertObject(fieldValue)
+        }
+
+        func elevatorType(row: [String: Any], payload: [String: Any]) -> String {
+            string(named: "EQART", in: row)
+                .ifEmpty(string(named: "EQART_TO", in: row))
+                .ifEmpty(string(named: "EQART", in: payload))
+                .ifEmpty(string(named: "EQART_TO", in: payload))
+                .uppercased()
+        }
+
+        let equipmentRows = try Self.rows(in: "FROM_T0266", on: database)
+        let locationRows = try Self.rows(in: "FROM_T0265", on: database)
+        var masterRow: [String: Any]?
+        if !notification.equipmentID.isEmpty {
+            masterRow = equipmentRows.first {
+                string(named: "EQUNR", in: $0) == notification.equipmentID
+            }
+        }
+        if masterRow == nil && !notification.functionalLocationID.isEmpty {
+            masterRow = locationRows.first {
+                let locationID = string(named: "STRNO", in: $0).ifEmpty(string(named: "TPLNR", in: $0))
+                return locationID.caseInsensitiveCompare(notification.functionalLocationID) == .orderedSame
+            }
+        }
+        if masterRow == nil && !notification.equipmentID.isEmpty {
+            masterRow = locationRows.first {
+                string(named: "EQUNR", in: $0) == notification.equipmentID
+            }
+        }
+        guard let masterRow else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("no matching master record")
+            return .empty
+        }
+        guard let masterPayload = decodedPayload(from: masterRow) else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("matching master record has no readable FELDWERT")
+            return .empty
+        }
+
+        let form = notification.equipmentInspectionForm ?? .elevator
+        let type = elevatorType(row: masterRow, payload: masterPayload)
+        let supportedTypes = form.equipmentTypes
+        let masterClassNames = Set(
+            (dictionaries(named: "T_CLASS_EQ", in: masterPayload) + dictionaries(named: "T_CLASS_TP", in: masterPayload))
+                .compactMap {
+                    let name = string(named: "CLASS", in: $0).ifEmpty(string(named: "KLASSE", in: $0)).uppercased()
+                    return name.isEmpty ? nil : name
+                }
+        )
+
+        let resolvedType: String
+        if supportedTypes.contains(type) {
+            resolvedType = type
+        } else if form == .elevator, let fallbackClass = form.fallbackClassName, masterClassNames.contains(fallbackClass) {
+            resolvedType = type.isEmpty ? "TFMPERS" : type
+        } else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("master record is not a supported \(form.rawValue) equipment type")
+            return .empty
+        }
+
+        let classRows = try Self.rows(in: "FROM_T0263", on: database)
+        let classRow = classRows.first { row in
+            guard let payload = decodedPayload(from: row) else { return false }
+            return elevatorType(row: row, payload: payload) == resolvedType
+        } ?? classRows.first { row in
+            guard let payload = decodedPayload(from: row) else { return false }
+            let rowClass = string(named: "CLASS", in: row).ifEmpty(string(named: "CLASS", in: payload)).uppercased()
+            return rowClass == resolvedType
+                || masterClassNames.contains(rowClass)
+                || (form.fallbackClassName.map { rowClass == $0 } ?? false)
+        }
+        guard let classRow else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("no matching class definition")
+            return .empty
+        }
+        guard let classPayload = decodedPayload(from: classRow) else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("matching class definition has no readable FELDWERT")
+            return .empty
+        }
+
+        guard var assetData = ElevatorAssetDataDecoder.decode(
+            equipmentType: resolvedType,
+            classDefinition: classPayload,
+            masterData: masterPayload
+        ) else {
+            SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution("class definition has no usable characteristics")
+            return .empty
+        }
+        // `HeaderFormBuilder.masterDataQuery` carries `EQUNR` when the
+        // notification has an equipment (leaving `STRNO` empty) and `STRNO`
+        // otherwise; the edited header is written back to that record.
+        if let payloadData = try? JSONSerialization.data(withJSONObject: masterPayload, options: [.sortedKeys]),
+           let payloadJSON = String(data: payloadData, encoding: .utf8) {
+            assetData.masterRecord = EquipmentMasterRecord(
+                equipmentID: notification.equipmentID,
+                functionalLocationID: notification.equipmentID.isEmpty ? notification.functionalLocationID : "",
+                className: assetData.className,
+                payloadJSON: payloadJSON
+            )
+        }
+        SAPSynchronizationDiagnostics.logElevatorAssetCacheResolution(
+            "loaded \(assetData.characteristics.count) classification characteristics"
+        )
+        return assetData
+    }
+
+    func loadSubdistributionCreationData(for workerID: String) async throws -> SubdistributionCreationData {
+        try validateWorker(workerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let templates = SAPLegacyDataExchangeCodec.subdistributionTemplates(
+            planRows: try Self.rows(in: "FROM_T0267", on: database),
+            classRows: try Self.rows(in: "FROM_T0263", on: database),
+            equipmentRows: try Self.rows(in: "FROM_T0268", on: database)
+        )
+        guard !templates.isEmpty else { return .empty }
+
+        let contexts = try Self.rows(in: "FROM_T0272", on: database).compactMap { row -> SubdistributionCreationContext? in
+            func string(_ key: String) -> String { row[key] as? String ?? "" }
+            let deletionFlag = string("LVORM").uppercased()
+            let userStatus = string("USTXT")
+            let parentType = string("EQART").uppercased()
+            // Cordova allows only an active existing subdistribution or
+            // subdistribution distributor as the parent of TFMNSPV.
+            guard deletionFlag != "X", parentType == "TFMNSPV" || parentType == "TFMNSPVER",
+                  userStatus.localizedCaseInsensitiveContains("iBet")
+            else { return nil }
+            let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
+            let building = string("TPGEB")
+            let segment = string("TPGSG")
+            guard !functionalLocation.isEmpty, !building.isEmpty, !segment.isEmpty else { return nil }
+            guard let template = templates.first(where: {
+                ($0.plant.isEmpty || $0.plant == string("IWERK"))
+                    && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
+            }) ?? templates.first,
+            let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
+            let sourceJSON = String(data: sourceData, encoding: .utf8)
+            else { return nil }
+
+            let cityLine = [string("POST_CODE1"), string("CITY1")].filter { !$0.isEmpty }.joined(separator: " ")
+            let businessCode = [string("TPLND"), string("TPORT"), string("TPWEH")]
+                .filter { !$0.isEmpty }.joined(separator: "-")
+            let businessTitle = [businessCode, cityLine, string("STREET")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let buildingTitle = [building, string("PLTXT")].filter { !$0.isEmpty }.joined(separator: " · ")
+            let parentTitle = [functionalLocation, string("EQKTX"), string("PLTXT")]
+                .filter { !$0.isEmpty }.joined(separator: " · ")
+            return SubdistributionCreationContext(
+                businessEntity: businessTitle.isEmpty ? string("TPWEH") : businessTitle,
+                building: buildingTitle.isEmpty ? functionalLocation : buildingTitle,
+                parentLocation: parentTitle,
+                legacyContext: SubdistributionLegacyContext(
+                    client: string("MANDT"), functionalLocation: functionalLocation, parentEquipmentType: parentType,
+                    country: string("TPLND"), location: string("TPORT"), businessEntity: string("TPWEH"),
+                    building: building, segment: segment, plant: string("IWERK"), plannerGroup: string("INGRP"),
+                    workCenter: string("GEWRK").isEmpty ? string("ARBPL") : string("GEWRK"),
+                    addressNumber: string("ADRNR"), contactName: string("NAME_LIST"), city: string("CITY1"),
+                    postalCode: string("POST_CODE1"), street: string("STREET"), sourceNotificationJSON: sourceJSON,
+                    template: template
+                )
+            )
+        }
+        let uniqueContexts = Dictionary(grouping: contexts, by: \SubdistributionCreationContext.id)
+            .compactMap { $0.value.first }
+            .sorted { ($0.businessEntity, $0.building, $0.parentLocation) < ($1.businessEntity, $1.building, $1.parentLocation) }
+        return SubdistributionCreationData(contexts: uniqueContexts)
     }
 
     func loadNotifications(
@@ -115,6 +496,16 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     ) async throws -> SAPNotificationPage {
         try validateWorker(localWorkerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
+        if let indexedPage = await indexedNotificationPage(
+            for: localWorkerID,
+            matching: searchText,
+            structuralFilter: structuralFilter,
+            limit: limit,
+            offset: offset,
+            on: database
+        ) {
+            return indexedPage
+        }
         let search = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let matching = try Self.notifications(on: database)
             .filter { notification in
@@ -141,6 +532,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     ) async throws -> [NotificationStructuralFilterMetadata] {
         try validateWorker(localWorkerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
+        if let indexedMetadata = await indexedNotificationFilterMetadata(
+            for: localWorkerID,
+            on: database
+        ) {
+            return indexedMetadata
+        }
         let values = try Self.notifications(on: database).compactMap(\.structuralFilterMetadata)
         return Array(Set(values)).sorted { $0.id < $1.id }
     }
@@ -424,7 +821,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     func beginIncoming() async throws {
+        guard !incomingSynchronizationIsActive else { throw SAPReadError.serviceUnavailable }
         guard let database else { throw SAPReadError.serviceUnavailable }
+        let databasePath = databaseURL.standardizedFileURL.path
+        guard await legacyIncomingSynchronizationRegistry.acquire(databasePath: databasePath) else {
+            throw SAPReadError.serviceUnavailable
+        }
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for table in LegacySQLiteSchema.temporaryInbound {
@@ -434,14 +836,16 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             incomingUserRows = []
             incomingSawUserTable = false
             incomingSawLastPackage = false
+            incomingSynchronizationIsActive = true
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
+            await legacyIncomingSynchronizationRegistry.release(databasePath: databasePath)
             throw error
         }
     }
 
     func appendIncoming(_ package: LegacySAPIncomingPackage) async throws {
-        guard let database else { throw SAPReadError.serviceUnavailable }
+        guard incomingSynchronizationIsActive, let database else { throw SAPReadError.malformedPayload }
         var appendedUserRows = incomingUserRows
         var sawUserTable = incomingSawUserTable
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
@@ -477,7 +881,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     func commitIncoming(sapWorkerID: String, refreshedAt: Date) async throws -> SAPCachedData {
-        guard let database, incomingSawLastPackage else { throw SAPReadError.malformedPayload }
+        guard let database, incomingSynchronizationIsActive, incomingSawLastPackage else {
+            throw SAPReadError.malformedPayload
+        }
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for permanent in LegacySQLiteSchema.permanentInbound {
@@ -504,21 +910,79 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             incomingUserRows = []
             incomingSawUserTable = false
             incomingSawLastPackage = false
+            incomingSynchronizationIsActive = false
+            await legacyIncomingSynchronizationRegistry.release(
+                databasePath: databaseURL.standardizedFileURL.path
+            )
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
+            incomingSynchronizationIsActive = false
+            await legacyIncomingSynchronizationRegistry.release(
+                databasePath: databaseURL.standardizedFileURL.path
+            )
             throw error
+        }
+        if let metadata = try? Self.metadata(on: database) {
+            await rebuildNotificationListIndexIfNeeded(
+                for: localWorkerID ?? sapWorkerID,
+                metadata: metadata,
+                on: database
+            )
         }
         return try await load(for: localWorkerID ?? sapWorkerID)
     }
 
+    func incomingCacheSummary() async throws -> SAPIncomingCacheSummary {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let notificationRowCount = Int(try Self.query(on: database, "SELECT COUNT(*) FROM FROM_T0271") {
+            SQLiteC.columnInt($0, 0)
+        }.first ?? 0)
+        if let metadata = try? Self.metadata(on: database),
+           let notificationListIndex,
+           (try? await notificationListIndex.isCurrent(
+                for: localWorkerID ?? metadata.sapWorkerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+           )) == true,
+           let summary = try? await notificationListIndex.summary(
+                for: localWorkerID ?? metadata.sapWorkerID
+           ) {
+            return SAPIncomingCacheSummary(
+                notificationRowCount: notificationRowCount,
+                actionableNotificationCount: summary.actionableCount,
+                businessEntityCount: summary.businessEntityCount,
+                elevatorInspectionCount: summary.elevatorInspectionCount
+            )
+        }
+        let notificationRows = try Self.rows(in: "FROM_T0271", on: database)
+        let notifications = notificationRows.compactMap(SAPLegacyDataExchangeCodec.notification(from:))
+        let businessEntityCount = Set(
+            notifications
+                .compactMap(\.structuralFilterMetadata)
+                .map(\.businessEntityID)
+        ).count
+        return SAPIncomingCacheSummary(
+            notificationRowCount: notificationRows.count,
+            actionableNotificationCount: notifications.count,
+            businessEntityCount: businessEntityCount,
+            elevatorInspectionCount: notifications.filter(\.isTFM2ElevatorInspection).count
+        )
+    }
+
     func abortIncoming() async {
         guard let database else { return }
+        let wasActive = incomingSynchronizationIsActive
         for table in LegacySQLiteSchema.temporaryInbound {
             try? Self.execute(on: database, "DELETE FROM \(table.name)")
         }
         incomingUserRows = []
         incomingSawUserTable = false
         incomingSawLastPackage = false
+        incomingSynchronizationIsActive = false
+        if wasActive {
+            await legacyIncomingSynchronizationRegistry.release(
+                databasePath: databaseURL.standardizedFileURL.path
+            )
+        }
     }
 
     func insertLegacyRows(_ rows: [LegacySAPRow], into tableName: String) async throws {
@@ -526,6 +990,80 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let schema = try Self.schema(named: tableName.uppercased())
         for row in rows {
             try Self.insert(row: row, into: schema, on: database)
+        }
+    }
+
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow],
+        i2Notifications: [LegacySAPRow],
+        i2Documents: [LegacySAPRow]
+    ) async throws {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let headerSchema = try Self.schema(named: "TO_T0281")
+        let valueSchema = try Self.schema(named: "TO_T0283")
+        let documentSchema = try Self.schema(named: "TO_T0282")
+        let equipmentSchema = try Self.schema(named: "TO_T0266")
+        let locationSchema = try Self.schema(named: "TO_T0265")
+        let proposalSchema = try Self.schema(named: "TO_T0211")
+        let i2NotificationSchema = try Self.schema(named: "TO_T0284")
+        let i2DocumentSchema = try Self.schema(named: "TO_T0285")
+        try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
+        do {
+            // `TO_T0284` has no process number. Its temporary `QMNUM` is kept
+            // in the draft, so a retried upload replaces its own rows.
+            for notificationID in Set(i2Notifications.compactMap { $0["QMNUM"] ?? nil }) where !notificationID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(i2NotificationSchema.name) WHERE QMNUM = ?",
+                    bindings: [notificationID]
+                )
+            }
+            for processID in Set(processIDs) where !processID.isEmpty {
+                for table in [
+                    headerSchema.name, valueSchema.name, documentSchema.name,
+                    proposalSchema.name, i2DocumentSchema.name
+                ] {
+                    try Self.execute(
+                        on: database,
+                        "DELETE FROM \(table) WHERE VORGANGSNR = ?",
+                        bindings: [processID]
+                    )
+                }
+            }
+            for equipmentID in Set(equipmentIDs) where !equipmentID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(equipmentSchema.name) WHERE EQUNR = ?",
+                    bindings: [equipmentID]
+                )
+            }
+            // `insertTO_T0265` replaces the technical place's pending record.
+            for locationID in Set(functionalLocations.compactMap { $0["STRNO"] ?? nil }) where !locationID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(locationSchema.name) WHERE STRNO = ?",
+                    bindings: [locationID]
+                )
+            }
+            for row in headers { try Self.insert(row: row, into: headerSchema, on: database) }
+            for row in values { try Self.insert(row: row, into: valueSchema, on: database) }
+            for row in documents { try Self.insert(row: row, into: documentSchema, on: database) }
+            for row in equipment { try Self.insert(row: row, into: equipmentSchema, on: database) }
+            for row in functionalLocations { try Self.insert(row: row, into: locationSchema, on: database) }
+            for row in proposals { try Self.insert(row: row, into: proposalSchema, on: database) }
+            for row in i2Notifications { try Self.insert(row: row, into: i2NotificationSchema, on: database) }
+            for row in i2Documents { try Self.insert(row: row, into: i2DocumentSchema, on: database) }
+            try Self.execute(on: database, "COMMIT")
+        } catch {
+            try? Self.execute(on: database, "ROLLBACK")
+            throw error
         }
     }
 
@@ -548,6 +1086,69 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         try validateWorker(workerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
         return try Self.technicalObjects(on: database)
+    }
+
+    private func rebuildNotificationListIndexIfNeeded(
+        for workerID: String,
+        metadata: SAPCacheMetadata,
+        on database: OpaquePointer
+    ) async {
+        guard let notificationListIndex else { return }
+        let sourceVersion = Self.notificationIndexSourceVersion(metadata)
+        guard (try? await notificationListIndex.isCurrent(
+            for: workerID,
+            sourceVersion: sourceVersion
+        )) != true else {
+            return
+        }
+        guard let notifications = try? Self.notifications(on: database) else { return }
+        try? await notificationListIndex.replace(
+            notifications,
+            for: workerID,
+            sourceVersion: sourceVersion
+        )
+    }
+
+    private func indexedNotificationPage(
+        for workerID: String,
+        matching searchText: String,
+        structuralFilter: NotificationStructuralFilter,
+        limit: Int,
+        offset: Int,
+        on database: OpaquePointer
+    ) async -> SAPNotificationPage? {
+        guard let metadata = try? Self.metadata(on: database),
+              let notificationListIndex,
+              (try? await notificationListIndex.isCurrent(
+                for: workerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+              )) == true
+        else {
+            return nil
+        }
+        return try? await notificationListIndex.loadNotifications(
+            for: workerID,
+            matching: searchText,
+            structuralFilter: structuralFilter,
+            limit: limit,
+            offset: offset
+        )
+    }
+
+    private func indexedNotificationFilterMetadata(
+        for workerID: String,
+        on database: OpaquePointer
+    ) async -> [NotificationStructuralFilterMetadata]? {
+        guard let metadata = try? Self.metadata(on: database),
+              let notificationListIndex,
+              (try? await notificationListIndex.isCurrent(
+                for: workerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+              )) == true
+        else {
+            return nil
+        }
+        return try? await notificationListIndex.loadFilterMetadata(for: workerID)
     }
 
     private static func initialize(on database: OpaquePointer) throws {
@@ -717,6 +1318,10 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             return nil
         }
         return SAPCacheMetadata(sapWorkerID: worker, lastSuccessfulRefreshAt: date)
+    }
+
+    private static func notificationIndexSourceVersion(_ metadata: SAPCacheMetadata) -> String {
+        ISO8601DateFormatter().string(from: metadata.lastSuccessfulRefreshAt)
     }
 
     private static func setParameter(

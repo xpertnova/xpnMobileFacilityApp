@@ -33,11 +33,13 @@ final class ProofOfQualificationViewModel {
   var isRenderingPDF = false
   var isSaving = false
 
+  private(set) var itemStatus: OfflineWorkStatus?
   private var savedWorkID: UUID?
 
   init(
     source: ProofOfQualificationSource,
     existingDraft: OfflineWorkItem? = nil,
+    draftID: UUID? = nil,
     now: Date = .now
   ) {
     self.source = source
@@ -49,9 +51,10 @@ final class ProofOfQualificationViewModel {
     organizationUnit = source.organizationUnit
     executionStart = now
     executionEnd = now
+    savedWorkID = existingDraft?.id ?? draftID
+    itemStatus = existingDraft?.status
 
     guard let existingDraft, let draft = existingDraft.payload.proofOfQualification else { return }
-    savedWorkID = existingDraft.id
     template = draft.template
     instructorFirstName = draft.instructorFirstName
     instructorLastName = draft.instructorLastName
@@ -87,6 +90,13 @@ final class ProofOfQualificationViewModel {
 
   var selectedPartner: SAPBriefingPartner? {
     partners.first { $0.id == selectedPartnerID }
+  }
+
+  /// Pending local work is closed for editing until a verified follow-up
+  /// workflow exists. Only temporary drafts can be changed.
+  var isReadOnly: Bool {
+    guard let itemStatus else { return false }
+    return itemStatus != .draft
   }
 
   var businessEntities: [SafetyFormContext] {
@@ -221,7 +231,7 @@ final class ProofOfQualificationViewModel {
   }
 
   func requestCompletion() {
-    guard !isRenderingPDF, !isSaving else { return }
+    guard !isReadOnly, !isRenderingPDF, !isSaving else { return }
     Task { @MainActor [weak self] in
       await Task.yield()
       self?.finishCompletionRequest()
@@ -229,7 +239,8 @@ final class ProofOfQualificationViewModel {
   }
 
   func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
-    guard !isSaving,
+    guard !isReadOnly,
+      !isSaving,
       let artifact = pdfArtifact,
       let payload = makePayload(pdfData: artifact.data, completedAt: artifact.createdAt)
     else { return false }
@@ -242,6 +253,7 @@ final class ProofOfQualificationViewModel {
         status: .pendingSynchronization
       )
       savedWorkID = item.id
+      itemStatus = item.status
       return true
     } catch {
       validationMessage = String(localized: "qualification.completed.saveFailed")

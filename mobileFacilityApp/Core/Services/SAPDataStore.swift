@@ -3,7 +3,7 @@ import Observation
 
 @MainActor
 @Observable
-final class SAPDataStore {
+final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     enum State: Equatable {
         case loadingCache
         case noData
@@ -18,41 +18,58 @@ final class SAPDataStore {
     private let notificationPageSize = 40
     let localWorkerID: String
     let synchronizationUserID: String
+    private let tokenStoreAccountID: String
     private(set) var state: State = .loadingCache
     private(set) var cachedData: SAPCachedData = .empty
     private(set) var refreshError: SAPReadError?
     private(set) var refreshStage: SAPReadRefreshStage?
+    private(set) var refreshFailureContext: SAPRefreshFailureContext?
     private(set) var notifications: [SAPNotificationSummary] = []
     private(set) var matchingNotificationCount = 0
     private(set) var totalNotificationCount = 0
     private(set) var isLoadingMoreNotifications = false
     private(set) var notificationFilterMetadata: [NotificationStructuralFilterMetadata] = []
+    private(set) var notificationFilterOptions = NotificationStructuralFilterOptions.empty
+    private(set) var notificationPageRevision = 0
     private var nextNotificationOffset: Int?
     private var notificationSearchText = ""
     private var notificationStructuralFilter = NotificationStructuralFilter.empty
     private var notificationLoadID = UUID()
+    private var cacheLoadIsInFlight = false
+    private var initialCacheLoadCompleted = false
+    /// Refresh calls share one set of legacy temporary SQLite tables. Keep an
+    /// explicit operation lease rather than deriving exclusivity from the
+    /// presentation state alone: a saved-token task can otherwise see
+    /// `.refreshing` and start a second transfer.
+    private var activeRefreshID: UUID?
+    private var preparedTokenRefreshID: UUID?
 
     init(
         repository: any SAPDataCacheRepository,
         refreshService: (any SAPNotificationRefreshService)?,
         tokenStore: (any SAPSyncTokenStore)? = nil,
         localWorkerID: String,
-        synchronizationUserID: String? = nil
+        synchronizationUserID: String? = nil,
+        tokenStoreAccountID: String? = nil
     ) {
         self.repository = repository
         self.refreshService = refreshService
         self.tokenStore = tokenStore
         self.localWorkerID = localWorkerID
         self.synchronizationUserID = synchronizationUserID ?? localWorkerID
+        self.tokenStoreAccountID = tokenStoreAccountID ?? self.synchronizationUserID
     }
 
     var hasValidSavedToken: Bool {
         guard let tokenStore else { return false }
-        let token = tokenStore.token(for: synchronizationUserID)
+        let token = tokenStore.token(for: tokenStoreAccountID)
         return token != nil && !(token?.isEmpty ?? true)
     }
 
     var workerProfile: SAPWorkerProfile? { cachedData.workerProfile }
+    func loadUserProfile() async -> SAPUserProfile? {
+        try? await repository.loadUserProfile(for: localWorkerID)
+    }
     var lastSuccessfulRefreshAt: Date? { cachedData.metadata?.lastSuccessfulRefreshAt }
     var isRefreshAvailable: Bool { refreshService != nil }
     var isRefreshing: Bool { state == .refreshing }
@@ -107,19 +124,68 @@ final class SAPDataStore {
         return try await repository.resolveQRCode(payload, for: localWorkerID)
     }
 
+    func loadMobileLadderCreationData(for workerID: String) async throws -> MobileLadderCreationData {
+        guard !workerID.isEmpty,
+              let provider = repository as? any MobileLadderCreationProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadMobileLadderCreationData(for: workerID)
+    }
+
+    /// The downloaded I2 notifications of the notification's technical
+    /// object. Empty when the repository has none or cannot read them; the
+    /// per-position lookup is informational and never blocks a form.
+    func loadI2Notifications(for detail: SAPNotificationDetail) async -> [SAPI2NotificationSummary] {
+        guard let reader = repository as? any I2NotificationReading else { return [] }
+        let notification = detail.summary
+        let payload = notification.rawPayloadJSON.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        // `select.getItemMeldung` filters by the I1's `TPLNR`; I2 rows carry
+        // the parent `STRNO` there, which is also the fallback for a
+        // notification reopened from its offline snapshot.
+        let locationID = (payload["TPLNR"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? notification.functionalLocationID
+        let object = I2NotificationObjectReference(
+            client: notification.client,
+            equipmentID: notification.equipmentID.isEmpty ? detail.equipmentID : notification.equipmentID,
+            functionalLocationID: locationID
+        )
+        return (try? await reader.loadI2Notifications(for: object)) ?? []
+    }
+
+    func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
+        guard let provider = repository as? any ElevatorAssetDataProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadElevatorAssetData(for: notification)
+    }
+
+    func loadSubdistributionCreationData(for workerID: String) async throws -> SubdistributionCreationData {
+        guard !workerID.isEmpty,
+              let provider = repository as? any SubdistributionCreationProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadSubdistributionCreationData(for: workerID)
+    }
+
     func loadCachedData() async {
+        guard !cacheLoadIsInFlight, !initialCacheLoadCompleted else { return }
+        cacheLoadIsInFlight = true
+        defer { cacheLoadIsInFlight = false }
         state = .loadingCache
         do {
             cachedData = try await repository.load(for: localWorkerID)
             guard cachedData.metadata != nil else {
                 resetNotificationPage()
                 state = .noData
+                initialCacheLoadCompleted = true
                 return
             }
             try await loadTotalNotificationCount()
             try await loadNotificationFilterMetadata()
             try await loadFirstNotificationPage()
             state = .ready
+            initialCacheLoadCompleted = true
         } catch is CancellationError {
             return
         } catch {
@@ -170,6 +236,7 @@ final class SAPDataStore {
             )
             guard notificationLoadID == loadID else { return }
             notifications.append(contentsOf: page.notifications)
+            notificationPageRevision &+= 1
             matchingNotificationCount = page.totalCount
             nextNotificationOffset = page.nextOffset
         } catch is CancellationError {
@@ -180,15 +247,14 @@ final class SAPDataStore {
     }
 
     func refresh(sapPassword: String) async {
-        guard state != .refreshing else { return }
         guard let refreshService else {
+            refreshFailureContext = nil
             refreshError = .authenticatedConnectionUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
             return
         }
-        state = .refreshing
-        refreshError = nil
-        refreshStage = .authenticating
+        guard let refreshID = beginRefreshOperation() else { return }
+        defer { finishRefreshOperation(refreshID) }
         do {
             cachedData = try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
                 self?.refreshStage = stage
@@ -200,12 +266,15 @@ final class SAPDataStore {
             state = .ready
         } catch is CancellationError {
             refreshStage = nil
+            refreshFailureContext = nil
             state = cachedData.metadata == nil ? .noData : .ready
         } catch let error as SAPReadError {
+            recordRefreshFailure(error, authenticationMethod: .password)
             refreshStage = nil
             refreshError = error
             state = cachedData.metadata == nil ? .failed : .ready
         } catch {
+            recordRefreshFailure(.serviceUnavailable, authenticationMethod: .password)
             refreshStage = nil
             refreshError = .serviceUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
@@ -216,10 +285,12 @@ final class SAPDataStore {
     /// immediately see `isRefreshing == true` and `refreshStage == .authenticating`.
     @discardableResult
     func beginTokenRefresh() -> Bool {
-        guard state != .refreshing, hasValidSavedToken, refreshService != nil else { return false }
-        state = .refreshing
-        refreshError = nil
-        refreshStage = .authenticating
+        guard hasValidSavedToken, refreshService != nil,
+              let refreshID = beginRefreshOperation()
+        else {
+            return false
+        }
+        preparedTokenRefreshID = refreshID
         return true
     }
 
@@ -228,24 +299,32 @@ final class SAPDataStore {
     /// Returns `false` if no token exists, connection is unavailable, or token was rejected by SAP (calling code can prompt for password).
     @discardableResult
     func refreshWithSavedToken() async -> Bool {
-        if state != .refreshing {
+        let refreshID: UUID
+        if let preparedID = preparedTokenRefreshID {
+            guard activeRefreshID == preparedID else { return false }
+            preparedTokenRefreshID = nil
+            refreshID = preparedID
+        } else {
+            guard activeRefreshID == nil else { return false }
             guard hasValidSavedToken else { return false }
             guard refreshService != nil else {
+                refreshFailureContext = nil
                 refreshError = .authenticatedConnectionUnavailable
                 state = cachedData.metadata == nil ? .failed : .ready
                 return false
             }
-            state = .refreshing
-            refreshError = nil
-            refreshStage = .authenticating
+            guard let startedRefreshID = beginRefreshOperation() else { return false }
+            refreshID = startedRefreshID
         }
-        guard let tokenStore, let token = tokenStore.token(for: synchronizationUserID), !token.isEmpty else {
+        defer { finishRefreshOperation(refreshID) }
+        guard let tokenStore, let token = tokenStore.token(for: tokenStoreAccountID), !token.isEmpty else {
             refreshStage = nil
             state = cachedData.metadata == nil ? .noData : .ready
             return false
         }
         guard let refreshService else {
             refreshStage = nil
+            refreshFailureContext = nil
             refreshError = .authenticatedConnectionUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
             return false
@@ -262,21 +341,26 @@ final class SAPDataStore {
             return true
         } catch is CancellationError {
             refreshStage = nil
+            refreshFailureContext = nil
             state = cachedData.metadata == nil ? .noData : .ready
             return false
         } catch let error as SAPReadError {
-            refreshStage = nil
-            if case .tokenInvalidOrExpired = error {
-                tokenStore.deleteToken(for: synchronizationUserID)
+            if shouldDiscardSavedToken(for: error) {
+                tokenStore.deleteToken(for: tokenStoreAccountID)
+                refreshStage = nil
+                refreshFailureContext = nil
                 refreshError = nil
                 state = cachedData.metadata == nil ? .noData : .ready
                 return false
             } else {
+                recordRefreshFailure(error, authenticationMethod: .savedToken)
+                refreshStage = nil
                 refreshError = error
                 state = cachedData.metadata == nil ? .failed : .ready
                 return false
             }
         } catch {
+            recordRefreshFailure(.serviceUnavailable, authenticationMethod: .savedToken)
             refreshStage = nil
             refreshError = .serviceUnavailable
             state = cachedData.metadata == nil ? .failed : .ready
@@ -285,14 +369,52 @@ final class SAPDataStore {
     }
 
     func deleteSavedToken() {
-        tokenStore?.deleteToken(for: synchronizationUserID)
+        tokenStore?.deleteToken(for: tokenStoreAccountID)
     }
 
     func dismissError() {
         refreshError = nil
+        refreshFailureContext = nil
         if state == .failed {
             state = cachedData.metadata == nil ? .noData : .ready
         }
+    }
+
+    private func shouldDiscardSavedToken(for error: SAPReadError) -> Bool {
+        switch error {
+        case .tokenInvalidOrExpired, .httpStatus(401), .httpStatus(403):
+            true
+        default:
+            false
+        }
+    }
+
+    private func recordRefreshFailure(
+        _ error: SAPReadError,
+        authenticationMethod: SAPRefreshAuthenticationMethod
+    ) {
+        refreshFailureContext = SAPRefreshFailureContext(
+            authenticationMethod: authenticationMethod,
+            stage: refreshStage ?? .authenticating,
+            error: error
+        )
+    }
+
+    private func beginRefreshOperation() -> UUID? {
+        guard activeRefreshID == nil else { return nil }
+        let refreshID = UUID()
+        activeRefreshID = refreshID
+        state = .refreshing
+        refreshError = nil
+        refreshStage = .authenticating
+        refreshFailureContext = nil
+        return refreshID
+    }
+
+    private func finishRefreshOperation(_ refreshID: UUID) {
+        guard activeRefreshID == refreshID else { return }
+        activeRefreshID = nil
+        preparedTokenRefreshID = nil
     }
 
     private func loadFirstNotificationPage() async throws {
@@ -307,6 +429,7 @@ final class SAPDataStore {
         )
         guard notificationLoadID == loadID else { return }
         notifications = page.notifications
+        notificationPageRevision &+= 1
         matchingNotificationCount = page.totalCount
         nextNotificationOffset = page.nextOffset
     }
@@ -323,17 +446,24 @@ final class SAPDataStore {
     }
 
     private func loadNotificationFilterMetadata() async throws {
-        notificationFilterMetadata = try await repository.loadNotificationFilterMetadata(
+        let metadata = try await repository.loadNotificationFilterMetadata(
             for: localWorkerID
         )
+        let options = await Task.detached(priority: .utility) {
+            NotificationStructuralFilterOptions(metadata: metadata)
+        }.value
+        notificationFilterMetadata = metadata
+        notificationFilterOptions = options
     }
 
     private func resetNotificationPage() {
         notificationLoadID = UUID()
         notifications = []
+        notificationPageRevision &+= 1
         matchingNotificationCount = 0
         totalNotificationCount = 0
         notificationFilterMetadata = []
+        notificationFilterOptions = .empty
         nextNotificationOffset = nil
     }
 }

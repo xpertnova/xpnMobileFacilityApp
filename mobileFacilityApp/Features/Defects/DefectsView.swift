@@ -171,7 +171,7 @@ private struct ClosedDefectNotificationCard: View {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center, spacing: 16) {
-                DefectPhotoTile(photoCount: review.photoItemIDs.count)
+                DefectPhotoTile(photoCount: review.photoAttachments.count)
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(title)

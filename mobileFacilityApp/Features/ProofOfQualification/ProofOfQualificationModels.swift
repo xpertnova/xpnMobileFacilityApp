@@ -70,28 +70,28 @@ struct ProofOfQualificationSource: Sendable {
     )
   }
 
-  private static func demo(workerName: String) -> Self {
+  static func demo(workerName: String) -> Self {
     let nameParts = workerName.split(separator: " ", maxSplits: 1).map(String.init)
     let context = SafetyFormContext(
-      businessEntityID: "DE-ESS-11248",
-      businessEntityTitle: "DE-ESS-11248",
-      buildingCode: "A",
-      buildingTitle: "A · Baumstr. 25",
-      functionalLocationID: "DE-ESS-11248-A",
-      functionalLocationTitle: "Baumstr. 25"
+      businessEntityID: "DE-ANR-17705-01",
+      businessEntityTitle: "DE-ANR-17705-01",
+      buildingCode: "GB01",
+      buildingTitle: "GB01_Völlinghauser Str. 15_Büro-/H_(oA)",
+      functionalLocationID: "DE-ANR-17705-01-GB01",
+      functionalLocationTitle: "Völlinghauser Str. 15,\n59609, Anröchte (DE)"
     )
     let partner = SAPBriefingPartner(
       id: "1000001",
       client: "100",
       function: "ZT",
-      name: "Westnetz Service GmbH",
-      contactName: "Demo contact",
+      name: "Test Adresse für IT Zwecke",
+      contactName: "sdfsdfsdf",
       searchTerm1: "Westnetz",
       searchTerm2: "",
-      street: "Florianstraße",
-      houseNumber: "15",
-      postalCode: "44139",
-      city: "Dortmund",
+      street: "",
+      houseNumber: "",
+      postalCode: "",
+      city: "",
       country: "DE",
       email: "service@westnetz.example"
     )
@@ -106,29 +106,37 @@ struct ProofOfQualificationSource: Sendable {
       planNumber: "TFMQ_001",
       sections: [
         SAPBriefingTemplateSection(
-          id: "qualification-general",
-          title: "Qualifikationsnachweise",
+          id: "0010",
+          title: "Kontrolle Qualifikationsnachweis",
+          subtitle: "Mit die Qualifikationsnachweise wird sichergestellt, dass die Partnerunternehmen, die vom Standortmanagement oder von der E.ON SE beauftragt wurden, sowie deren Subunternehmer, die erforderlichen Qualifikationen für die Tätigkeitsausübung besitzen. Zudem erfolgt eine Überprüfung ihrer Leistung und der Einhaltung der Regeln der Arbeitssicherheit und des Umweltschutzes.",
           isOptional: false,
           items: [
             SAPBriefingTemplateItem(
-              id: "TFMQ0010",
+              id: "0010-01",
               orderIdentifier: "0010",
               rowType: .position,
-              title: "Qualifikationsnachweis wurde im Original vorgelegt.",
+              title: "Sicherheitspass o.Ä. vorgelegt Folgende\nPartnerfirma haben den Sicherheitspass oder vergleichbare Qualifikationsnachweise vorgelegt und bestätigen die Dokumentation aller wichtigen Informationen in Bezug auf Gesundheit und Arbeitssicherheit.",
               answerOptions: answers,
-              documentSymbolID: "7",
+              documentSymbolID: nil,
               warningSymbolID: nil
             ),
             SAPBriefingTemplateItem(
-              id: "TFMQ0020",
+              id: "0010-02",
               orderIdentifier: "0020",
               rowType: .position,
-              title: "Gültigkeit und Umfang entsprechen der beauftragten Tätigkeit.",
+              title: "Sicherheitspass o.Ä. nicht vorgelegt Mit\nSicherheitspass oder vergleichbaren Qualifikationsnachweise angetroffen werden, oder deren Sicherheitspass veraltete Angaben enthält, können des Einsatzortes verwiesen werden. (Der Nachweis ist dem Prüfer des AG zeitnah vorzulegen).",
               answerOptions: answers,
               documentSymbolID: nil,
               warningSymbolID: nil
             ),
           ]
+        ),
+        SAPBriefingTemplateSection(
+          id: "0020",
+          title: "Hinweis Bei den am Standort tätigen Part",
+          subtitle: "Subunternehmern) werden in die Qualifikationsnachweise (z. B. Sicherheitspass) stichprobenartig kontrolliert, wenn Bedenken an der Qualifikation bestehen. Sollte eine am Standort tätige Partnerfirma keinen Nachweis vorzeigen können, wird darauf hingewiesen, diesen kurzfristig nachzuliefern. Erfolgt das nicht, sind die Arbeiten einzustellen, bis die Nachweise vorgelegt werden. Im Nachgang sind unverzüglich die Verantwortlichen (Bauingenieure PM, Ansprechpartner des AN) zu Informieren.",
+          isOptional: false,
+          items: []
         )
       ]
     )
@@ -139,7 +147,7 @@ struct ProofOfQualificationSource: Sendable {
       template: template,
       instructorFirstName: nameParts.first ?? "",
       instructorLastName: nameParts.dropFirst().first ?? "",
-      organizationUnit: "XPN Facility Management"
+      organizationUnit: "e.on"
     )
   }
 }

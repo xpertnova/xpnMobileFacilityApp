@@ -77,6 +77,9 @@ private struct BriefingFormScreen: View {
                     }
                     .padding(28)
                     .frame(maxWidth: 1280, alignment: .leading)
+                    // Do not disable ScrollView: completed forms must remain
+                    // fully reviewable from Local work.
+                    .disabled(viewModel.isReadOnly)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: viewModel.validationMessage) { _, message in
@@ -142,7 +145,6 @@ private struct BriefingFormScreen: View {
             }
 
             Spacer(minLength: 12)
-
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 18)
@@ -490,10 +492,16 @@ private struct BriefingFormScreen: View {
         HStack(spacing: 14) {
             Spacer(minLength: 12)
 
-            Button("briefing.closeBriefing") { viewModel.requestCompletion() }
-                .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.accent)
-                .disabled(!viewModel.canComplete || viewModel.isRenderingPDF)
+            if viewModel.isReadOnly {
+                Button("common.back", action: onClose)
+                    .buttonStyle(.bordered)
+                    .tint(FacilityTheme.ink)
+            } else {
+                Button("briefing.closeBriefing") { viewModel.requestCompletion() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(FacilityTheme.accent)
+                    .disabled(!viewModel.canComplete || viewModel.isRenderingPDF)
+            }
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)
@@ -973,18 +981,126 @@ final class BriefingWorkflowViewModel {
             return Self(isDemo: false, contexts: contexts, partners: workspace.sapDataStore.cachedData.briefingPartners, templates: workspace.sapDataStore.cachedData.briefingTemplates, workerProfile: workspace.sapDataStore.workerProfile, workerName: workspace.effectiveWorkerDisplayName, offlineWorkStore: workspace.offlineWorkStore)
         }
 
-        private static func demo(_ store: OfflineWorkStore, workerName: String) -> Self {
-            let partner = SAPBriefingPartner(id: "1000001", client: "100", function: "ZT", name: "Westnetz Service GmbH", contactName: "Demo contact", searchTerm1: "Westnetz", searchTerm2: "", street: "Florianstraße", houseNumber: "15", postalCode: "44139", city: "Dortmund", country: "DE", email: "service@westnetz.example")
+        static func demo(_ store: OfflineWorkStore, workerName: String) -> Self {
+            let partner = SAPBriefingPartner(id: "1000001", client: "100", function: "ZT", name: "Test Adresse für IT Zwecke", contactName: "sdfsdfsdfsdf", searchTerm1: "Westnetz", searchTerm2: "", street: "", houseNumber: "", postalCode: "", city: "", country: "DE", email: "service@westnetz.example")
+            let options = [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")]
             let template = SAPBriefingTemplate(id: "TFMINSTRUC|I3|A|TFMB_001", equipmentType: "TFMINSTRUC", plannerGroup: "I3", planType: "A", planNumber: "TFMB_001", sections: [
-                SAPBriefingTemplateSection(id: "header-general", title: "Allgemeine Sicherheit", isOptional: false, items: [
-                    SAPBriefingTemplateItem(id: "TFM10010", orderIdentifier: "0010", rowType: .position, title: "Zugangswege und Fluchtwege wurden erläutert.", answerOptions: [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")], documentSymbolID: nil, warningSymbolID: nil),
-                    SAPBriefingTemplateItem(id: "TFM10020", orderIdentifier: "0020", rowType: .position, title: "Persönliche Schutzausrüstung wurde geprüft.", answerOptions: [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")], documentSymbolID: "3", warningSymbolID: "W001")
-                ]),
-                SAPBriefingTemplateSection(id: "header-fire", title: "Brandschutz", isOptional: true, items: [
-                    SAPBriefingTemplateItem(id: "TFM10030", orderIdentifier: "0030", rowType: .position, title: "Standorte der Feuerlöscher wurden erläutert.", answerOptions: [SAPBriefingAnswerOption(key: "NO", title: "Nein"), SAPBriefingAnswerOption(key: "YES", title: "Ja")], documentSymbolID: nil, warningSymbolID: "F001")
-                ])
+                SAPBriefingTemplateSection(
+                    id: "0010",
+                    title: "Fachliche und persönliche Eignung",
+                    subtitle: "Die Mitarbeiter des Auftragnehmers müssen für den Einsatz an den Orten der Leistungserbringung, in den\nBetriebsstätten, auf den Baustellen und an sonstigen Einrichtungen des Auftraggebers fachlich und persönlich geeignet sein.",
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0010-01", orderIdentifier: "0010", rowType: .position, title: "Sicherheitspass vorgelegt\nDie fachliche und persönliche Eignung aller eingesetzten Mitarbeiter wurde durch den Auftragnehmer bestätigt.\nHinweis: Die Sicherstellung sowie der Nachweis (z.B. Sicherheitspass) dieser Eignung obliegt dem Auftragnehmer und kann bei Bedarf durch den Auftraggeber zur Einsicht angefordert werden. Bei fehlender bzw. unvollständiger Dokumentation, können die Mitarbeiter des Einsatzortes verwiesen werden (ggf. zeitnahe Nachreichung prüfen).", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0010-02", orderIdentifier: "0020", rowType: .position, title: "Partnerfirma bestätigt aktuelle Angaben\nDie Partnerfirma bestätigt, dass der Nachweis, unberührt von anderen Dokumentationspflichten, alle für die beauftragte Tätigkeit maßgeblichen aktuellen Angaben enthält.", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0020",
+                    title: "Notfallmanagement",
+                    subtitle: nil,
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0020-01", orderIdentifier: "0010", rowType: .position, title: "Aushang Teil A im gezeigt / erläutert\nDen Aushang Teil A im Gebäude gezeigt und erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-02", orderIdentifier: "0020", rowType: .position, title: "Brandschutzordnung Teil B erläutert\nBrandschutzordnung Teil B bzw. das Verhalten im Gefahrenfall ist bekannt und die Inhalte wurden besprochen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-03", orderIdentifier: "0030", rowType: .position, title: "Ansprechperson im Gefahrenfall erläutert\nDie Ansprechpartner/in für den Gefahrenfall z.B. „Gebäudespezifischen Anhang“ (erste Seite) sind bekannt und die Inhalte wurden besprochen.", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-04", orderIdentifier: "0040", rowType: .position, title: "Ablauf Notruf (Tel/Adresse) erläutert\nIm Fall eines Notrufs, auf die Reihenfolge zuerst 112 dann „Interne Notrufnummer“ wählen, hingewiesen. Die Adresse des Arbeitsortes für den Fall eines Notrufes wurde besprochen.", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-05", orderIdentifier: "0050", rowType: .position, title: "Art der Alarmierung erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-06", orderIdentifier: "0060", rowType: .position, title: "Alarmierung, Erste Hilfe erläutert\nDie vorhandenen Einrichtungen zur Alarmierung (Druckknopfmelder oder Hausalarm), Ersten Hilfe und Brandbekämpfung im Gebäude gezeigt", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-07", orderIdentifier: "0070", rowType: .position, title: "Handout \"Vorschriften\" ausgehändigt\nDas Handout \"Sicherheits-, Ordnungs-, Energie- und Umweltvorschriften\" wurde dem Auftragnehmer ausgehändigt", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0020-08", orderIdentifier: "0080", rowType: .position, title: "Hausordnung gezeigt und erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0030",
+                    title: "Flucht und Rettungswege/Sammelplatz",
+                    subtitle: nil,
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0030-01", orderIdentifier: "0010", rowType: .position, title: "Flucht-/Rettungspläne erläutert\nDen Verlauf des Flucht- und Rettungsweges gezeigt", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0030-02", orderIdentifier: "0020", rowType: .position, title: "Die Lage des Sammelplatzes gezeigt", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0030-03", orderIdentifier: "0030", rowType: .position, title: "Verhaltensweisen im Gebäude erläutert\nAuf folgende Verhaltensweisen hingewiesen: Flucht- und Rettungswege (Flure, Treppen und Ausgänge) dürfen weder zugestellt noch mit Gegenständen eingeengt werden Das Abstellen von brennbaren Stoffen ist grundsätzlich verboten Brandschutztüren dürfen nicht verkeilt werden Notausgänge sind stets frei und benutzbar zu halten", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0040",
+                    title: "Sicherheitskennzeichnung",
+                    subtitle: nil,
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0040-01", orderIdentifier: "0010", rowType: .position, title: "Innerbetriebliche Verbote erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-02", orderIdentifier: "0020", rowType: .position, title: "Innerbetriebliche Gebote erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-03", orderIdentifier: "0030", rowType: .position, title: "Innerbetriebliche Warnungen erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-04", orderIdentifier: "0040", rowType: .position, title: "Nutzung von innerbetriebl. PSA erläutert\nAuf die Nutzung von innerbetrieblicher PSA hingewiesen (nicht tätigkeitsbezogen)", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-04-1", orderIdentifier: "0041", rowType: .subposition, title: "Schutzbrille", answerOptions: options, documentSymbolID: nil, warningSymbolID: "M004"),
+                        SAPBriefingTemplateItem(id: "0040-04-2", orderIdentifier: "0042", rowType: .subposition, title: "Schutzhelm", answerOptions: options, documentSymbolID: nil, warningSymbolID: "M014"),
+                        SAPBriefingTemplateItem(id: "0040-04-3", orderIdentifier: "0043", rowType: .subposition, title: "Sicherheitsschuh", answerOptions: options, documentSymbolID: nil, warningSymbolID: "M008"),
+                        SAPBriefingTemplateItem(id: "0040-04-4", orderIdentifier: "0044", rowType: .subposition, title: "Gehörschutz", answerOptions: options, documentSymbolID: nil, warningSymbolID: "M003"),
+                        SAPBriefingTemplateItem(id: "0040-04-5", orderIdentifier: "0045", rowType: .subposition, title: "Sonstiges", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-05", orderIdentifier: "0050", rowType: .position, title: "Innerbetriebl. Verkehrszeichen erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-06", orderIdentifier: "0060", rowType: .position, title: "Innerbetriebli. Gefahrstoffe erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0040-07", orderIdentifier: "0070", rowType: .position, title: "Baustellenschutz erläutert\nDie Baustelle inkl. aller Baustelleneinrichtungen sind vor Zutritt unbefugter Dritter zu schützen (u.a. Gerüste, Treppentürme)", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0050",
+                    title: "Brandschutz",
+                    subtitle: nil,
+                    isOptional: true,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0050-01", orderIdentifier: "0010", rowType: .position, title: "Standorte der Feuerlöscher wurden erläutert.", answerOptions: options, documentSymbolID: nil, warningSymbolID: "F001")
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0060",
+                    title: "Arbeitsplatz/-einrichtung",
+                    subtitle: nil,
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0060-01", orderIdentifier: "0010", rowType: .position, title: "Arbeitsplatz erläutert\nArbeitsplatz/-ort wurde begangen und erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-02", orderIdentifier: "0020", rowType: .position, title: "Einrichtungen/Maschinen erläutert\nDer Eingewiesene wurde an Ort und Stelle mit allen Einrichtungen/Maschinen vertraut gemacht", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-03", orderIdentifier: "0030", rowType: .position, title: "Einrichtungen/Maschinen erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-04", orderIdentifier: "0040", rowType: .position, title: "Bed.-Anleitungen zur Verfügung gestellt\nBetriebsanweisungen/Bedienungsanleitungen für Einrichtungen/Maschinen des Einweisers/Abnehmers stehen der Partnerfirma zur Verfügung", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-05", orderIdentifier: "0050", rowType: .position, title: "Masch.-Sicherheitseinrichtungen\nSicherheitseinrichtungen an Maschinen wurden erläutert", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-06", orderIdentifier: "0060", rowType: .position, title: "Nutzung/Lagerung von Druckgasflaschen\nBei Nutzung von Druckgasflaschen sind der Umgang sowie die Lagerung mit dem Einweiser/Abnehmer gesondert abzustimmen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-07", orderIdentifier: "0070", rowType: .position, title: "Absicherung der Arbeitsstätte besprochen\nDie Absicherung der Arbeitsstätte wurde eindeutig besprochen z.B.Sekuranten auf Flachdächern für PSAgA vorhanden /nicht vorhanden, Leitern und Aufstiege, Gerüste inkl. Freigabe)", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-08", orderIdentifier: "0080", rowType: .position, title: "Arbeiten mit Absturzgefahr / PSAgA\nBei folgenden Absturzhöhen ist eine Sicherung gegen Absturz von Personen vorzusehen: - ab 0,00 m Höhe über Wasser oder anderen relevanten Stoffen, in denen man versinken kann - ab 1,00 m Höhe - Arbeiten < 2,0 m zur Absturzkante Hinweis: Bei ungünstigen Wetterverhältnissen (z.B. Gewitter, starkem Wind, Reif- oder Vereisungsgefahr) dürfen Arbeiten in Höhen nicht durchgeführt werden. Sekuranten auf Flachdächern für PSAgA, Leitern/Aufstiege und Gerüste sind ordnungsgemäß anzuwenden.\nEine Gefährdung anderer Arbeitnehmer durch die auszuführenden Arbeiten ist ausgeschlossen\nHinweis, Stäube und Fasern : Werden bei Arbeiten asbesthaltige Stoffe oder „Künstliche Mineralfasern\" (KMF) gefunden, ist dieses unverzüglich dem AG mitzuteilen und die Arbeit ist einzustellen.", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-09", orderIdentifier: "0090", rowType: .position, title: "Meldung defekte Einrichtungen/Maschinen\nDefekte Einrichtungen/Maschinen werden durch die Partnerfirma unverzüglich an den Abnehmer gemeldet und der weiteren Benutzung entzogen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0060-10", orderIdentifier: "0100", rowType: .position, title: "Ordnungsgemäßer Zustand d. Arbeitsstätte\nDer Arbeitsort ist während und nach Beendigung der Arbeiten in einem ordnungsgemäßen Zustand zu halten, angemessen aufzuräumen und zu säubern", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0070",
+                    title: "Arbeitsaufgabe/-ablauf",
+                    subtitle: nil,
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0070-01", orderIdentifier: "0010", rowType: .position, title: "Konkreter Auftragsablauf besprochen\nDer konkrete Auftragsablauf wurde besprochen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0070-02", orderIdentifier: "0020", rowType: .position, title: "Freigabeverfahren zur Arbeit besprochen\nDas Freigabeverfahren zur Arbeit wurde eindeutig besprochen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0070-03", orderIdentifier: "0030", rowType: .position, title: "Arbeiten an/i.d.N, elektrischer Anlagen\nArbeiten an, in oder in der Nähe von elektrischen Anlagen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0070-04", orderIdentifier: "0040", rowType: .position, title: "Benennung d. Koordinator des Einweisers\nDer Koordinator des Einweisers/Abnehmers (falls erforderlich) wurde eindeutig benannt", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0075",
+                    title: "Sicherheitscheckliste für Erdarbeiten",
+                    subtitle: "Die Sicherheitscheckliste Erdarbeiten in der Nähe erdverlegter Kabel und Rohrleitungen wurde ausgefüllt.",
+                    isOptional: false,
+                    items: []
+                ),
+                SAPBriefingTemplateSection(
+                    id: "0080",
+                    title: "Unfälle",
+                    subtitle: nil,
+                    isOptional: false,
+                    items: [
+                        SAPBriefingTemplateItem(id: "0080-01", orderIdentifier: "0010", rowType: .position, title: "Hinweis auf betriebl. Arbeitsmedizin\nAuf die betriebliche Arbeitsmedizin/Sanitätsstation wurde hingewiesen(soweit vor Ort vorhanden)", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0080-02", orderIdentifier: "0020", rowType: .position, title: "Aufsuchen „Arbeitsmedizin“ bei Unfall\nDer Verletzte hat sich, soweit möglich, in der örtlichen Arbeitsmedizin/Sanitätsstation des Abnehmers vorzustellen", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil),
+                        SAPBriefingTemplateItem(id: "0080-03", orderIdentifier: "0030", rowType: .position, title: "Meldung von Unfällen bei Partnerfirma\nUnfälle der Partnerfirma müssen unverzüglich dem Abnehmer gemeldet werden", answerOptions: options, documentSymbolID: nil, warningSymbolID: nil)
+                    ]
+                )
             ])
-            return Self(isDemo: true, contexts: [Context(businessEntityID: "DE-ESS-11248", businessEntityTitle: "DE-ESS-11248", buildingCode: "A", buildingTitle: "A · Baumstr. 25")], partners: [partner], templates: [template], workerProfile: nil, workerName: workerName, offlineWorkStore: store)
+            return Self(isDemo: true, contexts: [Context(businessEntityID: "DE-ANR-17705-01", businessEntityTitle: "DE-ANR-17705-01", buildingCode: "GB01", buildingTitle: "GB01_Völlinghauser Str. 15_Büro-/H_(oA)\nVöllinghauser Str. 15,\n59609, Anröchte (DE)")], partners: [partner], templates: [template], workerProfile: nil, workerName: workerName, offlineWorkStore: store)
         }
     }
 
@@ -1058,14 +1174,16 @@ final class BriefingWorkflowViewModel {
     var partners: [SAPBriefingPartner]
     var temporaryPartner: BriefingTemporaryPartner?
     var partnerSearchTerm2 = ""
+    private(set) var itemStatus: OfflineWorkStatus?
     private var savedWorkID: UUID?
 
-    init(source: Source, existingDraft: OfflineWorkItem? = nil) {
+    init(source: Source, existingDraft: OfflineWorkItem? = nil, draftID: UUID? = nil) {
         self.source = source
         partners = source.partners
         selectedTemplateID = source.templates.first(where: \.isStandardBriefing)?.id ?? source.templates.first?.id ?? ""
+        savedWorkID = existingDraft?.id ?? draftID
+        itemStatus = existingDraft?.status
         guard let existingDraft, let draft = existingDraft.payload.briefing else { return }
-        savedWorkID = existingDraft.id
         selectedBusinessEntityID = draft.businessEntityID
         if !draft.businessEntityID.isEmpty {
             partnerSearchTerm2 = Self.extractPropertyNumber(from: draft.businessEntityID)
@@ -1121,6 +1239,10 @@ final class BriefingWorkflowViewModel {
     var hasRequiredMasterData: Bool { !source.contexts.isEmpty && template != nil }
     var canSaveDraft: Bool { selectedContext != nil && template != nil }
     var canComplete: Bool { selectedContext != nil && template != nil }
+    var isReadOnly: Bool {
+        guard let itemStatus else { return false }
+        return itemStatus != .draft
+    }
     var activeSections: [SAPBriefingTemplateSection] { (template?.sections ?? []).filter { !$0.isOptional || selectedOptionalSectionIDs.contains($0.id) } }
 
     func selectBusinessEntity(_ value: String) {
@@ -1166,7 +1288,7 @@ final class BriefingWorkflowViewModel {
         }
     }
     func requestCompletion() {
-        guard !isRenderingPDF else { return }
+        guard !isReadOnly, !isRenderingPDF else { return }
         finishCompletionRequest()
     }
 
@@ -1188,6 +1310,7 @@ final class BriefingWorkflowViewModel {
         }
     }
     func saveDraft(using store: OfflineWorkStore) async {
+        guard !isReadOnly else { return }
         guard let payload = draftPayload() else {
             validationMessage = String(localized: "briefing.draft.contextRequired")
             return
@@ -1195,13 +1318,14 @@ final class BriefingWorkflowViewModel {
         do {
             let item = try await store.saveBriefing(id: savedWorkID, payload: payload, status: .draft)
             savedWorkID = item.id
+            itemStatus = item.status
             validationMessage = String(localized: "briefing.draft.saved")
         } catch {
             validationMessage = String(localized: "briefing.draft.saveFailed")
         }
     }
     func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
-        guard var payload = draftPayload() else { return false }
+        guard !isReadOnly, var payload = draftPayload() else { return false }
         payload.completedAt = pdfArtifact?.createdAt ?? .now
         do {
             let item = try await store.saveBriefing(
@@ -1210,6 +1334,7 @@ final class BriefingWorkflowViewModel {
                 status: .pendingSynchronization
             )
             savedWorkID = item.id
+            itemStatus = item.status
             return true
         } catch {
             validationMessage = String(localized: "briefing.completed.saveFailed")
@@ -1226,7 +1351,7 @@ final class BriefingWorkflowViewModel {
         return isValid
     }
     private func draftPayload() -> BriefingDraftPayload? { guard let context = selectedContext, let template else { return nil }; return BriefingDraftPayload(templateID: template.id, businessEntityID: context.businessEntityID, businessEntityTitle: context.businessEntityTitle, buildingCode: context.buildingCode, buildingTitle: context.buildingTitle, coordinator: coordinator, instructedPerson: instructedPerson, selectedPartnerID: selectedPartnerID, temporaryPartner: temporaryPartner, partnerEmail: partnerEmail, taskDescription: taskDescription, startDate: startDate, endDate: endDate, selectedOptionalSectionIDs: selectedOptionalSectionIDs, answerKeysByItemID: answerKeysByItemID, commentsByItemID: commentsByItemID, instructorSignature: instructorSignature, instructedPersonSignature: instructedPersonSignature, completedAt: nil) }
-    private func makePDFPayload() -> BriefingPDFPayload? {
+    func makePDFPayload() -> BriefingPDFPayload? {
         guard
             let draft = draftPayload(),
             let template,
@@ -1239,6 +1364,8 @@ final class BriefingWorkflowViewModel {
         }
 
         let renderedSections = activeSections.enumerated().map { sectionOffset, section in
+            let originalIndex = template.sections.firstIndex(where: { $0.id == section.id }) ?? sectionOffset
+            let sectionNumber = section.items.isEmpty ? 0 : (originalIndex + 1)
             let renderedItems = section.items.enumerated().map { itemOffset, item in
                 let number: String
                 if item.rowType == .subposition {
@@ -1263,7 +1390,8 @@ final class BriefingWorkflowViewModel {
             return BriefingPDFPayload.Section(
                 id: section.id,
                 title: section.title,
-                number: sectionOffset + 1,
+                subtitle: section.subtitle,
+                number: sectionNumber,
                 items: renderedItems
             )
         }

@@ -60,28 +60,63 @@ struct SafetyFormCard<Content: View>: View {
     }
 }
 
+/// Where a `SafetyFormField` puts its label. `.leading` lays out one labelled
+/// row, like the SAP `sap.ui.layout.form` rows of the legacy header forms.
+enum SafetyFormFieldLabelPlacement: Equatable, Sendable {
+    case top
+    case leading(width: CGFloat)
+}
+
 struct SafetyFormField<Content: View>: View {
-    let title: LocalizedStringKey
+    let label: Text
     let required: Bool
+    let labelPlacement: SafetyFormFieldLabelPlacement
     @ViewBuilder let content: Content
 
     init(_ title: LocalizedStringKey, required: Bool = false, @ViewBuilder content: () -> Content) {
-        self.title = title
+        self.init(label: Text(title), required: required, content: content)
+    }
+
+    /// Label text that is already resolved, such as an SAP characteristic
+    /// description, which must not be looked up in the String Catalog.
+    init(
+        label: Text,
+        required: Bool = false,
+        labelPlacement: SafetyFormFieldLabelPlacement = .top,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.label = label
         self.required = required
+        self.labelPlacement = labelPlacement
         self.content = content()
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 0) {
-                Text(title)
-                if required { Text(verbatim: " *").foregroundStyle(FacilityTheme.red) }
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-            content.frame(maxWidth: .infinity)
+    private var labelView: some View {
+        HStack(spacing: 0) {
+            label
+            if required { Text(verbatim: " *").foregroundStyle(FacilityTheme.red) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.secondary)
+    }
+
+    var body: some View {
+        switch labelPlacement {
+        case .top:
+            VStack(alignment: .leading, spacing: 7) {
+                labelView
+                content.frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        case let .leading(width):
+            HStack(alignment: .center, spacing: 14) {
+                labelView
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: width, alignment: .trailing)
+                content.frame(maxWidth: .infinity)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
@@ -340,6 +375,7 @@ struct SafetyFormContextCard: View {
 
             SafetyFormField("firePermit.building", required: true) {
                 Button {
+                    isFunctionalLocationPickerPresented = false
                     isBuildingPickerPresented = true
                 } label: {
                     valueHelpLabel(
@@ -366,6 +402,7 @@ struct SafetyFormContextCard: View {
 
             SafetyFormField("firePermit.functionalLocation", required: true) {
                 Button {
+                    isBuildingPickerPresented = false
                     isFunctionalLocationPickerPresented = true
                 } label: {
                     valueHelpLabel(
@@ -794,19 +831,27 @@ struct SafetyFormActionBar: View {
     let isBusy: Bool
     let saveDraft: (() -> Void)?
     let complete: () -> Void
+    var isReadOnly = false
+    var back: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 14) {
             Spacer(minLength: 12)
-            if let saveDraft {
-                Button("app.button.tempSave", action: saveDraft)
+            if isReadOnly {
+                Button("common.back", action: back ?? complete)
                     .buttonStyle(.bordered)
-                    .disabled(!canSaveDraft || isBusy)
+                    .tint(FacilityTheme.ink)
+            } else {
+                if let saveDraft {
+                    Button("app.button.tempSave", action: saveDraft)
+                        .buttonStyle(.bordered)
+                        .disabled(!canSaveDraft || isBusy)
+                }
+                Button("app.btn.instrucClose", action: complete)
+                    .buttonStyle(.borderedProminent)
+                    .tint(FacilityTheme.accent)
+                    .disabled(!canComplete || isBusy)
             }
-            Button("app.btn.instrucClose", action: complete)
-                .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.accent)
-                .disabled(!canComplete || isBusy)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 12)

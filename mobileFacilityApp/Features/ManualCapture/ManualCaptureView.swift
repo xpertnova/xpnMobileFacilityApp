@@ -1,13 +1,12 @@
-import PhotosUI
 import SwiftUI
 import UIKit
 
 struct ManualCaptureView: View {
     let demo: FacilityDemoViewModel
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var defectModel: DefectCaptureViewModel
     @State private var meterModel: MeterReadingViewModel
-    @State private var selectedPhoto: PhotosPickerItem?
-    @State private var isShowingCamera = false
+    @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var isObjectPickerPresented = false
     @State private var objectSearchText = ""
     @State private var isMeterPointPickerPresented = false
@@ -30,17 +29,38 @@ struct ManualCaptureView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PageHeader("manual.title", subtitle: "manual.subtitle")
-                actionCards
-                selectedForm
+        ZStack {
+            if let photoWorkspaceScope {
+                LocalPhotoWorkspace(
+                    scope: photoWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    photoStore: demo.photoAttachmentStore,
+                    legacyAttachmentIDs: photoWorkspaceScope.workflow == .defect ? defectModel.attachmentIDs : [],
+                    isReadOnly: (photoWorkspaceScope.workflow == .defect && defectModel.isReadOnly)
+                        || (photoWorkspaceScope.workflow == .meterReading && meterModel.isReadOnly),
+                    close: { self.photoWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        PageHeader("manual.title", subtitle: "manual.subtitle")
+                        actionCards
+                        selectedForm
+                    }
+                    .padding(28)
+                    .frame(maxWidth: 1280, alignment: .leading)
+                    .animation(.snappy(duration: 0.3, extraBounce: 0), value: demo.manualCaptureRoute)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .transition(PhotoWorkspaceMotion.source)
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
-            .animation(.snappy(duration: 0.3, extraBounce: 0), value: demo.manualCaptureRoute)
         }
-        .scrollDismissesKeyboard(.interactively)
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: photoWorkspaceScope
+        )
         .task(id: demo.manualCaptureRoute) {
             switch demo.manualCaptureRoute {
             case .landing:
@@ -50,27 +70,6 @@ struct ManualCaptureView: View {
             case let .meterReading(id):
                 await meterModel.load(itemID: id)
             }
-        }
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            Task {
-                defer { selectedPhoto = nil }
-                guard let data = try? await item.loadTransferable(type: Data.self),
-                      let jpeg = JPEGPhotoEncoder.encode(data) else {
-                    defectModel.photoFailed = true
-                    return
-                }
-                await defectModel.addPhoto(jpegData: jpeg)
-            }
-        }
-        .sheet(isPresented: $isShowingCamera) {
-            CameraCaptureView { data in
-                isShowingCamera = false
-                Task { await defectModel.addPhoto(jpegData: data) }
-            } onCancel: {
-                isShowingCamera = false
-            }
-            .ignoresSafeArea()
         }
         .onChange(of: isObjectPickerPresented) { _, isPresented in
             if !isPresented { objectSearchText = "" }
@@ -143,7 +142,7 @@ struct ManualCaptureView: View {
     private var defectTitleKey: LocalizedStringKey {
         if defectModel.isReadOnly {
             return "manual.defect.form.readOnly.title"
-        } else if defectModel.editingID != nil {
+        } else if defectModel.isExistingDraft {
             return "manual.defect.form.edit.title"
         } else {
             return "manual.defect.form.title"
@@ -159,7 +158,7 @@ struct ManualCaptureView: View {
                 Spacer()
                 if defectModel.isReadOnly {
                     FacilityTemplateBadge(localized: .init("offline.status.pending"), style: .open)
-                } else if defectModel.editingID != nil {
+                } else if defectModel.isExistingDraft {
                     FacilityTemplateBadge(localized: .init("offline.status.draft"), style: .temporarilySaved)
                 }
             }
@@ -334,79 +333,23 @@ struct ManualCaptureView: View {
             Text("manual.defect.photos")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-
-            if !defectModel.isReadOnly {
-                HStack(spacing: 12) {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("manual.photo.library", systemImage: "photo.on.rectangle")
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        isShowingCamera = true
-                    } label: {
-                        Label("manual.photo.camera", systemImage: "camera")
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!CameraCaptureAvailability.isAvailable)
-                    .accessibilityHint(
-                        CameraCaptureAvailability.isAvailable
-                            ? Text("")
-                            : Text("manual.photo.camera.unavailable")
-                    )
-                }
-            }
-
-            if !defectModel.attachmentIDs.isEmpty {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(defectModel.attachmentIDs, id: \.self) { id in
-                            ZStack(alignment: .topTrailing) {
-                                Group {
-                                    if let data = defectModel.photoData[id] {
-                                        JPEGThumbnailView(data: data)
-                                    } else {
-                                        ProgressView()
-                                    }
-                                }
-                                .frame(width: 112, height: 82)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                                if !defectModel.isReadOnly {
-                                    Button {
-                                        Task { await defectModel.removePhoto(id: id) }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.title3)
-                                            .symbolRenderingMode(.palette)
-                                            .foregroundStyle(.white, Color.black.opacity(0.65))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel(Text("manual.photo.remove"))
-                                    .offset(x: 7, y: -7)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.top, 8)
-                }
-                .scrollIndicators(.hidden)
-            } else if defectModel.isReadOnly {
-                Text("manual.photo.none")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
+            PhotoWorkspaceButton(count: photoCount(for: defectPhotoScope)) {
+                photoWorkspaceScope = defectPhotoScope
             }
         }
     }
 
     private var meterForm: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text("manual.meter.form.title")
-                .font(.title2.weight(.bold))
-                .foregroundStyle(FacilityTheme.ink)
+            HStack(spacing: 12) {
+                Text("manual.meter.form.title")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(FacilityTheme.ink)
+                Spacer()
+                if meterModel.isReadOnly {
+                    FacilityTemplateBadge(localized: .init("offline.status.pending"), style: .open)
+                }
+            }
 
             switch meterModel.state {
             case .idle:
@@ -432,25 +375,37 @@ struct ManualCaptureView: View {
 
     private var meterFields: some View {
         VStack(alignment: .leading, spacing: 18) {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .top, spacing: 20) {
-                    meterKindField
-                    meterPointField
+            Group {
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 20) {
+                        meterKindField
+                        meterPointField
+                    }
+                    VStack(alignment: .leading, spacing: 18) {
+                        meterKindField
+                        meterPointField
+                    }
                 }
-                VStack(alignment: .leading, spacing: 18) {
-                    meterKindField
-                    meterPointField
+
+                HStack(alignment: .top, spacing: 16) {
+                    meterValueField
+                    meterUnitField
                 }
+
+                meterNoteField
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("photos.workspace.title")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    PhotoWorkspaceButton(count: photoCount(for: meterPhotoScope)) {
+                        photoWorkspaceScope = meterPhotoScope
+                    }
+                }
+
+                if meterModel.saveFailed { formError("offline.save.error.message") }
             }
-
-            HStack(alignment: .top, spacing: 16) {
-                meterValueField
-                meterUnitField
-            }
-
-            meterNoteField
-
-            if meterModel.saveFailed { formError("offline.save.error.message") }
+            .disabled(meterModel.isReadOnly)
 
             Divider()
                 .padding(.top, 4)
@@ -458,48 +413,83 @@ struct ManualCaptureView: View {
             HStack(spacing: 12) {
                 Spacer()
 
-                Button {
-                    withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
-                        demo.manualCaptureRoute = .landing
-                    }
-                } label: {
-                    Text("common.cancel")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(FacilityTheme.ink)
+                meterFormActionButton(
+                    meterModel.isReadOnly ? "common.back" : "common.cancel",
+                    action: { demo.manualCaptureRoute = .landing }
+                )
+
+                if !meterModel.isReadOnly {
+                    Button {
+                        saveMeter(.pendingSynchronization)
+                    } label: {
+                        HStack(spacing: 8) {
+                            if meterModel.isSaving {
+                                ProgressView().tint(.white)
+                            } else {
+                                Text("manual.meter.book")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
                         .padding(.horizontal, 28)
                         .frame(minHeight: 44)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
-                        }
-                }
-                .buttonStyle(ScalePressButtonStyle())
-
-                Button {
-                    saveMeter(.pendingSynchronization)
-                } label: {
-                    HStack(spacing: 8) {
-                        if meterModel.isSaving {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("manual.meter.book")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.white)
-                        }
+                        .background(
+                            (meterModel.canSave && !meterModel.isSaving) ? FacilityTheme.accent : FacilityTheme.accent.opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        )
                     }
-                    .padding(.horizontal, 28)
-                    .frame(minHeight: 44)
-                    .background(
-                        (meterModel.canSave && !meterModel.isSaving) ? FacilityTheme.accent : FacilityTheme.accent.opacity(0.35),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
+                    .buttonStyle(ScalePressButtonStyle())
+                    .disabled(!meterModel.canSave || meterModel.isSaving)
+                    .animation(.easeInOut(duration: 0.2), value: meterModel.canSave)
                 }
-                .buttonStyle(ScalePressButtonStyle())
-                .disabled(!meterModel.canSave || meterModel.isSaving)
-                .animation(.easeInOut(duration: 0.2), value: meterModel.canSave)
             }
         }
+    }
+
+    private func meterFormActionButton(_ key: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
+                action()
+            }
+        } label: {
+            Text(key)
+                .font(.body.weight(.medium))
+                .foregroundStyle(FacilityTheme.ink)
+                .padding(.horizontal, 28)
+                .frame(minHeight: 44)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
+                }
+        }
+        .buttonStyle(ScalePressButtonStyle())
+    }
+
+    private var defectPhotoScope: LocalPhotoScope {
+        LocalPhotoScope(
+            workflow: .defect,
+            ownerID: defectModel.editingID?.uuidString ?? "new-defect",
+            displayTitle: String(localized: "photos.workspace.title"),
+            displaySubtitle: defectModel.shortText.isEmpty
+                ? String(localized: "manual.defect.form.title")
+                : defectModel.shortText
+        )
+    }
+
+    private var meterPhotoScope: LocalPhotoScope {
+        LocalPhotoScope(
+            workflow: .meterReading,
+            ownerID: meterModel.editingID?.uuidString ?? "new-meter-reading",
+            displayTitle: String(localized: "photos.workspace.title"),
+            displaySubtitle: meterModel.selectedReference.map { "\($0.id) · \($0.technicalPlaceName)" }
+                ?? String(localized: "manual.meter.form.title")
+        )
+    }
+
+    private func photoCount(for scope: LocalPhotoScope) -> Int {
+        demo.offlineWorkStore.photoCollection(for: scope)?.payload.photoCollection?.attachments.count
+            ?? (scope.workflow == .defect ? defectModel.attachmentIDs.count : 0)
     }
 
     private var meterKindField: some View {

@@ -81,6 +81,52 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) \(method) failed: \(error.localizedDescription)")
     }
 
+    /// Produces a support-safe summary for an HTTP error response. In
+    /// particular, this must never include the request body, password, OAuth
+    /// token, cookie, complete endpoint, or the raw response body.
+    static func httpFailureSummary(
+        method: String,
+        response: HTTPURLResponse,
+        responseBody: Data = Data()
+    ) -> String {
+        var details = ["HTTP \(response.statusCode)"]
+
+        if let correlationID = response.value(forHTTPHeaderField: "X-Correlation-ID")
+            ?? response.value(forHTTPHeaderField: "X-CorrelationID")
+            ?? response.value(forHTTPHeaderField: "X-Request-ID")
+            ?? response.value(forHTTPHeaderField: "X-Vcap-Request-Id"),
+           let safeCorrelationID = safeCorrelationID(from: correlationID) {
+            details.append("correlation ID=\(safeCorrelationID)")
+        }
+
+        if let challenge = response.value(forHTTPHeaderField: "WWW-Authenticate"),
+           let scheme = authenticationScheme(from: challenge) {
+            details.append("authentication challenge=\(scheme)")
+        }
+
+        if let odataError = safeODataErrorSummary(from: responseBody) {
+            details.append(odataError)
+        }
+
+        let summary = "\(prefix) \(method) received \(details.joined(separator: "; "))"
+        return summary.hasSuffix(".") ? summary : summary + "."
+    }
+
+    static func logHTTPFailure(
+        method: String,
+        response: HTTPURLResponse,
+        responseBody: Data
+    ) {
+        print(httpFailureSummary(method: method, response: response, responseBody: responseBody))
+    }
+
+    static func logSynchronizationTransport(reusesOnboardingSession: Bool) {
+        let mode = reusesOnboardingSession
+            ? "Debug transport: reusing the authenticated onboarding session."
+            : "Transport: using an isolated copy of the authenticated onboarding session."
+        print("\(prefix) \(mode)")
+    }
+
     static func logOnboardingIdentityFailure(_ error: Error) {
         print("\(prefix) Could not resolve the SAP synchronization identity: \(error.localizedDescription)")
     }
@@ -111,14 +157,17 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) Calling \(method)\(requestIDs.isEmpty ? "" : ": \(requestIDs)").")
     }
 
-    static func logSynchronizationCompleted(
-        notificationCount: Int,
-        businessEntityCount: Int
-    ) {
+    static func logSynchronizationCompleted(_ summary: SAPIncomingCacheSummary) {
         print(
-            "\(prefix) Synchronization completed: \(notificationCount) notifications, " +
-                "\(businessEntityCount) business entities."
+            "\(prefix) Synchronization completed: persisted \(summary.notificationRowCount) notification rows; " +
+                "mapped \(summary.actionableNotificationCount) actionable notifications, " +
+                "\(summary.businessEntityCount) business entities, and " +
+                "\(summary.elevatorInspectionCount) TFM2 elevator inspections."
         )
+    }
+
+    static func logElevatorAssetCacheResolution(_ detail: String) {
+        print("\(prefix) TFM2 asset cache: \(detail).")
     }
 
     static func logIncomingPackage(_ tables: [String: [LegacySAPRow]]) {
@@ -162,11 +211,91 @@ enum SAPSynchronizationDiagnostics {
         guard value.count > 6 else { return "••••" }
         return "••••\(value.suffix(6))"
     }
+
+    private static func safeCorrelationID(from value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 128 else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.:"))
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return trimmed
+    }
+
+    private static func authenticationScheme(from value: String) -> String? {
+        let scheme = value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(whereSeparator: { $0 == " " || $0 == "," })
+            .first
+            .map(String.init) ?? ""
+        guard !scheme.isEmpty, scheme.count <= 32,
+              scheme.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) })
+        else {
+            return nil
+        }
+        return scheme
+    }
+
+    /// Extracts only standard OData error fields. Raw error pages are not
+    /// printed: they can contain gateway configuration or sensitive data.
+    private static func safeODataErrorSummary(from data: Data) -> String? {
+        guard !data.isEmpty, data.count <= 64 * 1024,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = root["error"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        let code = safeODataErrorCode(error["code"] as? String)
+        let rawMessage: String?
+        if let message = error["message"] as? [String: Any] {
+            rawMessage = message["value"] as? String
+        } else {
+            rawMessage = error["message"] as? String
+        }
+        let message = safeODataErrorMessage(rawMessage)
+
+        switch (code, message) {
+        case let (code?, message?):
+            return "SAP error code=\(code); SAP reason=\(message)"
+        case let (code?, nil):
+            return "SAP error code=\(code)"
+        case let (nil, message?):
+            return "SAP reason=\(message)"
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    private static func safeODataErrorCode(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 128 else { return nil }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "/_.:-"))
+        guard trimmed.unicodeScalars.allSatisfy({ allowed.contains($0) }) else { return nil }
+        return trimmed
+    }
+
+    private static func safeODataErrorMessage(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !normalized.isEmpty, normalized.count <= 280 else { return nil }
+
+        let lowered = normalized.lowercased()
+        let unsafeMarkers = [
+            "bearer ", "basic ", "token", "password", "cookie", "authorization:",
+            "http://", "https://", "/sap/", "@", "user=", "username=", "device="
+        ]
+        guard !unsafeMarkers.contains(where: { lowered.contains($0) }) else { return nil }
+        return normalized
+    }
 }
 struct SAPReadConnection: @unchecked Sendable {
     let backendURL: URL
     let sapURLSession: SAPURLSession
     let deviceID: String
+    private let invalidatesSessionWhenFinished: Bool
 
     static func resolve(from context: OnboardingContext) async throws -> SAPReadConnection {
         guard
@@ -180,13 +309,17 @@ struct SAPReadConnection: @unchecked Sendable {
         return SAPReadConnection(
             backendURL: settings.backendURL,
             sapURLSession: context.sapURLSession,
-            deviceID: deviceID
+            deviceID: deviceID,
+            invalidatesSessionWhenFinished: false
         )
     }
 
     /// Each synchronization gets its own session. The retained onboarding
     /// session remains the authenticated template for a later refresh.
-    func newSynchronizationConnection() -> SAPReadConnection {
+    func newSynchronizationConnection(reusingOnboardingSession: Bool = false) -> SAPReadConnection {
+        if reusingOnboardingSession {
+            return self
+        }
         let synchronizationSession = sapURLSession.copy(
             configuration: sapURLSession.configuration,
             delegate: sapURLSession.delegate,
@@ -196,11 +329,13 @@ struct SAPReadConnection: @unchecked Sendable {
         return SAPReadConnection(
             backendURL: backendURL,
             sapURLSession: synchronizationSession,
-            deviceID: deviceID
+            deviceID: deviceID,
+            invalidatesSessionWhenFinished: true
         )
     }
 
     func finishSynchronizationSession() {
+        guard invalidatesSessionWhenFinished else { return }
         sapURLSession.finishTasksAndInvalidate()
     }
 }
@@ -209,28 +344,45 @@ struct SAPReadConnection: @unchecked Sendable {
 /// response payloads, tokens, or complete device/user identifiers here.
 
 struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
-    private static let downloadSchemaVersion = "1.3.2-21-121"
+    private static let downloadSchemaVersion = "1.3.8-58-358"
     private let connection: SAPReadConnection
-    private let synchronizationUserID: String
+    private  let synchronizationUserID: String
     private let synchronizationStore: any SAPLegacySynchronizationStore
     private let tokenStore: (any SAPSyncTokenStore)?
+    private let tokenStoreAccountID: String
+    private let notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator?
 
     init(
         connection: SAPReadConnection,
         synchronizationUserID: String,
         tokenStore: (any SAPSyncTokenStore)? = nil,
-        synchronizationStore: any SAPLegacySynchronizationStore
+        tokenStoreAccountID: String? = nil,
+        synchronizationStore: any SAPLegacySynchronizationStore,
+        notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator? = nil
     ) {
         self.connection = connection
         self.synchronizationUserID = synchronizationUserID
         self.synchronizationStore = synchronizationStore
         self.tokenStore = tokenStore
+        self.tokenStoreAccountID = tokenStoreAccountID ?? synchronizationUserID
+        self.notificationOutgoingCoordinator = notificationOutgoingCoordinator
     }
 
     private var sapWorkerID: String {
         synchronizationUserID
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased(with: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// A narrow A/B transport check for diagnosing an OAuth/session failure.
+    /// It is available only in Debug builds and must be enabled explicitly in
+    /// Xcode with the launch argument `-SAPSyncReuseOnboardingSession`.
+    private static var reusesOnboardingSessionForDebugging: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-SAPSyncReuseOnboardingSession")
+        #else
+        false
+        #endif
     }
 
     func refresh(
@@ -241,9 +393,15 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         guard !password.isEmpty else { throw SAPReadError.passwordRequired }
         guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
 
-        let synchronizationConnection = connection.newSynchronizationConnection()
+        let reusesOnboardingSession = Self.reusesOnboardingSessionForDebugging
+        let synchronizationConnection = connection.newSynchronizationConnection(
+            reusingOnboardingSession: reusesOnboardingSession
+        )
         defer { synchronizationConnection.finishSynchronizationSession() }
 
+        SAPSynchronizationDiagnostics.logSynchronizationTransport(
+            reusesOnboardingSession: reusesOnboardingSession
+        )
         SAPSynchronizationDiagnostics.logSynchronizationStarted(userID: sapWorkerID)
         SAPSynchronizationDiagnostics.logPasswordCheckStarted(
             host: connection.backendURL.host ?? "unknown host",
@@ -253,7 +411,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         await progress(.authenticating)
         let token = try await verify(password: password, connection: synchronizationConnection)
         if let token, !token.isEmpty {
-            try? tokenStore?.save(token: token, for: sapWorkerID)
+            try? tokenStore?.save(token: token, for: tokenStoreAccountID)
         }
 
         return try await performInboundSynchronization(
@@ -270,9 +428,15 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         guard !trimmedToken.isEmpty else { throw SAPReadError.tokenInvalidOrExpired }
         guard !sapWorkerID.isEmpty else { throw SAPReadError.authenticatedConnectionUnavailable }
 
-        let synchronizationConnection = connection.newSynchronizationConnection()
+        let reusesOnboardingSession = Self.reusesOnboardingSessionForDebugging
+        let synchronizationConnection = connection.newSynchronizationConnection(
+            reusingOnboardingSession: reusesOnboardingSession
+        )
         defer { synchronizationConnection.finishSynchronizationSession() }
 
+        SAPSynchronizationDiagnostics.logSynchronizationTransport(
+            reusesOnboardingSession: reusesOnboardingSession
+        )
         SAPSynchronizationDiagnostics.logSynchronizationStarted(userID: sapWorkerID)
         SAPSynchronizationDiagnostics.logTokenCheckStarted(
             host: connection.backendURL.host ?? "unknown host",
@@ -283,7 +447,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         do {
             try await verify(token: trimmedToken, connection: synchronizationConnection)
         } catch {
-            tokenStore?.deleteToken(for: sapWorkerID)
+            tokenStore?.deleteToken(for: tokenStoreAccountID)
             throw error
         }
 
@@ -303,7 +467,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         let fromRequestID = Self.makeRequestID(prefix: "MTFMSYNCFROM")
         let toRequestID = Self.makeRequestID(prefix: "MTFMSYNCTO")
         SAPSynchronizationDiagnostics.logSynchronizationStage(1, "Uploading TO metadata")
+        // Preparing the local outgoing queue can fail before any SAP request.
+        // Report that work as the upload stage so the dialog never attributes
+        // a local queue error to the already-completed password check.
         await progress(.uploadingOutgoingMetadata)
+        let notificationBatch = try await notificationOutgoingCoordinator?.prepare() ?? .empty
         let outgoingPayload = try await synchronizationStore.stageOutgoing(requestID: toRequestID)
         do {
             try await submitOutgoingMetadata(
@@ -312,6 +480,23 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 connection: synchronizationConnection
             )
             SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO rows staged with request ID")
+
+            // `synchronizeDocTo` uploads the `TO_T0282` documents as `I1`,
+            // then the `TO_T0285` copies of the I2 notifications as `I2`.
+            let outgoingDocuments = notificationBatch.documents.map { (document: $0, notificationType: "I1") }
+                + notificationBatch.i2Documents.map { (document: $0, notificationType: "I2") }
+            for (index, entry) in outgoingDocuments.enumerated() {
+                await progress(.uploadingOutgoingDocuments(
+                    current: index + 1,
+                    total: outgoingDocuments.count
+                ))
+                try await submitOutgoingDocument(
+                    requestID: toRequestID,
+                    document: entry.document,
+                    notificationType: entry.notificationType,
+                    connection: synchronizationConnection
+                )
+            }
 
             SAPSynchronizationDiagnostics.logSynchronizationStage(3, "Triggering TO post")
             await progress(.postingOutgoingData)
@@ -324,8 +509,10 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 connection: synchronizationConnection
             )
             try await synchronizationStore.confirmOutgoing(requestID: toRequestID)
+            try await notificationOutgoingCoordinator?.complete(notificationBatch)
         } catch {
             await synchronizationStore.abortOutgoing(requestID: toRequestID)
+            await notificationOutgoingCoordinator?.fail(notificationBatch, error: error)
             throw error
         }
         
@@ -366,10 +553,8 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 sapWorkerID: sapWorkerID,
                 refreshedAt: Date()
             )
-            SAPSynchronizationDiagnostics.logSynchronizationCompleted(
-                notificationCount: cachedData.notifications.count,
-                businessEntityCount: 0
-            )
+            let cacheSummary = try await synchronizationStore.incomingCacheSummary()
+            SAPSynchronizationDiagnostics.logSynchronizationCompleted(cacheSummary)
             return cachedData
         } catch {
             await synchronizationStore.abortIncoming()
@@ -462,6 +647,32 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             // an M0002001 request whose gateway response timed out.
             guard Self.isRecoverableLifecyclePollingError(error) else { throw error }
         }
+    }
+
+    private func submitOutgoingDocument(
+        requestID: String,
+        document: SAPNotificationOutgoingDocument,
+        notificationType: String,
+        connection: SAPReadConnection
+    ) async throws {
+        var row = document.metadata
+        row["REQID"] = requestID
+        row["FELDWERT"] = document.data.base64EncodedString()
+        guard !row["FELDWERT", default: ""].isEmpty else {
+            throw SAPReadError.malformedPayload
+        }
+        let response = try await call(
+            method: "M0002031",
+            parameters: Self.parameters([
+                "PARAMETER1": sapWorkerID,
+                "PARAMETER2": requestID,
+                "PARAMETER3": notificationType
+            ]),
+            document: row,
+            connection: connection,
+            responseMayBeEmpty: true
+        )
+        if let response { try SAPLegacyDataExchangeCodec.validateNoBackendError(response) }
     }
 
     private func triggerOutgoingPost(requestID: String, connection: SAPReadConnection) throws {
@@ -616,6 +827,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         parameters: SAPReadParameters,
         usesLegacyAuthenticationEnvelope: Bool = false,
         synchronizationData: LegacySAPOutgoingPayload? = nil,
+        document: [String: String]? = nil,
         connection: SAPReadConnection,
         responseMayBeEmpty: Bool = false
     ) async throws -> String? {
@@ -626,7 +838,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         }
         
         let ivData: String
-        if let synchronizationData {
+        if let document {
+            ivData = try SAPLegacyDataExchangeCodec.packDocument(
+                method: method, parameters: parameters, document: document
+            )
+        } else if let synchronizationData {
             ivData = try SAPLegacyDataExchangeCodec.pack(
                 method: method,
                 parameters: parameters,
@@ -667,6 +883,11 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             payload = nil
         }
         guard (200...299).contains(httpResponse.statusCode) else {
+            SAPSynchronizationDiagnostics.logHTTPFailure(
+                method: method,
+                response: httpResponse,
+                responseBody: data
+            )
             throw SAPReadError.httpStatus(httpResponse.statusCode)
         }
         guard !data.isEmpty else {
@@ -702,18 +923,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
     }
 
     private func serviceRoot(connection: SAPReadConnection) throws -> URL {
-        guard
-            let parametersURL = Bundle.main.url(forResource: "AppParameters", withExtension: "plist"),
-            let parametersData = try? Data(contentsOf: parametersURL),
-            let parameters = try? PropertyListSerialization.propertyList(from: parametersData, format: nil) as? [String: Any],
-            let destinations = parameters["Destinations"] as? [String: Any],
-            let destination = destinations["XPNMTFMODDAEXSRVEntities"] as? String
-        else {
+        guard let serviceRoot = SAPDataExchangeEndpoint.configuredServiceRoot(
+            backendURL: connection.backendURL
+        ) else {
             throw SAPReadError.configurationUnavailable
         }
-        let path = destination.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        guard !path.isEmpty else { throw SAPReadError.configurationUnavailable }
-        return connection.backendURL.appendingPathComponent(path, isDirectory: true)
+        return serviceRoot
     }
 
     private static func parameters(_ overrides: [String: String]) -> SAPReadParameters {
@@ -727,7 +942,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
 
     private static func isRecoverableLifecyclePollingError(_ error: SAPReadError) -> Bool {
         switch error {
-        case .httpStatus(504), .requestTimedOut:
+        // SAPURLSession can surface a transient gateway/session interruption as
+        // `serviceUnavailable` instead of a URLError.  MMTFM002/MMTFM003 are
+        // explicitly the authoritative lifecycle checks, so retain the legacy
+        // client's retry behavior for those interruptions rather than treating
+        // an already-started ABAP operation as failed.
+        case .httpStatus(504), .requestTimedOut, .networkUnavailable, .serviceUnavailable:
             true
         default:
             false
@@ -782,9 +1002,51 @@ private enum SAPOutgoingPostAcknowledgement {
 enum SAPLegacyDataExchangeCodec {
     private static let parameterStructureName = "/EZO/MTFMS_PARAMETER"
     private static let synchronizationStructureName = "/EZO/MTFMS_IP4SYNCH"
+    private static let notificationDocumentStructureName = "/EZO/MTFMT_0282"
 
     static func cachedNotificationPayload(fromFeldwert feldwert: String) -> [String: Any]? {
         notificationData(fromFeldwert: feldwert)
+    }
+
+    /// The long text of a downloaded I2 notification. Its `FELDWERT` holds
+    /// the `TLINE` list itself; `select.formatLongText(..., true)` joins every
+    /// `TDLINE` without a separator and accepts a plain string as well.
+    static func longText(fromFeldwert feldwert: String) -> String {
+        switch feldwertValue(from: feldwert) {
+        case let text as String:
+            return text
+        case let lines as [Any]:
+            return lines.compactMap { line -> String? in
+                // Not trimmed: the lines are joined without a separator, so a
+                // blank at a line boundary is the only space between words.
+                guard let line = line as? [String: Any],
+                      let text = value(named: "TDLINE", in: line) as? String,
+                      !text.isEmpty
+                else { return nil }
+                return text
+            }
+            .joined()
+        default:
+            return ""
+        }
+    }
+
+    static func decodedFeldwertObject(_ feldwert: String) -> [String: Any]? {
+        decodedFeldwertObjects(feldwert).first
+    }
+
+    static func decodedFeldwertObjects(_ feldwert: String) -> [[String: Any]] {
+        let value = feldwertValue(from: feldwert)
+        if let object = value as? [String: Any] {
+            return [object]
+        }
+        if let array = value as? [[String: Any]] {
+            return array
+        }
+        if let array = value as? [Any] {
+            return array.compactMap { $0 as? [String: Any] }
+        }
+        return []
     }
 
     private struct Envelope: Codable {
@@ -823,6 +1085,256 @@ enum SAPLegacyDataExchangeCodec {
         ]
         let data = try JSONEncoder().encode(envelope)
         return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
+    }
+
+    static func packDocument(
+        method: String,
+        parameters: Encodable,
+        document: Encodable
+    ) throws -> String {
+        let envelope = [
+            LegacyEnvelope(KEY: "METHODNAME", PAR: "", VALUE: method),
+            LegacyEnvelope(KEY: "STRUCTURE", PAR: parameterStructureName, VALUE: try jsonString(parameters)),
+            LegacyEnvelope(
+                KEY: "STRUCTURE", PAR: notificationDocumentStructureName,
+                VALUE: try jsonString(document)
+            )
+        ]
+        let data = try JSONEncoder().encode(envelope)
+        return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
+    }
+
+    static func packedFeldwert(_ object: Any) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+        return try rawDeflate(Data(data.base64EncodedString().utf8)).base64EncodedString()
+    }
+
+    static func mobileLadderTemplates(
+        planRows: [[String: Any]],
+        classRows: [[String: Any]],
+        equipmentRows: [[String: Any]]
+    ) -> [MobileLadderLegacyTemplate] {
+        let classRow = classRows.first {
+            firstSAPString(["CLASS", "KLASSE"], from: $0).uppercased() == "TFMMOBLEITER"
+        }
+        let classPayload = classRow.flatMap {
+            decodedFeldwertObject(stringValue(value(named: "FELDWERT", in: $0)))
+        } ?? [:]
+        let classJSON = jsonStringValue(classPayload) ?? "{}"
+        let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
+        let characteristicValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
+        let characteristics = characteristicRows.enumerated().compactMap { index, row -> MobileLadderLegacyCharacteristic? in
+            let name = firstSAPString(["ATNAM", "CHARACTERISTIC"], from: row)
+            guard !name.isEmpty else { return nil }
+            let values = characteristicValues.compactMap { value -> MobileLadderLegacyValue? in
+                guard firstSAPString(["ATNAM", "CHARACTERISTIC"], from: value) == name else { return nil }
+                let code = firstSAPString(["ATWRT", "VALUE"], from: value)
+                guard !code.isEmpty else { return nil }
+                let title = firstSAPString(["ATWTB", "VALUE_TEXT"], from: value)
+                return MobileLadderLegacyValue(value: code, title: title.isEmpty ? code : title)
+            }
+            return MobileLadderLegacyCharacteristic(
+                position: Int(firstSAPString(["ATINN", "POSNR"], from: row)) ?? index,
+                name: name, title: firstSAPString(["ATBEZ", "TITLE"], from: row),
+                unit: firstSAPString(["MSEHI", "UNIT"], from: row),
+                required: firstSAPString(["PFLICHT", "REQUIRED"], from: row).uppercased() == "X",
+                values: values
+            )
+        }
+
+        let equipmentPayload = equipmentRows.compactMap { row -> [String: Any]? in
+            guard let decoded = feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ) as? [String: Any] else { return nil }
+            let type = firstSAPString(["EQART", "EQART_TO"], from: row, fallback: decoded)
+            return type.uppercased() == "TFMLEITERN" ? decoded : nil
+        }.first ?? [:]
+        let equipmentJSON = jsonStringValue(equipmentPayload) ?? "{}"
+
+        return planRows.compactMap { row in
+            guard let decoded = feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ) else { return nil }
+            let payload = decoded as? [String: Any] ?? [:]
+            let rawPositions = (value(named: "T_PLPOD", in: payload) as? [Any]) ?? (decoded as? [Any]) ?? []
+            let equipmentType = firstSAPString(["EQART"], from: row, fallback: payload)
+            guard equipmentType.uppercased() == "TFMLEITERN" else { return nil }
+            let positions = rawPositions.compactMap { raw -> MobileLadderLegacyInspectionDefinition? in
+                guard let position = raw as? [String: Any] else { return nil }
+                let rowType = firstSAPString(["USR00", "DNAME"], from: position).uppercased()
+                guard rowType.isEmpty || rowType == "POSITION" else { return nil }
+                let form = firstSAPString(["STEUS"], from: position)
+                let operation = firstSAPString(["VORNR"], from: position)
+                guard !form.isEmpty, !operation.isEmpty else { return nil }
+                return MobileLadderLegacyInspectionDefinition(
+                    operation: operation,
+                    title: firstSAPString(["LTXA1", "KTEX1"], from: position),
+                    information: firstSAPString(["LTXA2"], from: position),
+                    resultElementID: "\(form)-\(operation)-1",
+                    actionElementID: "\(form)-\(operation)-2",
+                    commentElementID: "\(form)-\(operation)-9B"
+                )
+            }
+            guard let first = positions.first else { return nil }
+            let formCode = first.resultElementID.split(separator: "-", maxSplits: 1).first.map(String.init) ?? ""
+            let planType = firstSAPString(["PLNTY"], from: row, fallback: payload)
+            let planNumber = firstSAPString(["PLNNR"], from: row, fallback: payload)
+            let planVersion = firstSAPString(["PLNAL", "ZAEHL"], from: row, fallback: payload)
+            return MobileLadderLegacyTemplate(
+                id: [equipmentType, planType, planNumber, planVersion].joined(separator: "|"),
+                equipmentType: equipmentType, formCode: formCode, planType: planType,
+                planNumber: planNumber, planVersion: planVersion,
+                title: firstSAPString(["KTEXT", "PLANTEXT", "LTXA1"], from: row, fallback: payload),
+                plant: firstSAPString(["IWERK"], from: row, fallback: payload),
+                plannerGroup: firstSAPString(["INGRP"], from: row, fallback: payload),
+                workCenter: firstSAPString(["GEWRK", "ARBPL"], from: row, fallback: payload),
+                className: firstSAPString(["CLASS", "KLASSE"], from: classRow ?? [:], fallback: classPayload).ifEmpty("TFMMOBLEITER"),
+                classType: firstSAPString(["KLART"], from: classRow ?? [:], fallback: classPayload).ifEmpty("002"),
+                classGroup: firstSAPString(["KLAGR"], from: classPayload).ifEmpty("TFM"),
+                classDataJSON: classJSON, equipmentDataJSON: equipmentJSON,
+                characteristics: characteristics, inspectionItems: positions
+            )
+        }
+    }
+
+    /// Decodes the TFM7 schema as delivered by SAP. Unlike the historical
+    /// Cordova screen, this returns no static field/value fallback: a missing
+    /// plan, class or value-help means the caller presents "unavailable".
+    ///
+    /// The legacy source named `TFM7_001` as the plan, but the synchronized
+    /// SAP payload identifies valid TFM7 plans by their equipment type, plan
+    /// type and position form (`STEUS`). The actual plan number is retained
+    /// with the draft and used again for the outgoing package.
+    static func subdistributionTemplates(
+        planRows: [[String: Any]],
+        classRows: [[String: Any]],
+        equipmentRows: [[String: Any]]
+    ) -> [SubdistributionLegacyTemplate] {
+        let allowedTypes = Set(["TFMNSPV"])
+        let classDefinition = classRows.lazy.compactMap { row -> (row: [String: Any], payload: [String: Any])? in
+            guard let payload = firstDictionary(in: feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            )) else { return nil }
+            let type = firstSAPString(["EQART", "EQART_TO"], from: row, fallback: payload).uppercased()
+            let name = firstSAPString(["CLASS", "KLASSE"], from: row, fallback: payload).uppercased()
+            guard allowedTypes.contains(type) || name.contains("UNTERVERT") else { return nil }
+            return (row, payload)
+        }.first
+        guard let classDefinition else { return [] }
+        let classRow = classDefinition.row
+        let classPayload = classDefinition.payload
+
+        let classJSON = jsonStringValue(classPayload) ?? "{}"
+        let characteristicRows = value(named: "T_CHARA", in: classPayload) as? [[String: Any]] ?? []
+        let characteristicValues = value(named: "T_CHARVAL", in: classPayload) as? [[String: Any]] ?? []
+        let characteristics = characteristicRows.enumerated().compactMap { index, row -> SubdistributionCharacteristic? in
+            let name = firstSAPString(["ATNAM", "CHARACTERISTIC"], from: row)
+            guard !name.isEmpty else { return nil }
+            let values = characteristicValues.compactMap { value -> SubdistributionValue? in
+                guard firstSAPString(["ATNAM", "CHARACTERISTIC"], from: value) == name else { return nil }
+                let code = firstSAPString(["ATWRT", "VALUE"], from: value)
+                guard !code.isEmpty else { return nil }
+                let title = firstSAPString(["ATWTB", "VALUE_TEXT"], from: value)
+                return SubdistributionValue(value: code, title: title.isEmpty ? code : title)
+            }
+            let dataType = firstSAPString(["ATFOR", "DATA_TYPE"], from: row).uppercased()
+            let kind: SubdistributionCharacteristicKind = !values.isEmpty ? .choice : (dataType == "NUM" ? .numeric : .text)
+            return SubdistributionCharacteristic(
+                position: Int(firstSAPString(["ATINN", "POSNR"], from: row)) ?? index,
+                name: name, title: firstSAPString(["ATBEZ", "TITLE"], from: row), kind: kind,
+                maximumLength: Int(firstSAPString(["ANZST", "LENGTH"], from: row)) ?? 0,
+                unit: firstSAPString(["MSEHI", "UNIT"], from: row),
+                required: ["X", "1", "TRUE"].contains(firstSAPString(["ATERF", "PFLICHT", "REQUIRED"], from: row).uppercased()),
+                values: values
+            )
+        }.sorted { $0.position < $1.position }
+        guard !characteristics.isEmpty,
+              characteristics.contains(where: {
+                  $0.name.caseInsensitiveCompare("TFMUNTERVERT_BEZUNTERVERT") == .orderedSame
+                      || $0.name.caseInsensitiveCompare("TFMSCHUTZSCH_UNTERVERTEILUNG") == .orderedSame
+              })
+        else { return [] }
+
+        let equipmentPayload = equipmentRows.compactMap { row -> [String: Any]? in
+            let key = firstSAPString(["LKEY"], from: row).uppercased()
+            let parameter = firstSAPString(["LPAR"], from: row).uppercased()
+            guard key == "EQUIPMENT" || parameter == "EQUIPMENT" else { return nil }
+            return firstDictionary(in: feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ))
+        }.first
+        guard let equipmentPayload else { return [] }
+        let equipmentJSON = jsonStringValue(equipmentPayload) ?? "{}"
+
+        return planRows.compactMap { row -> SubdistributionLegacyTemplate? in
+            guard let decoded = feldwertValue(
+                from: stringValue(value(named: "FELDWERT", in: row))
+            ) else { return nil }
+            let payload = decoded as? [String: Any] ?? [:]
+            let equipmentType = firstSAPString(["EQART"], from: row, fallback: payload).uppercased()
+            let planType = firstSAPString(["PLNTY"], from: row, fallback: payload)
+            let planNumber = firstSAPString(["PLNNR"], from: row, fallback: payload)
+            guard equipmentType == "TFMNSPV", planType == "A", !planNumber.isEmpty else { return nil }
+            let rawPositions = (value(named: "T_PLPOD", in: payload) as? [Any]) ?? (decoded as? [Any]) ?? []
+            let positions = rawPositions.compactMap { raw -> SubdistributionInspectionDefinition? in
+                guard let position = raw as? [String: Any] else { return nil }
+                let rowType = firstSAPString(["USR00", "DNAME"], from: position).uppercased()
+                guard rowType.isEmpty || rowType == "POSITION" || rowType == "FOTO" else { return nil }
+                let form = firstSAPString(["STEUS"], from: position)
+                let operation = firstSAPString(["VORNR"], from: position)
+                guard form == "TFM7", !operation.isEmpty else { return nil }
+                let properties = value(named: "T_PROPS", in: position) as? [Any] ?? []
+                func options(at index: Int) -> [SubdistributionValue] {
+                    guard properties.indices.contains(index), let property = properties[index] as? [String: Any] else { return [] }
+                    let keys = semicolonSeparatedValues(stringValue(value(named: "DFVAL", in: property)))
+                    let titles = semicolonSeparatedValues(stringValue(value(named: "DFVAL_TXT", in: property)))
+                    return keys.enumerated().compactMap { offset, rawValue in
+                        let value = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !value.isEmpty else { return nil }
+                        let title = titles.indices.contains(offset) ? titles[offset].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                        return SubdistributionValue(value: value, title: title.isEmpty ? value : title)
+                    }
+                }
+                let isPhotoPosition = rowType == "FOTO"
+                let results = isPhotoPosition ? [] : options(at: 0)
+                let actions = isPhotoPosition ? [] : options(at: 1)
+                return SubdistributionInspectionDefinition(
+                    operation: operation, title: firstSAPString(["LTXA1", "KTEX1"], from: position),
+                    information: firstSAPString(["LTXA2"], from: position),
+                    resultElementID: "TFM7-\(operation)-1", actionElementID: "TFM7-\(operation)-2",
+                    commentElementID: "TFM7-\(operation)-9B", resultValues: results, actionValues: actions,
+                    requiresResult: !results.isEmpty,
+                    requiresPhotoAndComment: isPhotoPosition
+                )
+            }.sorted { $0.operation < $1.operation }
+            // A TFM7 plan without result value-help cannot safely offer the
+            // "Alles OK" action, and is therefore unavailable in production.
+            guard positions.contains(where: \.requiresResult),
+                  positions.filter(\.requiresResult).allSatisfy({
+                      $0.resultValues.contains(where: { $0.value == "1" })
+                  })
+            else { return nil }
+            let formCode = "TFM7"
+            let planVersion = firstSAPString(["PLNAL", "ZAEHL"], from: row, fallback: payload)
+            return SubdistributionLegacyTemplate(
+                id: [equipmentType, planType, planNumber, planVersion].joined(separator: "|"),
+                equipmentType: equipmentType, formCode: formCode, planType: planType, planNumber: planNumber,
+                planVersion: planVersion, title: firstSAPString(["KTEXT", "PLANTEXT", "LTXA1"], from: row, fallback: payload),
+                plant: firstSAPString(["IWERK"], from: row, fallback: payload),
+                plannerGroup: firstSAPString(["INGRP"], from: row, fallback: payload),
+                workCenter: firstSAPString(["GEWRK", "ARBPL"], from: row, fallback: payload),
+                className: firstSAPString(["CLASS", "KLASSE"], from: classRow, fallback: classPayload),
+                classType: firstSAPString(["KLART"], from: classRow, fallback: classPayload),
+                classGroup: firstSAPString(["KLAGR"], from: classPayload),
+                classDataJSON: classJSON, equipmentDataJSON: equipmentJSON,
+                characteristics: characteristics, inspectionItems: positions
+            )
+        }
+    }
+
+    private static func firstDictionary(in value: Any?) -> [String: Any]? {
+        if let dictionary = value as? [String: Any] { return dictionary }
+        return (value as? [Any])?.first { $0 is [String: Any] } as? [String: Any]
     }
 
     private static func packed(method: String, parameters: Encodable) throws -> String {
@@ -1073,18 +1585,23 @@ enum SAPLegacyDataExchangeCodec {
         guard type == "I1", systemStatus != "MMAB", !id.isEmpty else { return nil }
         let rawPayloadJSON = (try? JSONSerialization.data(withJSONObject: mergedNotificationData))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let functionalLocationName = stringValue(value(named: "PLTXT", in: mergedNotificationData))
         return SAPNotificationSummary(
             id: id,
             client: stringValue(value(named: "MANDT", in: mergedNotificationData)),
             title: stringValue(value(named: "QMTXT", in: mergedNotificationData)),
             functionalLocationID: stringValue(value(named: "STRNO", in: mergedNotificationData)),
-            functionalLocationName: stringValue(value(named: "PLTXT", in: mergedNotificationData)),
+            functionalLocationName: functionalLocationName,
             equipmentID: stringValue(value(named: "EQUNR", in: mergedNotificationData)),
             startDate: stringValue(value(named: "STRMN", in: mergedNotificationData)),
             endDate: stringValue(value(named: "LTRMN", in: mergedNotificationData)),
             systemStatus: systemStatus,
             userStatus: stringValue(value(named: "USTXT", in: mergedNotificationData)),
-            rawPayloadJSON: rawPayloadJSON
+            rawPayloadJSON: rawPayloadJSON,
+            structuralFilterMetadata: SAPNotificationSummary.structuralFilterMetadata(
+                from: mergedNotificationData,
+                functionalLocationName: functionalLocationName
+            )
         )
     }
 
@@ -1109,6 +1626,24 @@ enum SAPLegacyDataExchangeCodec {
             email: stringValue(value(named: "EMAIL", in: row)),
             isActive: stringValue(value(named: "AKTIV", in: row)),
             roleCode: stringValue(value(named: "RCDEX", in: row))
+        )
+    }
+
+    static func userProfile(from row: [String: Any]) -> SAPUserProfile? {
+        let persnr = stringValue(value(named: "PERSNR", in: row))
+        guard !persnr.isEmpty else { return nil }
+        let name = stringValue(value(named: "NAME", in: row))
+        let vorname = stringValue(value(named: "VORNAME", in: row))
+        let company = stringValue(value(named: "GESELLSCHAFT", in: row))
+        let email = stringValue(value(named: "EMAIL", in: row))
+        let i2 = stringValue(value(named: "I2", in: row))
+        return SAPUserProfile(
+            personalNumber: persnr,
+            name: name,
+            firstName: vorname,
+            company: company,
+            email: email,
+            canCreateI2: i2.uppercased() == "X"
         )
     }
 
@@ -1181,9 +1716,14 @@ enum SAPLegacyDataExchangeCodec {
 
             if rowTypeValue == "HEADER" {
                 let sectionID = identifier.isEmpty ? "section-\(index)" : identifier
+                let rawTitle = stringValue(value(named: "LTXA1", in: position))
+                let rawSubtitle = stringValue(value(named: "LTXA2", in: position))
+                let sectionTitle = rawTitle.isEmpty ? title : rawTitle
+                let sectionSubtitle = rawSubtitle.isEmpty ? nil : rawSubtitle
                 sections.append(SAPBriefingTemplateSection(
                     id: sectionID,
-                    title: title,
+                    title: sectionTitle,
+                    subtitle: sectionSubtitle,
                     isOptional: stringValue(value(named: "USR10", in: position)).uppercased() == "X",
                     items: []
                 ))
@@ -1215,6 +1755,7 @@ enum SAPLegacyDataExchangeCodec {
             sections[sectionIndex] = SAPBriefingTemplateSection(
                 id: section.id,
                 title: section.title,
+                subtitle: section.subtitle,
                 isOptional: section.isOptional,
                 items: section.items + [item]
             )

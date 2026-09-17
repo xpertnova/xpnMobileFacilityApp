@@ -6,7 +6,7 @@ struct FacilityShellView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @State private var sapPassword = ""
-    @State private var notificationFilterPresentation = NotificationStructuralFilterPresentationState()
+    @State private var notificationFilterPresentation: NotificationStructuralFilterPresentationState
     @State private var networkReachability = NetworkReachabilityMonitor()
     @State private var isShowingUserMenu = false
 
@@ -32,6 +32,15 @@ struct FacilityShellView: View {
     ) {
         self.demo = demo
         self.onLogout = onLogout
+        let restoredFilter = NotificationStructuralFilterPreferences.load(
+            workerID: demo.sapDataStore.localWorkerID,
+            isDemoMode: demo.isDemoMode
+        )
+        _notificationFilterPresentation = State(
+            initialValue: NotificationStructuralFilterPresentationState(
+                restoredFilter: restoredFilter
+            )
+        )
     }
 
     var body: some View {
@@ -63,16 +72,51 @@ struct FacilityShellView: View {
                         .transition(.opacity)
 
                     if let selectedOfflineNotificationDetail = demo.selectedOfflineNotificationDetail {
-                        NotificationDetailView(
-                            detail: selectedOfflineNotificationDetail,
-                            offlineWorkStore: demo.offlineWorkStore,
-                            backDestination: demo.offlineNotificationDetailReturnDestination,
-                            dismiss: { demo.dismissOfflineNotificationDetail() }
-                        )
-                        .id(selectedOfflineNotificationDetail.summary.id)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                        .zIndex(1)
+                        if let form = selectedOfflineNotificationDetail.equipmentInspectionForm {
+                            EquipmentInspectionView(
+                                detail: selectedOfflineNotificationDetail,
+                                form: form,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                sapDataStore: demo.sapDataStore,
+                                elevatorAssetDataProvider: demo.elevatorAssetDataProvider,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() },
+                                dismissForMissingMasterData: {
+                                    demo.dismissOfflineNotificationDetail(returningTo: .notifications)
+                                }
+                            )
+                            .id(demo.notificationDetailPresentationID)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
+                        } else if selectedOfflineNotificationDetail.formCode.uppercased() == "TFM1" {
+                            WartungsplanDetailView(
+                                detail: selectedOfflineNotificationDetail,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                sapDataStore: demo.sapDataStore,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                            )
+                            .id(demo.notificationDetailPresentationID)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
+                        } else {
+                            NotificationDetailView(
+                                detail: selectedOfflineNotificationDetail,
+                                offlineWorkStore: demo.offlineWorkStore,
+                                photoAttachmentStore: demo.photoAttachmentStore,
+                                sapDataStore: demo.sapDataStore,
+                                backDestination: demo.offlineNotificationDetailReturnDestination,
+                                dismiss: { demo.dismissOfflineNotificationDetail() }
+                            )
+                            .id(demo.notificationDetailPresentationID)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .zIndex(1)
+                        }
                     }
 
                     if demo.selection == .profileSettings {
@@ -114,15 +158,10 @@ struct FacilityShellView: View {
                     .zIndex(2)
             }
 
-            if demo.selection == .notifications, notificationFilterPresentation.isPresented {
-                NotificationStructuralFilterOverlay(
-                    demo: demo,
-                    presentation: $notificationFilterPresentation
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity)
-                .zIndex(2)
-            }
+            NotificationStructuralFilterOverlayHost(
+                demo: demo,
+                presentation: notificationFilterPresentation
+            )
 
             if !demo.isDemoMode, demo.shouldPresentDraftWarningBeforeSync {
                 Color.black.opacity(0.42)
@@ -150,6 +189,7 @@ struct FacilityShellView: View {
                     isRefreshing: demo.sapDataStore.isRefreshing,
                     stage: demo.sapDataStore.refreshStage,
                     error: demo.sapDataStore.refreshError,
+                    failureContext: demo.sapDataStore.refreshFailureContext,
                     refresh: refreshSAPData,
                     cancel: dismissSAPRefresh
                 )
@@ -162,7 +202,17 @@ struct FacilityShellView: View {
         .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
         .task(id: demo.offlineWorkStore.workerID) {
             await demo.offlineWorkStore.load()
-            await demo.sapDataStore.loadCachedData()
+            let restoredFilter = NotificationStructuralFilterPreferences.load(
+                workerID: demo.sapDataStore.localWorkerID,
+                isDemoMode: demo.isDemoMode
+            )
+            if !demo.isDemoMode {
+                // Restore the selected filter before the one initial cache query,
+                // rather than loading every notification and immediately querying
+                // the cache again when the notifications view appears.
+                await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
+                await demo.sapDataStore.loadCachedData()
+            }
             await demo.technicalPlacesStore.load()
         }
         .task(id: scenePhase) {
@@ -262,6 +312,7 @@ struct FacilityShellView: View {
                 .padding(.top, 8)
         }
         .padding(16)
+        .safeAreaPadding(.top, 4)
         .frame(width: expandedSidebarWidth)
         .background(FacilityTheme.sidebar)
         .animation(.snappy(duration: 0.22, extraBounce: 0), value: isShowingUserMenu)
@@ -327,6 +378,7 @@ struct FacilityShellView: View {
             compactProfileButton
         }
         .padding(.vertical, 14)
+        .safeAreaPadding(.top, 4)
         .frame(width: compactSidebarWidth)
         .background(FacilityTheme.sidebar)
     }
@@ -560,6 +612,7 @@ struct FacilityShellView: View {
             await demo.sapDataStore.refresh(sapPassword: password)
             sapPassword = ""
             if demo.sapDataStore.refreshError == nil {
+                await demo.offlineWorkStore.load()
                 demo.shouldPresentSAPRefresh = false
             }
         }
@@ -614,7 +667,7 @@ struct FacilityShellView: View {
         case .notifications:
             NotificationsView(
                 demo: demo,
-                filterPresentation: $notificationFilterPresentation
+                filterPresentation: notificationFilterPresentation
             )
         case .manualCapture: ManualCaptureView(demo: demo)
         case .defects: DefectsView(demo: demo)

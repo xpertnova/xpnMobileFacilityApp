@@ -179,3 +179,96 @@ struct FacilityTemplateBadge: View {
             .background(style.background, in: Capsule())
     }
 }
+
+/// Shared comment editor used by inspection workflows. Keeping this surface
+/// consistent means a technician gets the same focused, keyboard-ready editor
+/// whether they are documenting a notification or a mobile ladder.
+struct FacilityCommentEditorOverlay: View {
+    @Binding var comment: String
+    let dismiss: () -> Void
+    @FocusState private var isEditorFocused: Bool
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.14)
+                .ignoresSafeArea()
+                .onTapGesture(perform: dismiss)
+
+            VStack(alignment: .leading, spacing: 16) {
+                Text("notifications.detail.commentEditor.title")
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+
+                ZStack(alignment: .topLeading) {
+                    if comment.isEmpty {
+                        Text("notifications.detail.commentEditor.placeholder")
+                            .font(.body)
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 18)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextEditor(text: $comment)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(10)
+                        .focused($isEditorFocused)
+                        .accessibilityLabel(Text("notifications.detail.commentEditor.placeholder"))
+                }
+                .frame(height: 190)
+                .background(Color(white: 0.89), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                HStack {
+                    Spacer()
+                    Button("notifications.detail.commentEditor.done", action: dismiss)
+                        .buttonStyle(.borderedProminent)
+                        .tint(FacilityTheme.accent)
+                }
+            }
+            .padding(22)
+            .frame(maxWidth: 460)
+            .background(Color(white: 0.95), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: Color.black.opacity(0.20), radius: 26, y: 12)
+            .padding(28)
+        }
+        .onAppear { isEditorFocused = true }
+    }
+}
+
+/// One persistent action bar for every inspection workflow. The order,
+/// labels, spacing, and enabled-state treatment deliberately match the
+/// Mobile Ladder reference: Everything OK, Save draft, Close notification.
+struct FacilityInspectionActionBar: View {
+    let markEverythingOkay: () -> Void
+    let saveDraft: () -> Void
+    let closeNotification: () -> Void
+    let isMarkEverythingOkayEnabled: Bool
+    let isSaveDraftEnabled: Bool
+    let isCloseNotificationEnabled: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Spacer(minLength: 12)
+
+            Button("inspection.action.everythingOkay", action: markEverythingOkay)
+                .buttonStyle(.plain)
+                .foregroundStyle(FacilityTheme.blue)
+                .disabled(!isMarkEverythingOkayEnabled)
+
+            Button("inspection.action.saveDraft", action: saveDraft)
+                .buttonStyle(.bordered)
+                .tint(FacilityTheme.ink)
+                .disabled(!isSaveDraftEnabled)
+
+            Button("inspection.action.closeNotification", action: closeNotification)
+                .buttonStyle(.borderedProminent)
+                .tint(FacilityTheme.accent)
+                .disabled(!isCloseNotificationEnabled)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) { Divider() }
+    }
+}

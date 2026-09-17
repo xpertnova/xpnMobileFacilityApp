@@ -2,15 +2,28 @@ import SwiftUI
 
 struct DraftsView: View {
     let demo: FacilityDemoViewModel
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var showsUnavailableNotificationAlert = false
+    @State private var photoWorkspaceScope: LocalPhotoScope?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+        ZStack {
+            if let photoWorkspaceScope {
+                LocalPhotoWorkspace(
+                    scope: photoWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    photoStore: demo.photoAttachmentStore,
+                    close: { self.photoWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                 PageHeader(
                     "drafts.title",
                     subtitle: "drafts.subtitle",
-                    trailing: demo.isDemoMode ? nil : AnyView(syncUnavailableControl)
+                    trailing: demo.isDemoMode ? nil : AnyView(syncControl)
                 )
 
                 switch demo.offlineWorkStore.state {
@@ -38,7 +51,10 @@ struct DraftsView: View {
                         && demo.offlineWorkStore.defectItems.isEmpty
                         && demo.offlineWorkStore.meterReadingItems.isEmpty
                         && demo.offlineWorkStore.technicalObjectEditItems.isEmpty
-                        && demo.offlineWorkStore.proofOfQualificationItems.isEmpty {
+                        && demo.offlineWorkStore.proofOfQualificationItems.isEmpty
+                        && demo.offlineWorkStore.mobileLadderItems.isEmpty
+                        && demo.offlineWorkStore.subdistributionItems.isEmpty
+                        && demo.offlineWorkStore.photoCollectionItems.isEmpty {
                         emptyState
                     } else {
                         savedWorkList
@@ -50,10 +66,17 @@ struct DraftsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                    }
+                    .padding(28)
+                    .frame(maxWidth: 1280, alignment: .leading)
+                }
+                .transition(PhotoWorkspaceMotion.source)
             }
-            .padding(28)
-            .frame(maxWidth: 1280, alignment: .leading)
         }
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: photoWorkspaceScope
+        )
         .task {
             await demo.offlineWorkStore.load()
         }
@@ -64,16 +87,15 @@ struct DraftsView: View {
         }
     }
 
-    private var syncUnavailableControl: some View {
+    private var syncControl: some View {
         Button {
-            // SAP writes for offline work have not been verified yet.
+            demo.requestSAPRefresh()
         } label: {
             Label("drafts.sync.action", systemImage: "arrow.triangle.2.circlepath")
         }
         .buttonStyle(.borderedProminent)
         .tint(FacilityTheme.navy)
-        .disabled(true)
-        .accessibilityHint(Text("offline.sync.unavailable"))
+        .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
     }
 
     private var emptyState: some View {
@@ -87,14 +109,80 @@ struct DraftsView: View {
     private var savedWorkList: some View {
         LazyVStack(spacing: 12) {
             savedNotificationRows
+            savedMobileLadderRows
+            savedSubdistributionRows
             savedDefectRows
             savedMeterReadingRows
             savedBriefingRows
             savedElectricalSafetyRows
             savedTechnicalObjectEditList
             savedProofOfQualificationList
+            savedPhotoCollections
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var savedMobileLadderRows: some View {
+        ForEach(demo.offlineWorkStore.mobileLadderItems) { item in
+            if let ladder = item.payload.mobileLadder {
+                LocalWorkTemplateRow(
+                    icon: "🪜",
+                    title: Text(ladder.designation.isEmpty ? String(localized: "mobileLadder.title") : ladder.designation),
+                    subtitle: Text(ladder.context?.legacyContext.functionalLocation ?? String(localized: "mobileLadder.address.notSelected")),
+                    status: demo.isDemoMode ? .demoLocal : .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openMobileLadder(item.id) }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedSubdistributionRows: some View {
+        ForEach(demo.offlineWorkStore.subdistributionItems) { item in
+            if let subdistribution = item.payload.subdistribution {
+                let name = subdistribution.characteristicValues["TFMUNTERVERT_BEZUNTERVERT"]
+                    ?? subdistribution.characteristicValues["TFMSCHUTZSCH_UNTERVERTEILUNG"]
+                    ?? ""
+                LocalWorkTemplateRow(
+                    icon: "⚡",
+                    title: Text(name.isEmpty ? String(localized: "subdistribution.title") : name),
+                    subtitle: Text(subdistribution.context?.legacyContext.functionalLocation ?? String(localized: "subdistribution.context.notSelected")),
+                    status: demo.isDemoMode ? .demoLocal : .offline(item.status),
+                    syncError: item.syncError,
+                    action: { demo.openSubdistribution(item.id) }
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var savedPhotoCollections: some View {
+        ForEach(demo.offlineWorkStore.photoCollectionItems.filter {
+            let workflow = $0.payload.photoCollection?.scope.workflow
+            return workflow != .mobileLadder && workflow != .subdistribution
+        }) { item in
+            if let collection = item.payload.photoCollection, !collection.attachments.isEmpty {
+                LocalWorkTemplateRow(
+                    icon: "📷",
+                    title: Text(collection.scope.displayTitle.isEmpty
+                        ? String(localized: "photos.workspace.title")
+                        : collection.scope.displayTitle),
+                    subtitle: Text(photoCollectionSubtitle(collection)),
+                    status: demo.isDemoMode ? .demoLocal : .offline(.draft),
+                    syncError: nil,
+                    action: { photoWorkspaceScope = collection.scope }
+                )
+            }
+        }
+    }
+
+    private func photoCollectionSubtitle(_ collection: PhotoCollectionDraftPayload) -> String {
+        let count = String(format: String(localized: "photos.workspace.count"), collection.attachments.count)
+        return [collection.scope.displaySubtitle, count]
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -135,6 +223,10 @@ struct DraftsView: View {
                 if let review = item.payload.notificationReview {
                     SavedNotificationRow(item: item, review: review) {
                         open(review)
+                    }
+                } else if let inspection = item.payload.elevatorInspection {
+                    SavedEquipmentInspectionRow(item: item, inspection: inspection) {
+                        open(inspection)
                     }
                 }
             }
@@ -225,6 +317,41 @@ struct DraftsView: View {
                 return
             }
         }
+    }
+
+    private func open(_ inspection: ElevatorInspectionDraftPayload) {
+        Task {
+            guard await demo.openSavedElevatorInspection(inspection) else {
+                showsUnavailableNotificationAlert = true
+                return
+            }
+        }
+    }
+}
+
+/// Saved TFM2/TFM4/TFM6/TFM8 equipment inspection.
+private struct SavedEquipmentInspectionRow: View {
+    let item: OfflineWorkItem
+    let inspection: ElevatorInspectionDraftPayload
+    let action: () -> Void
+
+    private var title: String {
+        let savedTitle = inspection.notificationSnapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return savedTitle.isEmpty
+            ? String(localized: String.LocalizationValue(inspection.form.titleKey))
+            : savedTitle
+    }
+
+    var body: some View {
+        LocalWorkTemplateRow(
+            icon: inspection.form.draftIcon,
+            title: Text(title),
+            subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks"))"),
+            status: inspection.isClosedLocally ? .closedLocally : .offline(item.status),
+            syncError: item.syncError,
+            action: action
+        )
+        .accessibilityHint(Text("drafts.accessibility.openNotification"))
     }
 }
 

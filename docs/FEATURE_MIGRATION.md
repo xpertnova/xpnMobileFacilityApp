@@ -62,6 +62,73 @@ The source order is always:
 
 **Exit criteria:** users can complete a realistic reference notification offline; reopening it restores the saved data; verified synchronization sends it only once.
 
+#### Shared inspection checklist
+
+Every form that records inspection points renders them through one component,
+`Features/Shared/InspectionForm`, not through a per-form copy. The legacy
+Cordova client already worked this way: `view/Rundgang.view.xml`,
+`view/Aufzugskontrolle.view.xml`, `view/WartungsPlan.view.xml` and
+`view/MasterDataForm.view.xml` all declare the same `formPositionTable`, and
+every controller builds its rows on top of one `BaseFormController`. The forms
+differ only in which columns exist and which control the result column uses.
+
+`InspectionFormVariant.forFormCode(_:)` is the single place that expresses
+those differences, and it is traced to the legacy controllers:
+
+| Form | Result control | Action | Material | Date | Header status |
+| --- | --- | --- | --- | --- | --- |
+| `TFM1` Wartungsplan | segmented | – | – | – | – |
+| `TFM2` Aufzugskontrolle | dropdown | yes | yes | yes | Außer Betrieb |
+| `TFM3` Rundgang | segmented | – | – | yes | – |
+| `TFM4` Steigleitern | dropdown | yes | – | yes | Außer Betrieb |
+| `TFM5` Mobile Leiter | dropdown | yes | – | yes | Demontiert |
+| `TFM6` Feststellanlage | dropdown | yes | yes | yes | Außer Betrieb |
+| `TFM7` Unterverteilung | dropdown | yes | – | yes | Außer Betrieb |
+| `TFM8` Dachanlagen | dropdown | yes | – | yes | – |
+
+- The result control is a variant, never a per-form design. A two-value
+  decision renders as the segmented buttons `Rundgang`/`WartungsPlan` build
+  from `T_PROPS[0]`; a longer SAP value help renders as the anchored code list
+  the `DBOX` branch of the other controllers builds. Column widths live in
+  `InspectionFormMetrics`.
+- The execution date and the status share one toolbar band directly above the
+  checklist, never a separate card. The legacy `form.date` and
+  `form.outOfOrder` controls live together in the table's header toolbar
+  (`www/fragment/TableFormHeader.fragment.xml`, `SpaceBetween`), and only TFM1
+  hides the date.
+- `T_PLPOD` rows with `USR00 == "HEADER"` or `"U1"` are group bands, not
+  positions: `bindTableItems` routes them to `getGroupHeaderListItem` and does
+  not advance the position number. They carry through to the offline snapshot
+  so reopening a draft keeps them.
+- Column labels come from one vocabulary, `InspectionFormColumn`, matching the
+  legacy `tabelle.column.header.*` texts. The result column reads
+  "Befund" / "Result" on every form.
+- The header "Außer Betrieb" / "Demontiert" status belongs to the forms
+  `BaseFormController.buildDefaultElements` builds it for — every code except
+  `TFM1`, `TFM3`, `TFM8`, `TFM9` and `TFMQ`. It is a header property, not a
+  checklist row: it posts as `<FORM>-0000-1` with its comment in
+  `<FORM>-0000-9B`, it locks and clears the positions while it is set, and it
+  cannot be closed without a comment. Forms without it (TFM8 Dachanlagen on the
+  shared equipment inspection) still post both elements, with empty values,
+  because `select.getItemMeldung` creates the rows but nothing sets them.
+- Result semantics live in `InspectionFormRules`, traced from
+  `HeaderFormBuilder.checkInputConstraints` and the `checkInputConstraints`
+  overrides in `Rundgang`/`WartungsPlan`. A new offline-capable inspection
+  form adds a variant and reuses those rules; it does not restate them.
+- The class-characteristics header above the checklist (TFM2, TFM4, TFM6, TFM8) is
+  one component, `EquipmentMasterDataFields`, with its rules in
+  `EquipmentMasterDataRules`. Traced from `HeaderFormBuilder._buildHeaderForm`:
+  one labelled row per characteristic, a dropdown for a `T_CHARVAL` list
+  (multi-select without `ATEIN`), a date for `ATFOR = DATE`, a number field for
+  `NUM` with `ATSCH`, and an upper-cased text field otherwise. The fields are
+  editable except for `TFMPERS`/`TFMLAST` elevators and `…_IDNUMMER`
+  dropdowns. Every dropdown needs a value to close; "Pflege durch Admin" needs
+  a proposal. On close, the values post to `TO_T0283` (`ELEMENTNR = ATNAM`),
+  proposals to `TO_T0211`, and a changed record as a whole packed `JSOBJECT` to
+  `TO_T0266` (equipment) or `TO_T0265` (technical place). Proposals stay in the
+  offline draft until the inspection is closed, unlike the legacy client, which
+  wrote them to `TO_T0211` as soon as the popover was saved.
+
 ### Phase 3 — Manual processing, defects, and temporary-save overview
 
 **Outcome:** workers can record work that did not begin with a synchronized notification.

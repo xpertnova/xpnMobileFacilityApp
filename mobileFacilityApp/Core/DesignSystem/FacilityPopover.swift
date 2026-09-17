@@ -351,13 +351,13 @@ private struct FacilityPopoverPresenter<PopoverContent: View>: UIViewControllerR
         context.coordinator.parent = self
 
         if isPresented {
-            if let presented = uiViewController.presentedViewController as? UIHostingController<PopoverContent> {
+            if let presented = context.coordinator.presentedController as? UIHostingController<PopoverContent> {
                 presented.rootView = popoverContent()
                 let targetSize = presented.sizeThatFits(in: CGSize(width: 380, height: 600))
                 if targetSize.width > 0 && targetSize.height > 0 {
                     presented.preferredContentSize = targetSize
                 }
-            } else if uiViewController.presentedViewController == nil {
+            } else if context.coordinator.presentedController == nil && !context.coordinator.isPresenting {
                 guard uiViewController.view.window != nil else { return }
 
                 let content = popoverContent()
@@ -381,11 +381,57 @@ private struct FacilityPopoverPresenter<PopoverContent: View>: UIViewControllerR
                     popover.popoverBackgroundViewClass = FacilityPopoverBackgroundView.self
                 }
 
-                uiViewController.present(hostingController, animated: true)
+                presentPopover(
+                    hostingController: hostingController,
+                    from: uiViewController,
+                    context: context
+                )
             }
         } else {
-            if let presented = uiViewController.presentedViewController, !presented.isBeingDismissed {
-                uiViewController.dismiss(animated: true)
+            context.coordinator.isPresenting = false
+            if let presented = context.coordinator.presentedController {
+                context.coordinator.presentedController = nil
+                if !presented.isBeingDismissed {
+                    presented.dismiss(animated: true)
+                }
+            }
+        }
+    }
+
+    private func presentPopover(
+        hostingController: UIViewController,
+        from uiViewController: UIViewController,
+        context: Context
+    ) {
+        if let currentPresented = uiViewController.presentedViewController {
+            if currentPresented.isBeingDismissed {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    guard context.coordinator.parent.isPresented,
+                          context.coordinator.presentedController == nil,
+                          !context.coordinator.isPresenting,
+                          uiViewController.view.window != nil else { return }
+                    self.presentPopover(hostingController: hostingController, from: uiViewController, context: context)
+                }
+                return
+            } else if currentPresented !== hostingController {
+                currentPresented.dismiss(animated: true) {
+                    guard context.coordinator.parent.isPresented,
+                          context.coordinator.presentedController == nil,
+                          !context.coordinator.isPresenting,
+                          uiViewController.view.window != nil else { return }
+                    self.presentPopover(hostingController: hostingController, from: uiViewController, context: context)
+                }
+                return
+            }
+        }
+
+        context.coordinator.isPresenting = true
+        context.coordinator.presentedController = hostingController
+        uiViewController.present(hostingController, animated: true) {
+            context.coordinator.isPresenting = false
+            if !context.coordinator.parent.isPresented {
+                context.coordinator.presentedController = nil
+                hostingController.dismiss(animated: true)
             }
         }
     }
@@ -407,9 +453,15 @@ private struct FacilityPopoverPresenter<PopoverContent: View>: UIViewControllerR
 
     final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
         var parent: FacilityPopoverPresenter
+        weak var presentedController: UIViewController?
+        var isPresenting: Bool = false
 
         init(_ parent: FacilityPopoverPresenter) {
             self.parent = parent
+        }
+
+        func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle {
+            .none
         }
 
         func adaptivePresentationStyle(
@@ -420,6 +472,8 @@ private struct FacilityPopoverPresenter<PopoverContent: View>: UIViewControllerR
         }
 
         func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            presentedController = nil
+            isPresenting = false
             if parent.isPresented {
                 parent.isPresented = false
             }

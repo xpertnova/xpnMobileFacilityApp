@@ -23,6 +23,72 @@ final class SAPSyncTokenTests: XCTestCase {
         XCTAssertNil(store.token(for: workerID))
     }
 
+    func testLandscapeScopedAccountsDoNotReuseTokens() throws {
+        let store = InMemorySAPSyncTokenStore()
+        let qaAccount = SAPSyncTokenScope.account(
+            synchronizationUserID: "S500128",
+            landscapeFingerprint: "qa-landscape"
+        )
+        let productionAccount = SAPSyncTokenScope.account(
+            synchronizationUserID: "S500128",
+            landscapeFingerprint: "production-landscape"
+        )
+
+        XCTAssertNotEqual(qaAccount, productionAccount)
+        try store.save(token: "QA-TOKEN", for: qaAccount)
+        XCTAssertEqual(store.token(for: qaAccount), "QA-TOKEN")
+        XCTAssertNil(store.token(for: productionAccount))
+    }
+
+    func testHTTPFailureDiagnosticKeepsOnlySafeResponseMetadata() throws {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: XCTUnwrap(URL(string: "https://example.invalid/hidden")),
+            statusCode: 403,
+            httpVersion: nil,
+            headerFields: [
+                "X-Correlation-ID": "gateway-trace-123",
+                "WWW-Authenticate": "Bearer realm=protected-resource",
+                "Set-Cookie": "must-not-appear"
+            ]
+        ))
+
+        let summary = SAPSynchronizationDiagnostics.httpFailureSummary(
+            method: "M0153003",
+            response: response
+        )
+
+        XCTAssertEqual(
+            summary,
+            "[SAP Sync Debug] M0153003 received HTTP 403; correlation ID=gateway-trace-123; authentication challenge=Bearer."
+        )
+        XCTAssertFalse(summary.contains("Set-Cookie"))
+        XCTAssertFalse(summary.contains("protected-resource"))
+        XCTAssertFalse(summary.contains("example.invalid"))
+    }
+
+    func testHTTPFailureDiagnosticIncludesSafeODataErrorDetails() throws {
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: XCTUnwrap(URL(string: "https://example.invalid/hidden")),
+            statusCode: 403,
+            httpVersion: nil,
+            headerFields: nil
+        ))
+        let responseBody = Data("""
+        {"error":{"code":"/IWFND/CM_COS/004","message":{"value":"No authorization for this request."}}}
+        """.utf8)
+
+        let summary = SAPSynchronizationDiagnostics.httpFailureSummary(
+            method: "M0153003",
+            response: response,
+            responseBody: responseBody
+        )
+
+        XCTAssertEqual(
+            summary,
+            "[SAP Sync Debug] M0153003 received HTTP 403; SAP error code=/IWFND/CM_COS/004; SAP reason=No authorization for this request."
+        )
+    }
+
     func testCodecTokenExtractionFromDictionary() throws {
         let envelopeJSON = """
         [
@@ -191,6 +257,77 @@ final class SAPSyncTokenTests: XCTestCase {
     }
 
     @MainActor
+    func testForbiddenSavedTokenIsDiscardedBeforePasswordFallback() async throws {
+        let tokenStore = InMemorySAPSyncTokenStore()
+        let workerID = "TEST_WORKER"
+        try tokenStore.save(token: "STALE_TOKEN", for: workerID)
+
+        let mockService = MockTokenRefreshService()
+        mockService.tokenRefreshError = .httpStatus(403)
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            tokenStore: tokenStore,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        let didRefresh = await dataStore.refreshWithSavedToken()
+        XCTAssertFalse(didRefresh)
+        XCTAssertFalse(dataStore.hasValidSavedToken)
+        XCTAssertNil(tokenStore.token(for: workerID))
+        XCTAssertNil(dataStore.refreshError)
+    }
+
+    @MainActor
+    func testPasswordRefreshFailureKeepsSafeFailureContextForTheDialog() async throws {
+        let workerID = "TEST_WORKER"
+        let mockService = MockTokenRefreshService()
+        mockService.passwordRefreshError = .httpStatus(403)
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        await dataStore.refresh(sapPassword: "not-stored")
+
+        guard let failureContext = dataStore.refreshFailureContext else {
+            return XCTFail("Expected the dialog to receive a failure context")
+        }
+        XCTAssertEqual(failureContext.authenticationMethod, .password)
+        XCTAssertEqual(failureContext.stage, .authenticating)
+        guard case .httpStatus(403) = failureContext.error else {
+            return XCTFail("Expected the dialog context to retain HTTP 403")
+        }
+    }
+
+    @MainActor
+    func testPasswordRefreshFailureAfterPostUsesThePostAcknowledgementStage() async throws {
+        let workerID = "TEST_WORKER"
+        let mockService = MockTokenRefreshService()
+        mockService.passwordFailureStage = .waitingForOutgoingAcknowledgement
+        mockService.passwordRefreshError = .serviceUnavailable
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        await dataStore.refresh(sapPassword: "not-stored")
+
+        guard let failureContext = dataStore.refreshFailureContext else {
+            return XCTFail("Expected the dialog to retain the post failure stage")
+        }
+        XCTAssertEqual(failureContext.stage, .waitingForOutgoingAcknowledgement)
+        guard case .serviceUnavailable = failureContext.error else {
+            return XCTFail("Expected the original service-unavailable error")
+        }
+    }
+
+    @MainActor
     func testViewModelSAPRefreshWithSavedTokenShowsProgressAndCompletes() async throws {
         let tokenStore = InMemorySAPSyncTokenStore()
         let workerID = "TEST_WORKER"
@@ -311,7 +448,7 @@ final class SAPSyncTokenTests: XCTestCase {
     }
 
     @MainActor
-    func testViewModelSAPRefreshWithPendingDraftsShowsWarningDialog() async throws {
+    func testViewModelSAPRefreshWithPendingDraftsPreservesDraftAndShowsPasswordPrompt() async throws {
         let workerID = "TEST_WORKER"
         let repo = InMemoryOfflineWorkRepository()
         let offlineWorkStore = OfflineWorkStore(repository: repo, workerID: workerID)
@@ -354,32 +491,16 @@ final class SAPSyncTokenTests: XCTestCase {
             workerRole: .technician
         )
 
-        // Request refresh with pending drafts
         viewModel.requestSAPRefresh()
 
-        // Warning dialog must be presented; sync must NOT have started yet
-        XCTAssertTrue(viewModel.shouldPresentDraftWarningBeforeSync)
-        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
+        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
+        XCTAssertTrue(viewModel.shouldPresentSAPRefresh)
         XCTAssertFalse(dataStore.isRefreshing)
-
-        // Dismiss warning via cancel
-        viewModel.dismissDraftWarning()
-        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
-        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
-        XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
-
-        // Request again, then choose "Keep & Review Drafts"
-        viewModel.requestSAPRefresh()
-        XCTAssertTrue(viewModel.shouldPresentDraftWarningBeforeSync)
-        viewModel.keepDraftsAndNavigate()
-        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
-        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
-        XCTAssertEqual(viewModel.selection, .drafts)
         XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
     }
 
     @MainActor
-    func testViewModelConfirmDiscardDraftsAndSyncResetsDraftsAndProceedsWithSync() async throws {
+    func testLegacyConfirmActionPreservesDraftsAndProceedsWithSync() async throws {
         let workerID = "TEST_WORKER"
         let repo = InMemoryOfflineWorkRepository()
         let offlineWorkStore = OfflineWorkStore(repository: repo, workerID: workerID)
@@ -425,35 +546,72 @@ final class SAPSyncTokenTests: XCTestCase {
             workerRole: .technician
         )
 
-        // Request refresh -> shows warning
-        viewModel.requestSAPRefresh()
-        XCTAssertTrue(viewModel.shouldPresentDraftWarningBeforeSync)
-
-        // Confirm discard and sync
         viewModel.confirmDiscardDraftsAndSync()
         XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
 
         // Allow async Task (reset and refresh) to complete
         try await Task.sleep(for: .milliseconds(60))
 
-        // Drafts should now be discarded
-        XCTAssertEqual(offlineWorkStore.localWorkCount, 0)
+        XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
         // Token sync was invoked
         XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+    }
+
+    @MainActor
+    func testDataStoreDoesNotStartSecondTokenRefreshWhileFirstIsInFlight() async throws {
+        let workerID = "TEST_WORKER"
+        let tokenStore = InMemorySAPSyncTokenStore()
+        try tokenStore.save(token: "SAVED_TOKEN", for: workerID)
+        let mockService = MockTokenRefreshService()
+        mockService.suspendsTokenRefresh = true
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            tokenStore: tokenStore,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        XCTAssertTrue(dataStore.beginTokenRefresh())
+        let firstRefresh = Task { await dataStore.refreshWithSavedToken() }
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+
+        let concurrentRefreshResult = await dataStore.refreshWithSavedToken()
+        XCTAssertFalse(concurrentRefreshResult)
+        await dataStore.refresh(sapPassword: "password")
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+        XCTAssertEqual(mockService.passwordRefreshCallCount, 0)
+
+        mockService.finishSuspendedTokenRefresh()
+        let firstRefreshResult = await firstRefresh.value
+        XCTAssertTrue(firstRefreshResult)
+        XCTAssertFalse(dataStore.isRefreshing)
     }
 }
 
 private final class MockTokenRefreshService: SAPNotificationRefreshService, @unchecked Sendable {
     var shouldSucceedWithToken = true
+    var tokenRefreshError: SAPReadError?
+    var passwordRefreshError: SAPReadError?
+    var passwordFailureStage: SAPReadRefreshStage?
     var returnedTokenOnPasswordSync: String?
     var tokenRefreshCallCount = 0
     var passwordRefreshCallCount = 0
+    var suspendsTokenRefresh = false
+    private var tokenRefreshContinuation: CheckedContinuation<Void, Never>?
 
     func refresh(
         sapPassword: String,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         passwordRefreshCallCount += 1
+        if let passwordFailureStage {
+            await progress(passwordFailureStage)
+        }
+        if let passwordRefreshError {
+            throw passwordRefreshError
+        }
         return SAPCachedData(
             notifications: [],
             workerProfile: nil,
@@ -469,6 +627,14 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         tokenRefreshCallCount += 1
+        if suspendsTokenRefresh {
+            await withCheckedContinuation { continuation in
+                tokenRefreshContinuation = continuation
+            }
+        }
+        if let tokenRefreshError {
+            throw tokenRefreshError
+        }
         if shouldSucceedWithToken {
             return SAPCachedData(
                 notifications: [],
@@ -481,5 +647,10 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         } else {
             throw SAPReadError.tokenInvalidOrExpired
         }
+    }
+
+    func finishSuspendedTokenRefresh() {
+        tokenRefreshContinuation?.resume()
+        tokenRefreshContinuation = nil
     }
 }

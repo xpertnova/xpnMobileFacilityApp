@@ -104,6 +104,11 @@ final class LegacySQLiteSchemaTests: XCTestCase {
         )
         XCTAssertEqual(committed.workerProfile?.personnelNumber, "4711")
         XCTAssertEqual(committed.metadata?.sapWorkerID, "SAP-4711")
+        let cacheSummary = try await repository.incomingCacheSummary()
+        XCTAssertEqual(cacheSummary.notificationRowCount, 2)
+        XCTAssertEqual(cacheSummary.actionableNotificationCount, 2)
+        XCTAssertEqual(cacheSummary.businessEntityCount, 2)
+        XCTAssertEqual(cacheSummary.elevatorInspectionCount, 0)
         let firstPage = try await repository.loadNotifications(
             for: "local-1",
             matching: "pump",
@@ -149,6 +154,25 @@ final class LegacySQLiteSchemaTests: XCTestCase {
             offset: 0
         )
         XCTAssertEqual(preserved.notifications.map(\.id), ["N-1", "N-2"])
+    }
+
+    func testIncomingSnapshotCannotBeStartedTwice() async throws {
+        let url = temporaryDatabaseURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let firstRepository = try SQLiteSAPDataCacheRepository(databaseURL: url, workerID: "local-1")
+        let secondRepository = try SQLiteSAPDataCacheRepository(databaseURL: url, workerID: "local-1")
+
+        try await firstRepository.beginIncoming()
+        do {
+            try await secondRepository.beginIncoming()
+            XCTFail("A second repository must not reuse the active temporary tables")
+        } catch let error as SAPReadError {
+            XCTAssertEqual(error.errorDescription, SAPReadError.serviceUnavailable.errorDescription)
+        }
+        await firstRepository.abortIncoming()
+
+        try await secondRepository.beginIncoming()
+        await secondRepository.abortIncoming()
     }
 
     func testSAPTransportUsesVerifiedLegacyUserProjectionOnly() throws {

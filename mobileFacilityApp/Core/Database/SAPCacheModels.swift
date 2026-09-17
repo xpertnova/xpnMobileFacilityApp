@@ -44,6 +44,123 @@ struct NotificationStructuralFilterMetadata: Codable, Equatable, Hashable, Senda
     }
 }
 
+/// Pre-grouped value-help choices for the notification filter. Building this
+/// once as cache metadata changes keeps the SwiftUI overlay to simple lookups
+/// instead of grouping and locale-sorting every SAP hierarchy row on a tap.
+struct NotificationStructuralFilterOption: Identifiable, Equatable, Sendable {
+    let id: String
+    let label: String
+}
+
+struct NotificationStructuralFilterOptions: Equatable, Sendable {
+    private struct Scope: Hashable, Sendable {
+        let businessEntityID: String
+        let buildingCode: String
+        let tradeCode: String
+    }
+
+    static let empty = NotificationStructuralFilterOptions(metadata: [])
+
+    let businessEntityOptions: [NotificationStructuralFilterOption]
+    private let buildingOptionsByBusinessEntity: [Scope: [NotificationStructuralFilterOption]]
+    private let tradeOptionsByBuilding: [Scope: [NotificationStructuralFilterOption]]
+    private let formOptionsByTrade: [Scope: [NotificationStructuralFilterOption]]
+
+    init(metadata: [NotificationStructuralFilterMetadata]) {
+        var businessEntityCandidates: [NotificationStructuralFilterOption] = []
+        var buildingCandidates: [Scope: [NotificationStructuralFilterOption]] = [:]
+        var tradeCandidates: [Scope: [NotificationStructuralFilterOption]] = [:]
+        var formCandidates: [Scope: [NotificationStructuralFilterOption]] = [:]
+
+        for value in metadata {
+            let businessEntityID = value.businessEntityID
+            guard !businessEntityID.isEmpty else { continue }
+            businessEntityCandidates.append(.init(id: businessEntityID, label: businessEntityID))
+
+            guard !value.buildingCode.isEmpty else { continue }
+            let buildingScope = Scope(
+                businessEntityID: businessEntityID,
+                buildingCode: "",
+                tradeCode: ""
+            )
+            let buildingLabel = value.functionalLocationName.isEmpty
+                ? value.buildingCode
+                : "\(value.buildingCode) — \(value.functionalLocationName)"
+            buildingCandidates[buildingScope, default: []].append(
+                .init(id: value.buildingCode, label: buildingLabel)
+            )
+
+            guard !value.tradeCode.isEmpty else { continue }
+            let tradeScope = Scope(
+                businessEntityID: businessEntityID,
+                buildingCode: value.buildingCode,
+                tradeCode: ""
+            )
+            tradeCandidates[tradeScope, default: []].append(
+                .init(id: value.tradeCode, label: value.tradeCode)
+            )
+
+            guard !value.formCode.isEmpty else { continue }
+            let formScope = Scope(
+                businessEntityID: businessEntityID,
+                buildingCode: value.buildingCode,
+                tradeCode: value.tradeCode
+            )
+            formCandidates[formScope, default: []].append(
+                .init(id: value.formCode, label: value.formCode)
+            )
+        }
+
+        businessEntityOptions = Self.uniqueOptions(businessEntityCandidates)
+        buildingOptionsByBusinessEntity = Self.uniqueOptions(in: buildingCandidates)
+        tradeOptionsByBuilding = Self.uniqueOptions(in: tradeCandidates)
+        formOptionsByTrade = Self.uniqueOptions(in: formCandidates)
+    }
+
+    func buildingOptions(for businessEntityID: String) -> [NotificationStructuralFilterOption] {
+        buildingOptionsByBusinessEntity[
+            Scope(businessEntityID: businessEntityID, buildingCode: "", tradeCode: "")
+        ] ?? []
+    }
+
+    func tradeOptions(
+        for businessEntityID: String,
+        buildingCode: String
+    ) -> [NotificationStructuralFilterOption] {
+        tradeOptionsByBuilding[
+            Scope(businessEntityID: businessEntityID, buildingCode: buildingCode, tradeCode: "")
+        ] ?? []
+    }
+
+    func formOptions(
+        for businessEntityID: String,
+        buildingCode: String,
+        tradeCode: String
+    ) -> [NotificationStructuralFilterOption] {
+        formOptionsByTrade[
+            Scope(
+                businessEntityID: businessEntityID,
+                buildingCode: buildingCode,
+                tradeCode: tradeCode
+            )
+        ] ?? []
+    }
+
+    private static func uniqueOptions(
+        _ options: [NotificationStructuralFilterOption]
+    ) -> [NotificationStructuralFilterOption] {
+        Dictionary(grouping: options, by: \.id)
+            .compactMap { $0.value.min { $0.label < $1.label } }
+            .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
+    }
+
+    private static func uniqueOptions(
+        in candidates: [Scope: [NotificationStructuralFilterOption]]
+    ) -> [Scope: [NotificationStructuralFilterOption]] {
+        candidates.mapValues { Self.uniqueOptions($0) }
+    }
+}
+
 struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
     let id: String
     let client: String
@@ -56,6 +173,10 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
     let systemStatus: String
     let userStatus: String
     let rawPayloadJSON: String
+    /// List queries retain the hierarchy values separately so SwiftUI does not
+    /// repeatedly deserialize a notification's full SAP payload just to render
+    /// a row or apply an already-selected structural filter.
+    private let indexedStructuralFilterMetadata: NotificationStructuralFilterMetadata?
 
     init(
         id: String,
@@ -68,7 +189,8 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
         endDate: String,
         systemStatus: String,
         userStatus: String,
-        rawPayloadJSON: String
+        rawPayloadJSON: String,
+        structuralFilterMetadata: NotificationStructuralFilterMetadata? = nil
     ) {
         self.id = id
         self.client = client
@@ -81,6 +203,7 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
         self.systemStatus = systemStatus
         self.userStatus = userStatus
         self.rawPayloadJSON = rawPayloadJSON
+        indexedStructuralFilterMetadata = structuralFilterMetadata
     }
 
     var displayLocation: String {
@@ -104,6 +227,9 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
     }
 
     var structuralFilterMetadata: NotificationStructuralFilterMetadata? {
+        if let indexedStructuralFilterMetadata {
+            return indexedStructuralFilterMetadata
+        }
         guard
             let data = rawPayloadJSON.data(using: .utf8),
             var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -113,37 +239,49 @@ struct SAPNotificationSummary: Codable, Equatable, Identifiable, Sendable {
 
         // Older caches can contain the original FELDWERT rather than its
         // decoded contents. Preserve their usefulness without a cache reset.
-        if value(named: "T_PLPOD", in: payload) == nil,
-           let feldwert = value(named: "FELDWERT", in: payload) as? String,
+        if Self.value(named: "T_PLPOD", in: payload) == nil,
+           let feldwert = Self.value(named: "FELDWERT", in: payload) as? String,
            let planData = decodeSAPNotificationPayload(fromFeldwert: feldwert) {
             payload.merge(planData) { _, planValue in planValue }
         }
 
-        let businessEntityCode = stringValue(named: "TPWEH", in: payload)
-        guard !businessEntityCode.isEmpty else { return nil }
-        let positions = value(named: "T_PLPOD", in: payload) as? [Any]
-        let firstPosition = positions?.first as? [String: Any]
-        let directFormCode = stringValue(named: "STEUS", in: payload)
-
-        return NotificationStructuralFilterMetadata(
-            countryCode: stringValue(named: "TPLND", in: payload),
-            locationCode: stringValue(named: "TPORT", in: payload),
-            businessEntityCode: businessEntityCode,
-            buildingCode: stringValue(named: "TPGEB", in: payload),
-            tradeCode: stringValue(named: "TPGSG", in: payload),
-            formCode: directFormCode.isEmpty
-                ? stringValue(named: "STEUS", in: firstPosition ?? [:])
-                : directFormCode,
+        return Self.structuralFilterMetadata(
+            from: payload,
             functionalLocationName: functionalLocationName
         )
     }
 
-    private func value(named key: String, in dictionary: [String: Any]) -> Any? {
+    static func structuralFilterMetadata(
+        from payload: [String: Any],
+        functionalLocationName: String
+    ) -> NotificationStructuralFilterMetadata? {
+        let businessEntityCode = Self.stringValue(named: "TPWEH", in: payload)
+        guard !businessEntityCode.isEmpty else { return nil }
+        let positions = Self.value(named: "T_PLPOD", in: payload) as? [Any]
+        let firstPosition = positions?.first as? [String: Any]
+        let formCode = [
+            Self.stringValue(named: "STEUS", in: payload),
+            Self.stringValue(named: "FORMNR", in: payload),
+            Self.stringValue(named: "STEUS", in: firstPosition ?? [:])
+        ].first(where: { !$0.isEmpty }) ?? ""
+
+        return NotificationStructuralFilterMetadata(
+            countryCode: Self.stringValue(named: "TPLND", in: payload),
+            locationCode: Self.stringValue(named: "TPORT", in: payload),
+            businessEntityCode: businessEntityCode,
+            buildingCode: Self.stringValue(named: "TPGEB", in: payload),
+            tradeCode: Self.stringValue(named: "TPGSG", in: payload),
+            formCode: formCode,
+            functionalLocationName: functionalLocationName
+        )
+    }
+
+    private static func value(named key: String, in dictionary: [String: Any]) -> Any? {
         dictionary.first { $0.key.caseInsensitiveCompare(key) == .orderedSame }?.value
     }
 
-    private func stringValue(named key: String, in dictionary: [String: Any]) -> String {
-        switch value(named: key, in: dictionary) {
+    private static func stringValue(named key: String, in dictionary: [String: Any]) -> String {
+        switch Self.value(named: key, in: dictionary) {
         case let value as String:
             value.trimmingCharacters(in: .whitespacesAndNewlines)
         case let value as NSNumber:
@@ -242,6 +380,7 @@ struct SAPBriefingTemplateSection: Codable, Equatable, Identifiable, Sendable {
     let id: String
     /// A dynamic SAP section title. Do not localize or rewrite it in the UI.
     let title: String
+    var subtitle: String? = nil
     let isOptional: Bool
     let items: [SAPBriefingTemplateItem]
 }
@@ -342,12 +481,38 @@ struct SAPNotificationDetail: Equatable, Sendable {
         let id: String
         let title: String
         let information: String
+        let resultElementID: String
+        let commentElementID: String
+        /// `LTXA1` of the preceding `USR00 == "HEADER"` / `"U1"` row.
+        ///
+        /// The legacy table renders those rows as `GroupHeaderListItem` bands
+        /// between the positions (`BaseFormController` line 103 onwards), so
+        /// the text belongs to the checklist, not to the position itself.
+        var groupTitle: String = ""
     }
 
     let summary: SAPNotificationSummary
     let structure: String
     let equipmentID: String
     let inspectionItems: [InspectionItem]
+    let address: String
+    let formCode: String
+
+    init(
+        summary: SAPNotificationSummary,
+        structure: String = "",
+        equipmentID: String = "",
+        inspectionItems: [InspectionItem] = [],
+        address: String = "",
+        formCode: String = ""
+    ) {
+        self.summary = summary
+        self.structure = structure
+        self.equipmentID = equipmentID
+        self.inspectionItems = inspectionItems
+        self.address = address
+        self.formCode = formCode
+    }
 
     init(summary: SAPNotificationSummary) {
         self.summary = summary
@@ -358,6 +523,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
             structure = ""
             equipmentID = ""
             inspectionItems = []
+            address = ""
+            formCode = summary.structuralFilterMetadata?.formCode ?? ""
             return
         }
 
@@ -372,19 +539,81 @@ struct SAPNotificationDetail: Equatable, Sendable {
 
         structure = Self.stringValue(named: "STRUR", in: payload)
         equipmentID = Self.stringValue(named: "EQUNR", in: payload)
+
+        let street = Self.stringValue(named: "STREET_TO", in: payload)
+        let houseNumber = Self.stringValue(named: "HOUSE_NUM1_TO", in: payload)
+        let postalCode = Self.stringValue(named: "POST_CODE1_TO", in: payload)
+        let city = Self.stringValue(named: "CITY1_TO", in: payload)
+        let streetPart = [street, houseNumber].filter { !$0.isEmpty }.joined(separator: " ")
+        let cityPart = [postalCode, city].filter { !$0.isEmpty }.joined(separator: "-")
+        if !streetPart.isEmpty && !cityPart.isEmpty {
+            address = "\(streetPart) , \(cityPart)"
+        } else {
+            address = streetPart.isEmpty ? cityPart : streetPart
+        }
+
+        let directFormCode = Self.stringValue(named: "STEUS", in: payload)
         let rows = Self.value(named: "T_PLPOD", in: payload) as? [[String: Any]] ?? []
+
+        if !directFormCode.isEmpty {
+            formCode = directFormCode
+        } else if let firstRow = rows.first, let rowControl = Self.stringValue(named: "STEUS", in: firstRow) as String?, !rowControl.isEmpty {
+            formCode = rowControl
+        } else if let structuralForm = summary.structuralFilterMetadata?.formCode, !structuralForm.isEmpty {
+            formCode = structuralForm
+        } else {
+            formCode = ""
+        }
+
+        var currentGroupTitle = ""
         inspectionItems = rows.enumerated().compactMap { index, row in
             let rowType = Self.stringValue(named: "USR00", in: row)
             let fallbackRowType = Self.stringValue(named: "DNAME", in: row)
             let normalizedRowType = (rowType.isEmpty ? fallbackRowType : rowType).uppercased()
-            guard !["HEADER", "U1", "FOTO"].contains(normalizedRowType) else { return nil }
+            if ["HEADER", "U1"].contains(normalizedRowType) {
+                currentGroupTitle = Self.stringValue(named: "LTXA1", in: row)
+                return nil
+            }
+            guard normalizedRowType != "FOTO" else { return nil }
             let title = Self.stringValue(named: "LTXA1", in: row)
             guard !title.isEmpty else { return nil }
             let operation = Self.stringValue(named: "VORNR", in: row)
+            let control = Self.stringValue(named: "STEUS", in: row)
+            guard !operation.isEmpty, !control.isEmpty else { return nil }
+            let properties = Self.value(named: "T_PROPS", in: row) as? [[String: Any]] ?? []
+            let resultPosition = properties.compactMap { property -> Int? in
+                let position: Int?
+                switch Self.value(named: "POSNR", in: property) {
+                case let number as NSNumber where number.intValue > 0:
+                    position = number.intValue
+                case let string as String:
+                    position = Int(string).flatMap { $0 > 0 ? $0 : nil }
+                default:
+                    position = nil
+                }
+                guard let position else { return nil }
+                let defaultValues = Self.stringValue(named: "DFVAL", in: property)
+                guard normalizedRowType == "MEASURE"
+                        || (!defaultValues.isEmpty && !defaultValues.contains("ICON_"))
+                else { return nil }
+                return position
+            }
+            .sorted()
+            .first
+            guard let resultPosition else { return nil }
+            let cadence = Self.stringValue(named: "KTEX1", in: row)
+            let postfix = control == "TFM3"
+                ? "-" + cadence.filter { !$0.isNumber }
+                : ""
+            let resultElementID = "\(control)-\(operation)-\(resultPosition)\(postfix)"
+            let commentElementID = "\(control)-\(operation)-9B"
             return InspectionItem(
-                id: operation.isEmpty ? "position-\(index)" : operation,
+                id: resultElementID.isEmpty ? "position-\(index)" : resultElementID,
                 title: title,
-                information: Self.stringValue(named: "LTXA2", in: row)
+                information: Self.stringValue(named: "LTXA2", in: row),
+                resultElementID: resultElementID,
+                commentElementID: commentElementID,
+                groupTitle: currentGroupTitle
             )
         }
     }
@@ -404,8 +633,17 @@ struct SAPNotificationDetail: Equatable, Sendable {
         )
         structure = offlineSnapshot.structure
         equipmentID = offlineSnapshot.equipmentID
+        address = offlineSnapshot.address ?? ""
+        formCode = offlineSnapshot.formCode ?? ""
         inspectionItems = offlineSnapshot.inspectionItems.map {
-            InspectionItem(id: $0.id, title: $0.title, information: $0.information)
+            InspectionItem(
+                id: $0.id,
+                title: $0.title,
+                information: $0.information,
+                resultElementID: $0.resultElementID ?? "",
+                commentElementID: $0.commentElementID ?? "",
+                groupTitle: $0.groupTitle ?? ""
+            )
         }
     }
 
@@ -436,8 +674,17 @@ extension OfflineNotificationSnapshot {
         userStatus = detail.summary.userStatus
         structure = detail.structure
         equipmentID = detail.equipmentID
+        address = detail.address
+        formCode = detail.formCode
         inspectionItems = detail.inspectionItems.map {
-            InspectionItem(id: $0.id, title: $0.title, information: $0.information)
+            InspectionItem(
+                id: $0.id,
+                title: $0.title,
+                information: $0.information,
+                resultElementID: $0.resultElementID,
+                commentElementID: $0.commentElementID,
+                groupTitle: $0.groupTitle.isEmpty ? nil : $0.groupTitle
+            )
         }
     }
 }
@@ -454,6 +701,7 @@ protocol SAPDataCacheRepository: TechnicalObjectRepository, QRCodeNotificationRe
     func loadNotificationFilterMetadata(
         for localWorkerID: String
     ) async throws -> [NotificationStructuralFilterMetadata]
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile?
 }
 
 typealias LegacySAPRow = [String: String?]
@@ -461,6 +709,17 @@ typealias LegacySAPRow = [String: String?]
 struct LegacySAPIncomingPackage: Sendable {
     let tables: [String: [LegacySAPRow]]
     let isLastPackage: Bool
+}
+
+/// A compact, privacy-safe description of the incoming snapshot after it has
+/// been committed to the legacy cache. The application intentionally pages
+/// notifications from SQLite instead of retaining every decoded notification
+/// in `SAPCachedData`, so this summary is the authoritative sync diagnostic.
+struct SAPIncomingCacheSummary: Equatable, Sendable {
+    let notificationRowCount: Int
+    let actionableNotificationCount: Int
+    let businessEntityCount: Int
+    let elevatorInspectionCount: Int
 }
 
 struct LegacySAPOutgoingPayload: Encodable, Sendable {
@@ -487,12 +746,77 @@ protocol SAPLegacySynchronizationStore: Sendable {
     func beginIncoming() async throws
     func appendIncoming(_ package: LegacySAPIncomingPackage) async throws
     func commitIncoming(sapWorkerID: String, refreshedAt: Date) async throws -> SAPCachedData
+    func incomingCacheSummary() async throws -> SAPIncomingCacheSummary
     func abortIncoming() async
+}
+
+protocol SAPNotificationOutgoingStore: Sendable {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow],
+        i2Notifications: [LegacySAPRow],
+        i2Documents: [LegacySAPRow]
+    ) async throws
+}
+
+extension SAPNotificationOutgoingStore {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow]
+    ) async throws {
+        try await replaceNotificationOutgoingRows(
+            processIDs: processIDs,
+            equipmentIDs: equipmentIDs,
+            headers: headers,
+            values: values,
+            documents: documents,
+            equipment: equipment,
+            functionalLocations: functionalLocations,
+            proposals: proposals,
+            i2Notifications: [],
+            i2Documents: []
+        )
+    }
+
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow]
+    ) async throws {
+        try await replaceNotificationOutgoingRows(
+            processIDs: processIDs,
+            equipmentIDs: equipmentIDs,
+            headers: headers,
+            values: values,
+            documents: documents,
+            equipment: equipment,
+            functionalLocations: [],
+            proposals: [],
+            i2Notifications: [],
+            i2Documents: []
+        )
+    }
 }
 
 enum SAPReadRefreshStage: Equatable, Sendable {
     case authenticating
     case uploadingOutgoingMetadata
+    case uploadingOutgoingDocuments(current: Int, total: Int)
     case postingOutgoingData
     case waitingForOutgoingAcknowledgement
     case checkingAppVersion
@@ -500,6 +824,24 @@ enum SAPReadRefreshStage: Equatable, Sendable {
     case waitingForIncomingData
     case receivingIncomingPackages(packageNumber: Int = 1)
     case savingSnapshot
+}
+
+enum SAPRefreshAuthenticationMethod: Equatable, Sendable {
+    /// The separate password entered in the synchronization dialog.
+    case password
+    /// The short-lived session token stored after a successful password check.
+    case savedToken
+}
+
+/// Safe, user-visible context for a failed synchronization attempt.
+///
+/// This deliberately contains neither the password, token, worker ID, endpoint,
+/// nor a backend payload. It lets the UI explain which synchronization step
+/// failed without exposing credentials or tenant configuration.
+struct SAPRefreshFailureContext: Sendable {
+    let authenticationMethod: SAPRefreshAuthenticationMethod
+    let stage: SAPReadRefreshStage
+    let error: SAPReadError
 }
 
 typealias SAPReadRefreshProgressHandler = @MainActor @Sendable (SAPReadRefreshStage) -> Void
@@ -516,7 +858,7 @@ protocol SAPNotificationRefreshService: Sendable {
     ) async throws -> SAPCachedData
 }
 
-enum SAPReadError: LocalizedError {
+enum SAPReadError: LocalizedError, Sendable {
     case configurationUnavailable
     case authenticatedConnectionUnavailable
     case passwordRequired
@@ -550,13 +892,28 @@ enum SAPReadError: LocalizedError {
     }
 }
 
-actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
+actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationReading {
     private var dataByWorkerID: [String: SAPCachedData] = [:]
+    /// I2 notifications keyed by equipment, or by functional location for
+    /// objects without equipment.
+    private let i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]]
 
-    init(seed: SAPCachedData? = nil, workerID: String = "demo") {
+    init(
+        seed: SAPCachedData? = nil,
+        workerID: String = "demo",
+        i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]] = [:]
+    ) {
         if let seed {
             dataByWorkerID[workerID] = seed
         }
+        self.i2NotificationsByObjectID = i2NotificationsByObjectID
+    }
+
+    func loadI2Notifications(
+        for object: I2NotificationObjectReference
+    ) async throws -> [SAPI2NotificationSummary] {
+        let objectID = object.equipmentID.isEmpty ? object.functionalLocationID : object.equipmentID
+        return i2NotificationsByObjectID[objectID] ?? []
     }
 
     func load(for localWorkerID: String) async throws -> SAPCachedData {
@@ -632,6 +989,18 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository {
             uniqueMatches[match.id] = match
         }
         return uniqueMatches.values.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+    }
+
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
+        guard let profile = dataByWorkerID[workerID]?.workerProfile else { return nil }
+        return SAPUserProfile(
+            personalNumber: profile.personnelNumber,
+            name: profile.lastName,
+            firstName: profile.firstName,
+            company: profile.organizationUnit,
+            email: profile.email,
+            canCreateI2: true
+        )
     }
 
     func loadTechnicalObjectRoots(
@@ -816,6 +1185,10 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
         _ payload: LegacyQRCodePayload,
         for localWorkerID: String
     ) async throws -> [SAPNotificationSummary] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
         throw SAPReadError.serviceUnavailable
     }
 

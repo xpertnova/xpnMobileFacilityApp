@@ -32,15 +32,20 @@ final class OfflineWorkStore {
     }
 
     var savedNotificationItems: [OfflineWorkItem] {
-        activeQueueItems.filter { $0.type == .notificationReview }
+        activeQueueItems.filter { $0.type == .notificationReview || $0.type == .elevatorInspection }
     }
 
     /// The Local work screen intentionally contains only notification reviews
     /// that are still drafts or have been closed locally.
     var localWorkNotificationItems: [OfflineWorkItem] {
         savedNotificationItems.filter { item in
-            guard let review = item.payload.notificationReview else { return false }
-            return item.status == .draft || review.isClosedLocally
+            if let review = item.payload.notificationReview {
+                return item.status == .draft || review.isClosedLocally
+            }
+            if let inspection = item.payload.elevatorInspection {
+                return item.status == .draft || inspection.isClosedLocally
+            }
+            return false
         }
     }
 
@@ -52,6 +57,16 @@ final class OfflineWorkStore {
         localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
             + technicalObjectEditItems.count + defectItems.count + meterReadingItems.count
             + proofOfQualificationItems.count
+            + photoCollectionItems.filter {
+                let workflow = $0.payload.photoCollection?.scope.workflow
+                return workflow != .mobileLadder && workflow != .subdistribution
+            }.count
+            + mobileLadderItems.count
+            + subdistributionItems.count
+    }
+
+    var elevatorInspectionItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .elevatorInspection }
     }
 
     var defectItems: [OfflineWorkItem] {
@@ -78,12 +93,113 @@ final class OfflineWorkStore {
         activeQueueItems.filter { $0.type == .proofOfQualification }
     }
 
+    var photoCollectionItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .photoCollection }
+    }
+
+    var mobileLadderItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .mobileLadder }
+    }
+
+    var subdistributionItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .subdistribution }
+    }
+
+    func mobileLadderItem(id: UUID?) -> OfflineWorkItem? {
+        guard let id else { return nil }
+        return mobileLadderItems.first { $0.id == id }
+    }
+
+    func saveMobileLadder(
+        id: UUID? = nil,
+        payload: MobileLadderDraftPayload,
+        status: OfflineWorkStatus
+    ) async throws -> OfflineWorkItem {
+        let existing = mobileLadderItem(id: id)
+        let now = Date()
+        let effectiveStatus: OfflineWorkStatus = payload.isClosedLocally == true
+            ? .pendingSynchronization
+            : status
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(), workerID: workerID, type: .mobileLadder,
+            status: effectiveStatus, payload: .mobileLadder(payload),
+            createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func subdistributionItem(id: UUID?) -> OfflineWorkItem? {
+        guard let id else { return nil }
+        return subdistributionItems.first { $0.id == id }
+    }
+
+    func saveSubdistribution(
+        id: UUID? = nil,
+        payload: SubdistributionDraftPayload,
+        status: OfflineWorkStatus
+    ) async throws -> OfflineWorkItem {
+        let existing = subdistributionItem(id: id)
+        let now = Date()
+        let effectiveStatus: OfflineWorkStatus = payload.isClosedLocally
+            ? .pendingSynchronization
+            : status
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(), workerID: workerID, type: .subdistribution,
+            status: effectiveStatus, payload: .subdistribution(payload),
+            createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func photoCollection(for scope: LocalPhotoScope) -> OfflineWorkItem? {
+        photoCollectionItems.first { $0.payload.photoCollection?.scope == scope }
+    }
+
+    func savePhotoCollection(
+        scope: LocalPhotoScope,
+        attachments: [LocalPhotoAttachment],
+        retainEmpty: Bool = false
+    ) async throws -> OfflineWorkItem? {
+        let existing = photoCollection(for: scope)
+        if attachments.isEmpty && !retainEmpty {
+            if let existing {
+                try await repository.delete(ids: [existing.id])
+                await load()
+            }
+            return nil
+        }
+
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .photoCollection,
+            status: .draft,
+            payload: .photoCollection(.init(scope: scope, attachments: attachments)),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
     /// A defect is a failed checklist result from a notification that was
     /// closed locally. Open or draft notifications never appear as defects.
     var closedDefectNotificationItems: [OfflineWorkItem] {
         localWorkNotificationItems.filter { item in
-            guard let review = item.payload.notificationReview else { return false }
-            return review.isClosedLocally && review.results.values.contains(.yes)
+            if let review = item.payload.notificationReview {
+                return review.isClosedLocally && review.results.values.contains(.yes)
+            }
+            if let inspection = item.payload.elevatorInspection {
+                return inspection.isClosedLocally && (inspection.statusNumber == "2" || inspection.closingUserStatus.contains("Mnot"))
+            }
+            return false
         }
     }
 
@@ -187,7 +303,7 @@ final class OfflineWorkStore {
             id: existing?.id ?? UUID(),
             workerID: workerID,
             type: .notificationReview,
-            status: .draft,
+            status: payload.isClosedLocally ? .pendingSynchronization : .draft,
             payload: .notificationReview(payload),
             createdAt: existing?.createdAt ?? now,
             updatedAt: now,
@@ -196,6 +312,42 @@ final class OfflineWorkStore {
         try await repository.save(item)
         await load()
         return item
+    }
+
+    func elevatorInspection(notificationID: String) -> ElevatorInspectionDraftPayload? {
+        items.first {
+            $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == notificationID
+        }?.payload.elevatorInspection
+    }
+
+    func saveElevatorInspection(_ payload: ElevatorInspectionDraftPayload) async throws -> OfflineWorkItem {
+        let existing = items.first {
+            $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == payload.notificationID
+        }
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .elevatorInspection,
+            status: payload.isClosedLocally ? .pendingSynchronization : .draft,
+            payload: .elevatorInspection(payload),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    func deleteElevatorInspection(notificationID: String) async throws {
+        let matching = items.filter {
+            $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == notificationID
+        }
+        if !matching.isEmpty {
+            try await repository.delete(ids: matching.map(\.id))
+            await load()
+        }
     }
 
     func saveBriefing(

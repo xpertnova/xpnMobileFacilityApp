@@ -3,19 +3,53 @@ import SwiftUI
 struct TechnicalPlacesView: View {
     let demo: FacilityDemoViewModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var photoWorkspaceScope: LocalPhotoScope?
 
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
-        Group {
-            if let detail = model.selectedDetail {
-                TechnicalObjectDetailView(model: model, detail: detail)
-                    .transition(.opacity)
+        ZStack {
+            if case .createMobileLadder = demo.technicalPlacesRoute {
+                MobileLadderCreationView(demo: demo, itemID: nil, close: demo.closeMobileLadder)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if case let .mobileLadderDraft(itemID) = demo.technicalPlacesRoute {
+                MobileLadderCreationView(demo: demo, itemID: itemID, close: demo.closeMobileLadder)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if case .createSubdistribution = demo.technicalPlacesRoute {
+                SubdistributionCreationView(demo: demo, itemID: nil, close: demo.closeSubdistribution)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if case let .subdistributionDraft(itemID) = demo.technicalPlacesRoute {
+                SubdistributionCreationView(demo: demo, itemID: itemID, close: demo.closeSubdistribution)
+                    .transition(PhotoWorkspaceMotion.destination)
+            } else if let photoWorkspaceScope {
+                LocalPhotoWorkspace(
+                    scope: photoWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    photoStore: demo.photoAttachmentStore,
+                    close: { self.photoWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
             } else {
-                hierarchy(model)
-                    .transition(.opacity)
+                Group {
+                    if let detail = model.selectedDetail {
+                        TechnicalObjectDetailView(
+                            model: model,
+                            detail: detail,
+                            photoCount: photoCount(for: detail),
+                            openPhotos: { photoWorkspaceScope = photoScope(for: detail) }
+                        )
+                    } else {
+                        hierarchy(model)
+                    }
+                }
+                .transition(PhotoWorkspaceMotion.source)
             }
         }
         .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.selectedDetail != nil)
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: photoWorkspaceScope
+        )
         .task { if model.state == .idle { await model.load() } }
         .task(id: model.query) {
             do { try await Task.sleep(for: .milliseconds(350)); await model.updateSearch() } catch { }
@@ -28,14 +62,36 @@ struct TechnicalPlacesView: View {
         } message: { Text(LocalizedStringKey(model.unavailableActionKey ?? "places.unavailable.message")) }
     }
 
+    private func photoScope(for detail: TechnicalObjectDetail) -> LocalPhotoScope {
+        LocalPhotoScope(
+            workflow: .technicalObject,
+            ownerID: detail.object.reference.objectID,
+            displayTitle: String(localized: "photos.workspace.title"),
+            displaySubtitle: detail.object.displayName
+        )
+    }
+
+    private func photoCount(for detail: TechnicalObjectDetail) -> Int {
+        demo.offlineWorkStore.photoCollection(for: photoScope(for: detail))?
+            .payload.photoCollection?.attachments.count ?? 0
+    }
+
     private func hierarchy(_ model: TechnicalPlacesViewModel) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 18) {
                     PageHeader("places.title", subtitle: "places.subtitle")
                     Spacer()
-                    Button { model.performUnavailableAction("places.new.unavailable") } label: {
-                        Label("places.new", systemImage: "plus").font(.subheadline.weight(.bold)).frame(minWidth: 88, minHeight: 48)
+                    Menu {
+                        Button { demo.openMobileLadder() } label: {
+                            Label("places.new.mobileLadder", systemImage: "figure.climbing")
+                        }
+                        Button { demo.openSubdistribution() } label: {
+                            Label("places.new.subdistribution", systemImage: "bolt.square")
+                        }
+                    } label: {
+                        Label("places.new", systemImage: "plus")
+                            .font(.subheadline.weight(.bold)).frame(minWidth: 88, minHeight: 48)
                     }.buttonStyle(.bordered)
                 }
                 HStack(spacing: 10) {
@@ -248,6 +304,8 @@ private struct ObjectBadge: View {
 private struct TechnicalObjectDetailView: View {
     @Bindable var model: TechnicalPlacesViewModel
     let detail: TechnicalObjectDetail
+    let photoCount: Int
+    let openPhotos: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
@@ -263,6 +321,7 @@ private struct TechnicalObjectDetailView: View {
                     Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
                     Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
                     if !detail.object.displayStatus.isEmpty { ObjectBadge(detail.object.displayStatus, color: FacilityTheme.accent) }
+                    PhotoWorkspaceButton(count: photoCount, action: openPhotos)
                     if geometry.size.width >= 900 {
                         HStack(alignment: .top, spacing: 16) { primaryCard; sideCards.frame(width: 405) }
                     } else {

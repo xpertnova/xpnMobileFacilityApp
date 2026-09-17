@@ -17,6 +17,7 @@ enum SQLiteC {
     @_silgen_name("sqlite3_prepare_v2") static func prepare(_ database: OpaquePointer?, _ sql: UnsafePointer<CChar>?, _ length: Int32, _ statement: UnsafeMutablePointer<OpaquePointer?>?, _ tail: UnsafeMutablePointer<UnsafePointer<CChar>?>?) -> Int32
     @_silgen_name("sqlite3_finalize") static func finalize(_ statement: OpaquePointer?) -> Int32
     @_silgen_name("sqlite3_step") static func step(_ statement: OpaquePointer?) -> Int32
+    @_silgen_name("sqlite3_reset") static func reset(_ statement: OpaquePointer?) -> Int32
     @_silgen_name("sqlite3_bind_text") static func bindText(_ statement: OpaquePointer?, _ index: Int32, _ value: UnsafePointer<CChar>?, _ length: Int32, _ destructor: SQLiteDestructor?) -> Int32
     @_silgen_name("sqlite3_bind_null") static func bindNull(_ statement: OpaquePointer?, _ index: Int32) -> Int32
     @_silgen_name("sqlite3_column_text") static func columnText(_ statement: OpaquePointer?, _ index: Int32) -> UnsafePointer<CChar>?
@@ -108,6 +109,21 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 payload = .technicalObjectEdit(try decoder.decode(TechnicalObjectEditPayload.self, from: data))
             case .proofOfQualification:
                 payload = .proofOfQualification(try decoder.decode(ProofOfQualificationDraftPayload.self, from: data))
+            case .photoCollection:
+                payload = .photoCollection(try decoder.decode(PhotoCollectionDraftPayload.self, from: data))
+            case .mobileLadder:
+                payload = .mobileLadder(try decoder.decode(MobileLadderDraftPayload.self, from: data))
+            case .subdistribution:
+                if let draft = try? decoder.decode(SubdistributionDraftPayload.self, from: data) {
+                    payload = .subdistribution(draft)
+                } else {
+                    guard (try? JSONSerialization.jsonObject(with: data)) != nil else {
+                        throw OfflineWorkRepositoryError.invalidStoredItem
+                    }
+                    payload = .subdistribution(.init(jsonData: data))
+                }
+            case .elevatorInspection:
+                payload = .elevatorInspection(try decoder.decode(ElevatorInspectionDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -134,6 +150,14 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
             payloadData = try? JSONEncoder().encode(payload)
         case let (.proofOfQualification, .proofOfQualification(payload)):
             payloadData = try? JSONEncoder().encode(payload)
+        case let (.photoCollection, .photoCollection(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.mobileLadder, .mobileLadder(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.subdistribution, .subdistribution(payload)):
+            payloadData = payload.legacyJSONData ?? (try? JSONEncoder().encode(payload))
+        case let (.elevatorInspection, .elevatorInspection(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil
         }
@@ -155,6 +179,25 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
     func resetWork(for workerID: String) async throws {
         guard let database else { throw OfflineWorkRepositoryError.unavailable }
         try Self.execute(on: database, "DELETE FROM offline_work_items WHERE worker_id = ?", bindings: [workerID])
+    }
+
+    func delete(ids: [UUID]) async throws {
+        guard let database else { throw OfflineWorkRepositoryError.unavailable }
+        guard !ids.isEmpty else { return }
+        try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
+        do {
+            for id in ids {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM offline_work_items WHERE id = ?",
+                    bindings: [id.uuidString]
+                )
+            }
+            try Self.execute(on: database, "COMMIT")
+        } catch {
+            try? Self.execute(on: database, "ROLLBACK")
+            throw error
+        }
     }
 
     private static func migrate(on database: OpaquePointer) throws {
