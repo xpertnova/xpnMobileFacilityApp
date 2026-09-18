@@ -84,8 +84,17 @@ enum InspectionFormRules {
     /// Validates one position. An empty result is only reported when the
     /// position actually carries a result control — the legacy photo-only rows
     /// (`USR00 == "FOTO"`) have none.
+    ///
+    /// - Parameter isResultAnswered: whether the technician picked a result at
+    ///   all. The segmented forms (TFM1/TFM3) post an empty `Befund` code for
+    ///   "in Ordnung", so there an empty code is a valid answer: the legacy
+    ///   client kept the unanswered state in a separate hidden `"O"` item
+    ///   (`WartungsPlan.controller.js` `getSegmentedButton`) and reported
+    ///   `msg.viewForm.befund.leer` only for that key (`checkInputConstraints`).
+    ///   `nil` keeps the dropdown reading, where an empty code is no answer.
     static func issues(
         resultCode: String?,
+        isResultAnswered: Bool? = nil,
         actionCode: String? = nil,
         isMaterialSelected: Bool = false,
         comment: String = "",
@@ -99,7 +108,7 @@ enum InspectionFormRules {
         let action = normalized(actionCode)
         let hasComment = !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        guard !result.isEmpty else {
+        guard isResultAnswered ?? !result.isEmpty else {
             var issues: [Issue] = requiresResult ? [.resultMissing] : []
             if let issue = documentationIssue(
                 requiresPhoto: requiresPhoto,

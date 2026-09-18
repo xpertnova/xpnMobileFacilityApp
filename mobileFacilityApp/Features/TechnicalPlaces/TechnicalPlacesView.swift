@@ -136,6 +136,13 @@ struct TechnicalPlacesView: View {
                 }
                 hierarchyContent(model)
                     .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.state)
+                    // Scoped to the results: the search field above stays
+                    // usable while a query runs. `.idle` is the state the
+                    // model starts in, so the frame is up on the first render.
+                    .facilityBusy(
+                        model.state == .idle || model.state == .loading,
+                        titleKey: "places.loading"
+                    )
             }.facilityPageContent()
         }.scrollDismissesKeyboard(.interactively)
     }
@@ -143,7 +150,9 @@ struct TechnicalPlacesView: View {
     @ViewBuilder private func hierarchyContent(_ model: TechnicalPlacesViewModel) -> some View {
         switch model.state {
         case .idle, .loading:
-            ProgressView("places.loading").frame(maxWidth: .infinity, minHeight: 260)
+            // The shared busy frame covers this area; the placeholder only
+            // holds the height open.
+            Color.clear.frame(maxWidth: .infinity, minHeight: 260)
                 .transition(.opacity)
         case .empty:
             unavailable("places.empty.title", "places.empty.subtitle", "building.2")

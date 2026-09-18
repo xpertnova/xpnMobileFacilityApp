@@ -51,11 +51,22 @@ final class FacilityDemoViewModel {
     private var manualDefectReturnDestination: AppDestination?
     var shouldPresentSAPRefresh = false
     var shouldPresentDraftWarningBeforeSync = false
-    var notifications = MockFacilityData.notifications
+    var notifications = MockFacilityData.notifications {
+        didSet { demoNotificationRevision &+= 1 }
+    }
+    /// Demo rows are mutated in place (`finishChecks`, `resetDemo`). This is
+    /// observable on purpose: a view that only reads the cached
+    /// `visibleNotifications` still has to be told when they change.
+    private(set) var demoNotificationRevision = 0
     var defects = MockFacilityData.defects
     let forms = MockFacilityData.forms
+    @ObservationIgnored private var cachedVisibleNotifications: [MaintenanceNotification] = []
+    @ObservationIgnored private var visibleNotificationsKey: VisibleNotificationsKey?
     @ObservationIgnored private var productionNotificationRows: [MaintenanceNotification] = []
     @ObservationIgnored private var productionNotificationRowsRevision = -1
+    /// The dashboard counters the worker saw last time (production only).
+    /// See `DashboardMetricsSnapshot`.
+    private var savedDashboardMetrics: DashboardMetrics = .unknown
 
     var offlineNotificationDetailReturnDestination: AppDestination {
         offlineNotificationReturnDestination ?? .notifications
@@ -106,6 +117,9 @@ final class FacilityDemoViewModel {
         )
         self.workerDisplayName = workerDisplayName
         self.workerRole = workerRole
+        if !isDemoMode {
+            savedDashboardMetrics = DashboardMetricsSnapshot.load(workerID: sapDataStore.localWorkerID)
+        }
     }
 
     var selectedNotification: MaintenanceNotification? {
@@ -201,7 +215,67 @@ final class FacilityDemoViewModel {
         isDemoMode ? notifications.count : sapDataStore.totalNotificationCount
     }
 
+    /// The counters computed from data already read. Each one stays `nil`
+    /// until its source has been loaded once, so a counter that is still being
+    /// computed is never mistaken for zero.
+    var freshDashboardMetrics: DashboardMetrics {
+        DashboardMetrics(
+            notifications: isDemoMode || sapDataStore.hasLoadedNotificationCount
+                ? allNotificationCount
+                : nil,
+            defects: offlineWorkStore.hasLoaded ? offlineWorkStore.defectCount : nil,
+            drafts: offlineWorkStore.hasLoaded ? offlineWorkStore.savedNotificationCount : nil,
+            technicalPlaces: technicalPlacesStore.hasLoadedTotalCount
+                ? technicalPlacesStore.totalCount
+                : nil
+        )
+    }
+
+    /// What the dashboard shows: each fresh counter as soon as it is known,
+    /// the one saved at the previous launch until then.
+    var dashboardMetrics: DashboardMetrics {
+        freshDashboardMetrics.filled(from: savedDashboardMetrics)
+    }
+
+    /// Keeps the counters known so far for the next launch. Production only;
+    /// called whenever `freshDashboardMetrics` changes.
+    func rememberDashboardMetrics() {
+        guard !isDemoMode else { return }
+        let merged = freshDashboardMetrics.filled(from: savedDashboardMetrics)
+        guard merged != savedDashboardMetrics else { return }
+        savedDashboardMetrics = merged
+        DashboardMetricsSnapshot.save(merged, workerID: sapDataStore.localWorkerID)
+    }
+
+    /// The notification rows every screen shows, with local drafts folded in.
+    ///
+    /// One SwiftUI pass reads this several times — the list, the selected row,
+    /// the counters — and with a few hundred notifications rebuilding it each
+    /// time was the bulk of the delay when the tab opened. It is therefore
+    /// cached until its inputs change.
     var visibleNotifications: [MaintenanceNotification] {
+        let key = VisibleNotificationsKey(
+            isDemoMode: isDemoMode,
+            offlineWorkRevision: offlineWorkStore.revision,
+            notificationPageRevision: isDemoMode ? demoNotificationRevision : sapDataStore.notificationPageRevision
+        )
+        if visibleNotificationsKey == key {
+            return cachedVisibleNotifications
+        }
+        let rows = makeVisibleNotifications()
+        cachedVisibleNotifications = rows
+        visibleNotificationsKey = key
+        return rows
+    }
+
+    private struct VisibleNotificationsKey: Equatable {
+        let isDemoMode: Bool
+        let offlineWorkRevision: Int
+        /// The SAP page revision in production, the demo revision in demo mode.
+        let notificationPageRevision: Int
+    }
+
+    private func makeVisibleNotifications() -> [MaintenanceNotification] {
         var elevatorInspectionsByNotificationID: [String: ElevatorInspectionDraftPayload] = [:]
         var reviewsByNotificationID: [String: NotificationReviewDraftPayload] = [:]
         for item in offlineWorkStore.items {

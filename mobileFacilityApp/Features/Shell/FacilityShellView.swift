@@ -216,19 +216,23 @@ struct FacilityShellView: View {
         .background(FacilityTheme.canvas)
         .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
         .task(id: demo.offlineWorkStore.workerID) {
-            await demo.offlineWorkStore.load()
             let restoredFilter = NotificationStructuralFilterPreferences.load(
                 workerID: demo.sapDataStore.localWorkerID,
                 isDemoMode: demo.isDemoMode
             )
-            if !demo.isDemoMode {
-                // Restore the selected filter before the one initial cache query,
-                // rather than loading every notification and immediately querying
-                // the cache again when the notifications view appears.
-                await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
-                await demo.sapDataStore.loadCachedData()
-            }
-            await demo.technicalPlacesStore.load()
+            // The three sources are independent, so each dashboard counter
+            // arrives when its own source is read. They used to load one after
+            // another, and the technical places count waited for the whole
+            // notification cache. The offline queue has its own database; the
+            // technical places interleave with the notification queries on the
+            // cache actor instead of queuing behind all of them.
+            async let offlineWork: Void = demo.offlineWorkStore.load()
+            async let notificationCache: Void = loadNotificationCache(restoredFilter: restoredFilter)
+            async let technicalPlaces: Void = demo.technicalPlacesStore.load()
+            _ = await (offlineWork, notificationCache, technicalPlaces)
+        }
+        .onChange(of: demo.freshDashboardMetrics) { _, _ in
+            demo.rememberDashboardMetrics()
         }
         .task(id: scenePhase) {
             print("[SAP Connection] 📱 App scenePhase changed to: \(scenePhase)")
@@ -655,6 +659,15 @@ struct FacilityShellView: View {
         }
     }
 
+    /// Production only. Restores the selected filter before the one initial
+    /// cache query, rather than loading every notification and immediately
+    /// querying the cache again when the notifications view appears.
+    private func loadNotificationCache(restoredFilter: NotificationStructuralFilter) async {
+        guard !demo.isDemoMode else { return }
+        await demo.sapDataStore.updateNotificationStructuralFilter(restoredFilter)
+        await demo.sapDataStore.loadCachedData()
+    }
+
     private func refreshSAPData() {
         let password = sapPassword
         Task {
@@ -693,8 +706,10 @@ struct FacilityShellView: View {
 
     private func badge(for destination: AppDestination) -> Int? {
         switch destination {
-        case .notifications: demo.allNotificationCount
-        case .defects: demo.offlineWorkStore.defectCount
+        // Same source as the dashboard cards: known on the first frame from the
+        // saved counters, and absent rather than zero while still unknown.
+        case .notifications: demo.dashboardMetrics.notifications
+        case .defects: demo.dashboardMetrics.defects
         case .drafts: demo.offlineWorkStore.localWorkCount
         default: nil
         }

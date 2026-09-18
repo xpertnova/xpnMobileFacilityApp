@@ -241,10 +241,6 @@ struct RoleSelectionView: View {
                     focusedField = nil
                     submit()
                 }
-
-                Text("role.selection.passwordRequirement")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
             if let validationMessage {
@@ -343,7 +339,6 @@ private extension LocalCredentialStoreError {
         switch self {
         case .usernameAlreadyExists: "role.selection.usernameAlreadyExists"
         case .invalidCredentials: "role.selection.invalidCredentials"
-        case .passwordRequirementsNotMet: "role.selection.passwordRequirement"
         case .storageUnavailable: "role.selection.authenticationUnavailable"
         }
     }
@@ -466,8 +461,22 @@ private struct LoginCardMetrics {
     }
 }
 
+/// The brand mark on the sign-in card. It carries no action: a pointer
+/// hovering over it lifts it slightly, and a tap plays a short spring bounce.
+/// Both are skipped under Reduce Motion.
 private struct XPNMark: View {
     let height: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovering = false
+    @State private var bounceCount = 0
+
+    /// Dip, overshoot, settle — the phases one tap runs through.
+    private static let bouncePhases: [CGFloat] = [1, 0.93, 1.06, 1]
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: height * 0.28, style: .continuous)
+    }
 
     var body: some View {
         Text(".XPN")
@@ -475,7 +484,27 @@ private struct XPNMark: View {
             .foregroundStyle(.white)
             .padding(.horizontal, height * 0.42)
             .frame(height: height)
-            .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: height * 0.28, style: .continuous))
+            .background(FacilityTheme.navy, in: shape)
+            .phaseAnimator(Self.bouncePhases, trigger: bounceCount) { mark, scale in
+                mark.scaleEffect(scale)
+            } animation: { _ in
+                .spring(response: 0.24, dampingFraction: 0.55)
+            }
+            .scaleEffect(isHovering ? 1.04 : 1)
+            .shadow(
+                color: FacilityTheme.navy.opacity(isHovering ? 0.28 : 0),
+                radius: isHovering ? 14 : 0,
+                y: isHovering ? 8 : 0
+            )
+            .animation(.snappy(duration: 0.20), value: isHovering)
+            .contentShape(shape)
+            .onHover { hovering in
+                isHovering = hovering && !reduceMotion
+            }
+            .onTapGesture {
+                guard !reduceMotion else { return }
+                bounceCount += 1
+            }
     }
 }
 

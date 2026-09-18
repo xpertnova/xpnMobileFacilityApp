@@ -72,6 +72,8 @@ final class TechnicalPlacesViewModel {
     private(set) var saveState: SaveState = .idle
     private(set) var dinCounts: [TechnicalObjectDINCount] = []
     private(set) var totalCount = 0
+    /// `totalCount` is only meaningful once this is true.
+    private(set) var hasLoadedTotalCount = false
     private(set) var selectedDetail: TechnicalObjectDetail?
     var equipmentDraft: EquipmentEditDraft?
     var query = ""
@@ -144,6 +146,7 @@ final class TechnicalPlacesViewModel {
             async let counts = sapDataStore.technicalObjectDINCounts()
             async let roots = sapDataStore.technicalObjectRoots(limit: pageSize, offset: 0)
             totalCount = try await count
+            hasLoadedTotalCount = true
             dinCounts = try await counts
             let loadedRoots = try await roots
             withAnimation(.smooth(duration: 0.24)) {
@@ -271,6 +274,7 @@ final class TechnicalPlacesViewModel {
         expanded = []
         selectedDetail = nil
         equipmentDraft = nil
+        hasLoadedTotalCount = false
         state = .idle
     }
 

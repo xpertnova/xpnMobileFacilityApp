@@ -387,6 +387,9 @@ struct InspectionFormRow: View {
     private var issues: [InspectionFormRules.Issue] {
         InspectionFormRules.issues(
             resultCode: selectedResult?.code,
+            // The row knows whether an option is selected; TFM1/TFM3 answer
+            // "in Ordnung" with an empty transport code.
+            isResultAnswered: selectedResult != nil,
             actionCode: selectedAction?.code,
             isMaterialSelected: state.isMaterialSelected,
             comment: state.comment,

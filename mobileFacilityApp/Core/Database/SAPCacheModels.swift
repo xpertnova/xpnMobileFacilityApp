@@ -64,7 +64,7 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
     let businessEntityOptions: [NotificationStructuralFilterOption]
     private let buildingOptionsByBusinessEntity: [Scope: [NotificationStructuralFilterOption]]
     private let tradeOptionsByBuilding: [Scope: [NotificationStructuralFilterOption]]
-    private let formOptionsByTrade: [Scope: [NotificationStructuralFilterOption]]
+    private let formOptionsByScope: [Scope: [NotificationStructuralFilterOption]]
 
     /// - Parameter directory: names buildings and trades by their own
     ///   functional locations, as Cordova's `getFormatSTRNO` resolves them
@@ -84,52 +84,71 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
             guard !businessEntityID.isEmpty else { continue }
             businessEntityCandidates.append(.init(id: businessEntityID, label: businessEntityID))
 
-            guard !value.buildingCode.isEmpty else { continue }
-            let buildingScope = Scope(
-                businessEntityID: businessEntityID,
-                buildingCode: "",
-                tradeCode: ""
-            )
-            let building = directory.building(
-                countryCode: value.countryCode,
-                businessEntityCode: value.businessEntityCode,
-                buildingCode: value.buildingCode
-            )
-            buildingCandidates[buildingScope, default: []].append(
-                .init(id: value.buildingCode, label: Self.label(code: value.buildingCode, title: building?.title))
-            )
+            if !value.buildingCode.isEmpty {
+                let buildingScope = Scope(
+                    businessEntityID: businessEntityID,
+                    buildingCode: "",
+                    tradeCode: ""
+                )
+                let building = directory.building(
+                    countryCode: value.countryCode,
+                    businessEntityCode: value.businessEntityCode,
+                    buildingCode: value.buildingCode
+                )
+                buildingCandidates[buildingScope, default: []].append(
+                    .init(id: value.buildingCode, label: Self.label(code: value.buildingCode, title: building?.title))
+                )
+            }
 
-            guard !value.tradeCode.isEmpty else { continue }
-            let tradeScope = Scope(
-                businessEntityID: businessEntityID,
-                buildingCode: value.buildingCode,
-                tradeCode: ""
-            )
-            let trade = directory.trade(
-                countryCode: value.countryCode,
-                businessEntityCode: value.businessEntityCode,
-                buildingCode: value.buildingCode,
-                tradeCode: value.tradeCode
-            )
-            tradeCandidates[tradeScope, default: []].append(
-                .init(id: value.tradeCode, label: Self.label(code: value.tradeCode, title: trade?.title))
-            )
+            if !value.buildingCode.isEmpty, !value.tradeCode.isEmpty {
+                let tradeScope = Scope(
+                    businessEntityID: businessEntityID,
+                    buildingCode: value.buildingCode,
+                    tradeCode: ""
+                )
+                let trade = directory.trade(
+                    countryCode: value.countryCode,
+                    businessEntityCode: value.businessEntityCode,
+                    buildingCode: value.buildingCode,
+                    tradeCode: value.tradeCode
+                )
+                tradeCandidates[tradeScope, default: []].append(
+                    .init(id: value.tradeCode, label: Self.label(code: value.tradeCode, title: trade?.title))
+                )
+            }
 
-            guard !value.formCode.isEmpty else { continue }
-            let formScope = Scope(
-                businessEntityID: businessEntityID,
-                buildingCode: value.buildingCode,
-                tradeCode: value.tradeCode
-            )
-            formCandidates[formScope, default: []].append(
-                .init(id: value.formCode, label: value.formCode)
-            )
+            if !value.formCode.isEmpty {
+                // A form is offered under every scope it can be reached
+                // through. The legacy Selection screen loads the form list as
+                // soon as the business entity is picked and only narrows it
+                // afterwards: `_afterGetGE4SelectionDDB` enables
+                // `select.formulare` and calls `_refreshFormulars`, which
+                // sends whatever `_getTpGeb()`/`_getTpGsg()` return — an empty
+                // building or trade when none is selected.
+                let option = NotificationStructuralFilterOption(
+                    id: value.formCode,
+                    label: value.formCode
+                )
+                let formScopes: Set<Scope> = [
+                    Scope(businessEntityID: businessEntityID, buildingCode: "", tradeCode: ""),
+                    Scope(businessEntityID: businessEntityID, buildingCode: value.buildingCode, tradeCode: ""),
+                    Scope(businessEntityID: businessEntityID, buildingCode: "", tradeCode: value.tradeCode),
+                    Scope(
+                        businessEntityID: businessEntityID,
+                        buildingCode: value.buildingCode,
+                        tradeCode: value.tradeCode
+                    )
+                ]
+                for scope in formScopes {
+                    formCandidates[scope, default: []].append(option)
+                }
+            }
         }
 
         businessEntityOptions = Self.uniqueOptions(businessEntityCandidates)
         buildingOptionsByBusinessEntity = Self.uniqueOptions(in: buildingCandidates)
         tradeOptionsByBuilding = Self.uniqueOptions(in: tradeCandidates)
-        formOptionsByTrade = Self.uniqueOptions(in: formCandidates)
+        formOptionsByScope = Self.uniqueOptions(in: formCandidates)
     }
 
     func buildingOptions(for businessEntityID: String) -> [NotificationStructuralFilterOption] {
@@ -147,12 +166,15 @@ struct NotificationStructuralFilterOptions: Equatable, Sendable {
         ] ?? []
     }
 
+    /// The forms reachable in this scope. An empty `buildingCode` or
+    /// `tradeCode` means "not narrowed by it", exactly as the legacy selection
+    /// screen queries the form list before a building or trade is chosen.
     func formOptions(
         for businessEntityID: String,
         buildingCode: String,
         tradeCode: String
     ) -> [NotificationStructuralFilterOption] {
-        formOptionsByTrade[
+        formOptionsByScope[
             Scope(
                 businessEntityID: businessEntityID,
                 buildingCode: buildingCode,

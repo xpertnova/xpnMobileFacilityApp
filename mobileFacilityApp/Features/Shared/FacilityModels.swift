@@ -80,6 +80,87 @@ struct MaintenanceNotification: Identifiable, Hashable {
     var isClosedLocally = false
     var hasLocalDefect = false
     var structuralFilterMetadata: NotificationStructuralFilterMetadata?
+
+    /// The inspection form behind this notification, resolved from the SAP
+    /// control key (`STEUS` / `FORMNR`) carried in `structuralFilterMetadata`.
+    var formType: NotificationFormType? {
+        NotificationFormType(formCode: structuralFilterMetadata?.formCode ?? "")
+    }
+
+    /// Chip shown on the notification row. It names the inspection form the
+    /// row opens, which is the one classification SAP delivers with the
+    /// notification itself; an unknown control key keeps its raw code instead
+    /// of being mapped to a guessed category.
+    var categoryBadge: NotificationCategoryBadge? {
+        let code = (structuralFilterMetadata?.formCode ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard !code.isEmpty else { return nil }
+        return NotificationCategoryBadge(
+            titleKey: formType?.titleKey,
+            code: code,
+            style: formType?.badgeStyle ?? .neutral
+        )
+    }
+}
+
+/// Row chip for a maintenance notification: the localized form name when the
+/// app knows the control key, the bare SAP code otherwise.
+struct NotificationCategoryBadge: Hashable {
+    /// String Catalog key of the named form, `nil` for an unknown control key.
+    let titleKey: String?
+    /// The SAP control key itself (`TFM1` … `TFM9`, or a customer-specific one).
+    let code: String
+    let style: FacilityTemplateBadgeStyle
+}
+
+/// The inspection forms an MTFM notification can carry, keyed by the SAP
+/// control key in `STEUS` / `FORMNR`.
+///
+/// Codes and workflows are the documented ones (`docs/NOTIFICATION_TYPES_AND_TP_CREATION.md`,
+/// traced from the legacy controllers). Each title reuses the string of the
+/// screen that code opens, so the chip and the screen behind it read the same.
+/// `TFM9` and customer-specific keys have no screen here yet and keep their
+/// raw code.
+enum NotificationFormType: String, CaseIterable {
+    case maintenancePlan = "TFM1"
+    case elevator = "TFM2"
+    case roundInspection = "TFM3"
+    case fixedLadder = "TFM4"
+    case mobileLadder = "TFM5"
+    case holdOpenSystem = "TFM6"
+    case subdistribution = "TFM7"
+    case roofSystem = "TFM8"
+
+    init?(formCode: String) {
+        self.init(rawValue: formCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased())
+    }
+
+    var titleKey: String {
+        switch self {
+        case .maintenancePlan: "notifications.structuralFilter.form.tfm1"
+        case .elevator: "elevator.inspection.title"
+        case .roundInspection: "notifications.structuralFilter.form.tfm3"
+        case .fixedLadder: "fixedLadder.inspection.title"
+        case .mobileLadder: "mobileLadder.title"
+        case .holdOpenSystem: "holdOpenSystem.inspection.title"
+        case .subdistribution: "subdistribution.title"
+        case .roofSystem: "roofSystem.inspection.title"
+        }
+    }
+
+    var badgeStyle: FacilityTemplateBadgeStyle {
+        switch self {
+        case .maintenancePlan: .formMaintenancePlan
+        case .elevator: .formElevator
+        case .roundInspection: .formRoundInspection
+        case .fixedLadder: .formFixedLadder
+        case .mobileLadder: .formMobileLadder
+        case .holdOpenSystem: .formHoldOpenSystem
+        case .subdistribution: .formSubdistribution
+        case .roofSystem: .formRoofSystem
+        }
+    }
 }
 
 struct Defect: Identifiable, Hashable {
