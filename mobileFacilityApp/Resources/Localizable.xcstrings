@@ -2044,6 +2044,22 @@
         }
       }
     },
+    "dashboard.metrics.loading" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird geladen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading"
+          }
+        }
+      }
+    },
     "dashboard.metrics.notifications" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11481,6 +11497,23 @@
         }
       }
     },
+    "notifications.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meldungen werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading notifications …"
+          }
+        }
+      }
+    },
     "notifications.search" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -14429,22 +14462,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The passwords do not match."
-          }
-        }
-      }
-    },
-    "role.selection.passwordRequirement" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mindestens 8 Zeichen verwenden."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Use at least 8 characters."
           }
         }
       }

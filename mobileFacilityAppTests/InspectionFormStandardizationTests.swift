@@ -196,6 +196,45 @@ final class InspectionFormStandardizationTests: XCTestCase {
         }
     }
 
+    /// `WartungsPlan.controller.js` keeps "not yet answered" in its hidden
+    /// `"O"` item and reports `msg.viewForm.befund.leer` only for that key, so
+    /// the empty `Befund` code of "in Ordnung" is an answer and must not raise
+    /// the red exception marker.
+    func testSegmentedInOrderAnswerIsNotReportedAsMissing() throws {
+        let inOrder = try XCTUnwrap(
+            NotificationReviewResult.formOptions.first {
+                $0.id == NotificationReviewResult.no.rawValue
+            }
+        )
+        XCTAssertEqual(inOrder.code, "", "in Ordnung posts an empty Befund")
+
+        for code in ["TFM1", "TFM3"] {
+            let variant = InspectionFormVariant.forFormCode(code)
+            XCTAssertEqual(
+                InspectionFormRules.issues(
+                    resultCode: inOrder.code,
+                    isResultAnswered: true,
+                    variant: variant
+                ),
+                [],
+                code
+            )
+            XCTAssertFalse(
+                InspectionFormRules.isDefective(resultCode: inOrder.code, style: variant.resultStyle),
+                code
+            )
+            XCTAssertEqual(
+                InspectionFormRules.issues(
+                    resultCode: nil,
+                    isResultAnswered: false,
+                    variant: variant
+                ),
+                [.resultMissing],
+                code
+            )
+        }
+    }
+
     /// `HeaderFormBuilder.validateFormValues` validates only the status
     /// comment while the form is out of service.
     func testOutOfServiceStatusRequiresAComment() {

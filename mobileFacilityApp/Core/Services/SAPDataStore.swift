@@ -27,7 +27,14 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     private(set) var notifications: [SAPNotificationSummary] = []
     private(set) var matchingNotificationCount = 0
     private(set) var totalNotificationCount = 0
+    /// `totalNotificationCount` is only meaningful once this is true; before
+    /// that its `0` means "not counted yet", not "no notifications".
+    private(set) var hasLoadedNotificationCount = false
     private(set) var isLoadingMoreNotifications = false
+    /// True while the first page is rebuilt after the structural filter, the
+    /// search text or the cache itself changed. The list keeps its previous
+    /// rows meanwhile, so this is what the busy frame over the list binds to.
+    private(set) var isReloadingNotifications = false
     private(set) var notificationFilterMetadata: [NotificationStructuralFilterMetadata] = []
     private(set) var notificationFilterOptions = NotificationStructuralFilterOptions.empty
     private(set) var functionalLocationDirectory = FunctionalLocationDirectory.empty
@@ -178,6 +185,8 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             cachedData = try await repository.load(for: localWorkerID)
             guard cachedData.metadata != nil else {
                 resetNotificationPage()
+                // No cache yet: zero notifications is the actual answer.
+                hasLoadedNotificationCount = true
                 state = .noData
                 initialCacheLoadCompleted = true
                 return
@@ -421,6 +430,8 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     private func loadFirstNotificationPage() async throws {
         let loadID = UUID()
         notificationLoadID = loadID
+        isReloadingNotifications = true
+        defer { isReloadingNotifications = false }
         let page = try await repository.loadNotifications(
             for: localWorkerID,
             matching: notificationSearchText,
@@ -444,6 +455,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             offset: 0
         )
         totalNotificationCount = page.totalCount
+        hasLoadedNotificationCount = true
     }
 
     private func loadNotificationFilterMetadata() async throws {

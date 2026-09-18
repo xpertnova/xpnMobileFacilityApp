@@ -15,17 +15,18 @@ struct DashboardView: View {
             VStack(alignment: .leading, spacing: 22) {
                 dashboardHeader
 
+                let metrics = demo.dashboardMetrics
                 metricColumns {
-                    MetricCard(count: demo.allNotificationCount, titleKey: "dashboard.metrics.notifications", icon: "📋", tint: FacilityTheme.blue) {
+                    MetricCard(count: metrics.notifications, titleKey: "dashboard.metrics.notifications", icon: "📋", tint: FacilityTheme.blue) {
                         demo.open(.notifications)
                     }
-                    MetricCard(count: visibleDefectCount, titleKey: "dashboard.metrics.defects", icon: "⚠️", tint: FacilityTheme.red) {
+                    MetricCard(count: metrics.defects, titleKey: "dashboard.metrics.defects", icon: "⚠️", tint: FacilityTheme.red) {
                         demo.open(.defects)
                     }
-                    MetricCard(count: demo.offlineWorkStore.savedNotificationCount, titleKey: "dashboard.metrics.drafts", icon: "💾", tint: FacilityTheme.orange) {
+                    MetricCard(count: metrics.drafts, titleKey: "dashboard.metrics.drafts", icon: "💾", tint: FacilityTheme.orange) {
                         demo.open(.drafts)
                     }
-                    MetricCard(count: visibleTechnicalPlaceCount, titleKey: "dashboard.metrics.places", icon: "🏗️", tint: FacilityTheme.accent) {
+                    MetricCard(count: metrics.technicalPlaces, titleKey: "dashboard.metrics.places", icon: "🏗️", tint: FacilityTheme.accent) {
                         demo.open(.technicalPlaces)
                     }
                 }
@@ -57,10 +58,6 @@ struct DashboardView: View {
         }
     }
 
-    private var visibleDefectCount: Int {
-        demo.offlineWorkStore.defectCount
-    }
-
     private func dashboardContext(for date: Date = .now) -> String {
         let currentDate = date.formatted(
             .dateTime.weekday(.wide).day().month(.wide).year()
@@ -70,10 +67,6 @@ struct DashboardView: View {
         return [currentDate, organizationUnit]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
-    }
-
-    private var visibleTechnicalPlaceCount: Int {
-        demo.technicalPlacesStore.totalCount
     }
 
     private var quickAccess: some View {

@@ -44,6 +44,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     private let localWorkerID: String?
     private let notificationListIndex: SQLiteNotificationListIndex?
     private var database: OpaquePointer?
+    /// The last built technical-object hierarchy and the connection's change
+    /// count it was built at. See `technicalObjects(for:)`.
+    private var technicalObjectsCache: (changeCount: Int32, objects: [TechnicalObjectNode])?
     private var stagedOutgoingRowIDs: [String: [Int64]] = [:]
     private var stagedOutgoingRequestID: String?
     private var incomingUserRows: [LegacySAPRow] = []
@@ -1103,10 +1106,23 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         guard expected == actual else { throw SAPReadError.serviceUnavailable }
     }
 
+    /// Every technical-place query starts from the full hierarchy, which is
+    /// rebuilt from three whole tables (T0261, T0262, T0271) plus relationship
+    /// resolution. Opening the technical places alone asked for it four times,
+    /// serialised on this actor ahead of the notification queries. The build
+    /// is kept until this connection writes anything: it is the only one that
+    /// writes this database (the sync service shares this instance), so an
+    /// unchanged `sqlite3_total_changes` means the tables are unchanged.
     private func technicalObjects(for workerID: String) throws -> [TechnicalObjectNode] {
         try validateWorker(workerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
-        return try Self.technicalObjects(on: database)
+        let changeCount = SQLiteC.totalChanges(database)
+        if let cache = technicalObjectsCache, cache.changeCount == changeCount {
+            return cache.objects
+        }
+        let objects = try Self.technicalObjects(on: database)
+        technicalObjectsCache = (changeCount, objects)
+        return objects
     }
 
     private func rebuildNotificationListIndexIfNeeded(

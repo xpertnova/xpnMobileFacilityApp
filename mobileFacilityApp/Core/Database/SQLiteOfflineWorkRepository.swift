@@ -24,6 +24,9 @@ enum SQLiteC {
     @_silgen_name("sqlite3_column_int") static func columnInt(_ statement: OpaquePointer?, _ index: Int32) -> Int32
     @_silgen_name("sqlite3_column_int64") static func columnInt64(_ statement: OpaquePointer?, _ index: Int32) -> Int64
     @_silgen_name("sqlite3_column_type") static func columnType(_ statement: OpaquePointer?, _ index: Int32) -> Int32
+    /// Rows inserted, updated or deleted through this connection since it was
+    /// opened. Only ever grows, so an unchanged value means nothing was written.
+    @_silgen_name("sqlite3_total_changes") static func totalChanges(_ database: OpaquePointer?) -> Int32
 }
 
 actor SQLiteOfflineWorkRepository: OfflineWorkRepository {

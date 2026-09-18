@@ -5,7 +5,6 @@ import Security
 enum LocalCredentialStoreError: Error {
     case usernameAlreadyExists
     case invalidCredentials
-    case passwordRequirementsNotMet
     case storageUnavailable
 }
 
@@ -20,8 +19,11 @@ struct LocalCredentialStore {
 
     static func createAccount(username: String, password: String) throws -> LocalAuthenticatedUser {
         let displayName = trimmedUsername(username)
-        guard !displayName.isEmpty, password.count >= 8 else {
-            throw LocalCredentialStoreError.passwordRequirementsNotMet
+        // The shared device carries no password policy: any password the
+        // technician types is accepted. The sign-in screen only insists that
+        // both fields are filled in.
+        guard !displayName.isEmpty else {
+            throw LocalCredentialStoreError.invalidCredentials
         }
 
         let normalizedUsername = normalizedUsername(displayName)

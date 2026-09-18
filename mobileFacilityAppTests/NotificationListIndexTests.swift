@@ -65,6 +65,56 @@ final class NotificationListIndexTests: XCTestCase {
         )
     }
 
+    /// The legacy selection screen offers the form list as soon as the
+    /// business entity is picked: `_afterGetGE4SelectionDDB` enables
+    /// `select.formulare` and calls `_refreshFormulars`, which passes whatever
+    /// `_getTpGeb()` / `_getTpGsg()` return — empty while nothing is selected.
+    func testFormOptionsAreOfferedBeforeABuildingOrTradeIsChosen() {
+        let options = NotificationStructuralFilterOptions(
+            metadata: [
+                .init(
+                    countryCode: "DE", locationCode: "ESS", businessEntityCode: "100",
+                    buildingCode: "A", tradeCode: "FM", formCode: "TFM2",
+                    functionalLocationName: "Zeta building"
+                ),
+                .init(
+                    countryCode: "DE", locationCode: "ESS", businessEntityCode: "100",
+                    buildingCode: "A", tradeCode: "FM", formCode: "TFM1",
+                    functionalLocationName: "Alpha building"
+                ),
+                .init(
+                    countryCode: "DE", locationCode: "ESS", businessEntityCode: "100",
+                    buildingCode: "B", tradeCode: "EL", formCode: "TFM7",
+                    functionalLocationName: "Beta building"
+                )
+            ]
+        )
+
+        XCTAssertEqual(
+            options.formOptions(for: "DE-ESS-100", buildingCode: "", tradeCode: "").map(\.id),
+            ["TFM1", "TFM2", "TFM7"],
+            "every form of the business entity, before a building is chosen"
+        )
+        XCTAssertEqual(
+            options.formOptions(for: "DE-ESS-100", buildingCode: "A", tradeCode: "").map(\.id),
+            ["TFM1", "TFM2"],
+            "narrowed by the building, still without a trade"
+        )
+        XCTAssertEqual(
+            options.formOptions(for: "DE-ESS-100", buildingCode: "", tradeCode: "EL").map(\.id),
+            ["TFM7"]
+        )
+        XCTAssertEqual(
+            options.formOptions(for: "DE-ESS-100", buildingCode: "A", tradeCode: "FM").map(\.id),
+            ["TFM1", "TFM2"]
+        )
+        XCTAssertEqual(
+            options.formOptions(for: "DE-SAF-200", buildingCode: "", tradeCode: "").map(\.id),
+            [],
+            "another business entity offers none of them"
+        )
+    }
+
     func testIndexedStructuralFilterPagesOnlyMatchingNotifications() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -14,7 +14,18 @@ final class OfflineWorkStore {
     private let repository: any OfflineWorkRepository
     let workerID: String
     private(set) var state: State = .loading
-    private(set) var items: [OfflineWorkItem] = []
+    private(set) var items: [OfflineWorkItem] = [] {
+        didSet { revision &+= 1 }
+    }
+    /// Bumped on every change to `items`. Lists derived from offline work use
+    /// it as a cache key instead of rebuilding themselves on every SwiftUI
+    /// pass.
+    private(set) var revision = 0
+    /// Whether `items` has been read from the repository at least once. A
+    /// reload keeps the previous items, so counts derived from them stay valid
+    /// while `state` is `.loading` again; before the first read they are not
+    /// known at all.
+    private(set) var hasLoaded = false
 
     init(repository: any OfflineWorkRepository, workerID: String) {
         self.repository = repository
@@ -215,6 +226,7 @@ final class OfflineWorkStore {
         state = .loading
         do {
             items = try await repository.loadWork(for: workerID)
+            hasLoaded = true
             state = items.isEmpty ? .empty : .loaded
         } catch is CancellationError {
             return

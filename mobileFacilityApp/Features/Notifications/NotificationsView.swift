@@ -20,6 +20,8 @@ struct NotificationsView: View {
     let filterPresentation: NotificationStructuralFilterPresentationState
     @State private var appliedSearchQuery = ""
     @State private var filterSelection: NotificationFilter = .all
+    /// `false` until the screen has rendered once. See `notificationList`.
+    @State private var isListBuilt = false
     @Environment(\.facilityLayout) private var layout
 
     init(
@@ -223,15 +225,41 @@ struct NotificationsView: View {
     }
 
     private var notificationList: some View {
-        EquatableView(
-            content: NotificationListContent(
-                demo: demo,
-                filterPresentation: filterPresentation,
-                filterSelection: filterSelection,
-                appliedSearchQuery: appliedSearchQuery,
-                pagePadding: layout.pagePadding
-            )
-        )
+        Group {
+            if isListBuilt {
+                EquatableView(
+                    content: NotificationListContent(
+                        demo: demo,
+                        filterPresentation: filterPresentation,
+                        filterSelection: filterSelection,
+                        appliedSearchQuery: appliedSearchQuery,
+                        pagePadding: layout.pagePadding
+                    )
+                )
+            } else {
+                // Opening this screen used to build the whole list inside the
+                // same run loop pass as the navigation, so the tap felt stuck
+                // and nothing could report progress. The first pass now stays
+                // empty behind the busy frame, and the rows are built on the
+                // next pass, once the screen is on-screen.
+                Color.clear
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .facilityBusy(!isListBuilt || isNotificationListBusy, titleKey: "notifications.loading")
+        .task { isListBuilt = true }
+    }
+
+    /// Already true on the first frame: `SAPDataStore` starts in
+    /// `.loadingCache`, and the first page is fetched before the list has any
+    /// rows, so the overlay is up before an empty list can be drawn. It also
+    /// covers rebuilding that page after the structural filter or the search
+    /// text changed. Demo data is in memory and never loads.
+    private var isNotificationListBusy: Bool {
+        guard !demo.isDemoMode else { return false }
+        return demo.sapDataStore.state == .loadingCache
+            || demo.sapDataStore.isReloadingNotifications
+            || (demo.sapDataStore.notifications.isEmpty && demo.sapDataStore.isLoadingMoreNotifications)
     }
 }
 
@@ -362,16 +390,19 @@ private struct NotificationListContent: View, Equatable {
             $0.title.localizedCaseInsensitiveContains(appliedSearchQuery)
                 || $0.location.localizedCaseInsensitiveContains(appliedSearchQuery)
                 || $0.id.localizedCaseInsensitiveContains(appliedSearchQuery)
+                || ($0.structuralFilterMetadata?.formCode.localizedCaseInsensitiveContains(appliedSearchQuery) == true)
         }
     }
 
     var body: some View {
         let notifications = visibleNotifications
+        let prefetchTriggerIDs = Set(notifications.suffix(notificationPrefetchThreshold).map(\.id))
         return List {
             if !demo.isDemoMode, demo.sapDataStore.state == .loadingCache {
                 notificationListRow(bottomInset: 28) {
-                    ProgressView("sap.cache.loading")
-                        .frame(maxWidth: .infinity, minHeight: 260)
+                    // The shared busy frame over the list reports the state;
+                    // the row only reserves the height it covers.
+                    Color.clear.frame(maxWidth: .infinity, minHeight: 260)
                 }
             } else if !demo.isDemoMode, demo.sapDataStore.state == .noData {
                 notificationListRow(bottomInset: 28) {
@@ -413,7 +444,7 @@ private struct NotificationListContent: View, Equatable {
                         )
                         .id(notification.id)
                         .onAppear {
-                            prefetchNextPageIfNeeded(for: notification, in: notifications)
+                            prefetchNextPageIfNeeded(for: notification, triggerIDs: prefetchTriggerIDs)
                         }
                     }
                 }
@@ -494,14 +525,17 @@ private struct NotificationListContent: View, Equatable {
         sapRefreshErrorMessage(demo.sapDataStore.refreshError)
     }
 
+    /// Pulls the next page once one of the last rows appears.
+    ///
+    /// The trigger ids are collected once per pass: looking the row up by
+    /// index instead scanned the whole list again for every row that scrolled
+    /// into view.
     private func prefetchNextPageIfNeeded(
         for notification: MaintenanceNotification,
-        in notifications: [MaintenanceNotification]
+        triggerIDs: Set<String>
     ) {
         guard !demo.isDemoMode, demo.sapDataStore.hasMoreNotifications else { return }
-        guard let index = notifications.firstIndex(where: { $0.id == notification.id }) else { return }
-        let prefetchStartIndex = max(notifications.count - notificationPrefetchThreshold, 0)
-        guard index >= prefetchStartIndex else { return }
+        guard triggerIDs.contains(notification.id) else { return }
 
         Task {
             await demo.sapDataStore.loadMoreNotifications()
@@ -686,7 +720,7 @@ struct NotificationStructuralFilterOverlay: View {
                     placeholderKey: "notifications.structuralFilter.form.placeholder",
                     selection: presentation.pendingFilter.formCode,
                     options: forms,
-                    isEnabled: !presentation.pendingFilter.tradeCode.isEmpty && !forms.isEmpty
+                    isEnabled: presentation.pendingFilter.hasBusinessEntity && !forms.isEmpty
                 ) { option in
                     presentation.pendingFilter.formCode = option.id
                 }
@@ -838,8 +872,12 @@ struct NotificationStructuralFilterOverlay: View {
         )
     }
 
+    /// The form list follows the legacy selection screen: it is available as
+    /// soon as a business entity is chosen, and building and trade only narrow
+    /// it (`Selection.controller.js` `_afterGetGE4SelectionDDB` enables
+    /// `select.formulare` and refreshes it with an empty `TPGEB`/`TPGSG`).
     private var formOptions: [NotificationStructuralFilterOption] {
-        guard presentation.pendingFilter.hasBusinessEntity, !presentation.pendingFilter.buildingCode.isEmpty, !presentation.pendingFilter.tradeCode.isEmpty else { return [] }
+        guard presentation.pendingFilter.hasBusinessEntity else { return [] }
         return demo.notificationFilterOptions.formOptions(
             for: presentation.pendingFilter.businessEntityID,
             buildingCode: presentation.pendingFilter.buildingCode,
@@ -850,14 +888,8 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private func formLabel(for code: String) -> String {
-        let name: String? = switch code {
-        case "TFM1": String(localized: "notifications.structuralFilter.form.tfm1")
-        case "TFM3": String(localized: "notifications.structuralFilter.form.tfm3")
-        case "TFM5": String(localized: "mobileLadder.title")
-        case "TFM7": String(localized: "notifications.structuralFilter.form.tfm7")
-        default: nil
-        }
-        return name.map { "\(code) — \($0)" } ?? code
+        guard let formType = NotificationFormType(formCode: code) else { return code }
+        return "\(code) — \(String(localized: String.LocalizationValue(formType.titleKey)))"
     }
 
     private func dismiss() {
@@ -1016,7 +1048,9 @@ private struct NotificationRow: View, Equatable {
                         
                         Spacer()
                         
-                        FacilityTemplateBadge(text: "KG 300", style: .costGroup)
+                        if let badge = notification.categoryBadge {
+                            NotificationCategoryBadgeView(badge: badge)
+                        }
                         
                         NotificationStatusBadges(notification: notification)
                         
@@ -1063,6 +1097,20 @@ struct NotificationStatusIcon: View {
             ("✅", FacilityTheme.accent)
         case .open:
             ("📋", FacilityTheme.blue)
+        }
+    }
+}
+
+/// Names the inspection form a row carries. A control key the app has no
+/// screen for keeps its raw SAP code, so the chip never invents a category.
+private struct NotificationCategoryBadgeView: View {
+    let badge: NotificationCategoryBadge
+
+    var body: some View {
+        if let titleKey = badge.titleKey {
+            FacilityTemplateBadge(localized: .init(titleKey), style: badge.style)
+        } else {
+            FacilityTemplateBadge(text: badge.code, style: badge.style)
         }
     }
 }

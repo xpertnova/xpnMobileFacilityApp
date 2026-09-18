@@ -45,19 +45,32 @@ struct PageHeader: View {
 }
 
 struct MetricCard: View {
-    let count: Int
+    /// `nil` while the counter is not known yet. It is drawn as a placeholder
+    /// bar rather than as `0`, which would read as "nothing to do".
+    let count: Int?
     let titleKey: String
     let icon: String
     let tint: Color
     let action: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(count)")
+                    Text(verbatim: count.map(String.init) ?? "000")
                         .font(.system(size: 32, weight: .bold, design: .rounded))
                         .foregroundStyle(FacilityTheme.ink)
+                        .redacted(reason: count == nil ? .placeholder : [])
+                        // A counter that changes — the saved value replaced by
+                        // a different fresh one, or a sync — rolls to its new
+                        // value instead of jumping.
+                        .contentTransition(.numericText(value: Double(count ?? 0)))
+                        .animation(accessibilityReduceMotion ? nil : .snappy(duration: 0.35), value: count)
+                        .accessibilityLabel(
+                            count.map { Text(verbatim: String($0)) } ?? Text("dashboard.metrics.loading")
+                        )
                     Text(LocalizedStringKey(titleKey))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -133,28 +146,79 @@ enum FacilityTemplateBadgeStyle {
     case attention
     case temporarilySaved
     case complete
-    /// Form codes such as `TFM5`, grey like the badge in the notification header.
+    /// Inspection-form chips. They keep clear of the red/orange/green/blue the
+    /// status chips beside them own, so a form name never reads as a status.
+    case formMaintenancePlan
+    case formElevator
+    case formRoundInspection
+    case formFixedLadder
+    case formMobileLadder
+    case formHoldOpenSystem
+    case formSubdistribution
+    case formRoofSystem
+    /// A value the app can only show verbatim, such as an SAP control key it
+    /// has no screen for.
     case neutral
 
     var foreground: Color {
         switch self {
-        case .costGroup: Color(red: 94 / 255, green: 92 / 255, blue: 230 / 255)
-        case .open: Color(red: 0, green: 122 / 255, blue: 1)
-        case .attention: Color(red: 1, green: 59 / 255, blue: 48 / 255)
-        case .temporarilySaved: Color(red: 181 / 255, green: 106 / 255, blue: 0)
-        case .complete: Color(red: 11 / 255, green: 125 / 255, blue: 87 / 255)
-        case .neutral: Color.secondary
+        case .costGroup, .formMaintenancePlan:
+            Color(red: 94 / 255, green: 92 / 255, blue: 230 / 255)
+        case .open:
+            Color(red: 0, green: 122 / 255, blue: 1)
+        case .attention:
+            Color(red: 1, green: 59 / 255, blue: 48 / 255)
+        case .temporarilySaved:
+            Color(red: 181 / 255, green: 106 / 255, blue: 0)
+        case .complete:
+            Color(red: 11 / 255, green: 125 / 255, blue: 87 / 255)
+        case .formElevator:
+            Color(red: 142 / 255, green: 68 / 255, blue: 173 / 255)
+        case .formRoundInspection:
+            Color(red: 0, green: 138 / 255, blue: 130 / 255)
+        case .formFixedLadder:
+            Color(red: 140 / 255, green: 94 / 255, blue: 60 / 255)
+        case .formMobileLadder:
+            Color(red: 156 / 255, green: 63 / 255, blue: 126 / 255)
+        case .formHoldOpenSystem:
+            Color(red: 194 / 255, green: 24 / 255, blue: 91 / 255)
+        case .formSubdistribution:
+            Color(red: 72 / 255, green: 94 / 255, blue: 160 / 255)
+        case .formRoofSystem:
+            Color(red: 58 / 255, green: 110 / 255, blue: 120 / 255)
+        case .neutral:
+            Color(red: 100 / 255, green: 110 / 255, blue: 125 / 255)
         }
     }
 
     var background: Color {
         switch self {
-        case .costGroup: Color(red: 240 / 255, green: 236 / 255, blue: 253 / 255)
-        case .open: Color(red: 234 / 255, green: 243 / 255, blue: 1)
-        case .attention: Color(red: 1, green: 236 / 255, blue: 235 / 255)
-        case .temporarilySaved: Color(red: 1, green: 244 / 255, blue: 224 / 255)
-        case .complete: Color(red: 230 / 255, green: 246 / 255, blue: 240 / 255)
-        case .neutral: Color(white: 0.92)
+        case .costGroup, .formMaintenancePlan:
+            Color(red: 240 / 255, green: 236 / 255, blue: 253 / 255)
+        case .open:
+            Color(red: 234 / 255, green: 243 / 255, blue: 1)
+        case .attention:
+            Color(red: 1, green: 236 / 255, blue: 235 / 255)
+        case .temporarilySaved:
+            Color(red: 1, green: 244 / 255, blue: 224 / 255)
+        case .complete:
+            Color(red: 230 / 255, green: 246 / 255, blue: 240 / 255)
+        case .formElevator:
+            Color(red: 245 / 255, green: 238 / 255, blue: 250 / 255)
+        case .formRoundInspection:
+            Color(red: 232 / 255, green: 248 / 255, blue: 247 / 255)
+        case .formFixedLadder:
+            Color(red: 248 / 255, green: 241 / 255, blue: 233 / 255)
+        case .formMobileLadder:
+            Color(red: 250 / 255, green: 236 / 255, blue: 246 / 255)
+        case .formHoldOpenSystem:
+            Color(red: 253 / 255, green: 235 / 255, blue: 241 / 255)
+        case .formSubdistribution:
+            Color(red: 236 / 255, green: 240 / 255, blue: 250 / 255)
+        case .formRoofSystem:
+            Color(red: 233 / 255, green: 244 / 255, blue: 246 / 255)
+        case .neutral:
+            Color(red: 240 / 255, green: 242 / 255, blue: 245 / 255)
         }
     }
 }
