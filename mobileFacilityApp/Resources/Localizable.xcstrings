@@ -16362,6 +16362,23 @@
         }
       }
     },
+    "scan.action.cancel" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan abbrechen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel scan"
+          }
+        }
+      }
+    },
     "scan.action.openPlace" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -16921,18 +16938,18 @@
         }
       }
     },
-    "scan.results.subtitle" : {
+    "scan.results.scannedCode %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wähle die Wartungsmeldung aus, die du öffnen möchtest."
+            "value" : "Gescannter Code: %@"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose the maintenance notification you want to open."
+            "value" : "Scanned code: %@"
           }
         }
       }
@@ -16942,13 +16959,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mehrere Wartungsmeldungen gefunden"
+            "value" : "Gefundene Wartungsmeldungen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Multiple maintenance notifications found"
+            "value" : "Matching maintenance notifications"
           }
         }
       }

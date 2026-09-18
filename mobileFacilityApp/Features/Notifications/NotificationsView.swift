@@ -1020,14 +1020,8 @@ private struct NotificationRow: View, Equatable {
     var body: some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 16) {
-                let iconConfig = iconFor(status: notification.status)
-                
-                Text(iconConfig.icon)
-                    .font(.title3)
-                    .frame(width: 44, height: 44)
-                    .background(iconConfig.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityHidden(true)
-                
+                NotificationStatusIcon(status: notification.status)
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("\(notification.title) · Meldung \(notification.id.replacingOccurrences(of: "M-", with: "47100000"))")
                         .font(.headline)
@@ -1078,17 +1072,31 @@ private struct NotificationRow: View, Equatable {
         }
         .buttonStyle(.plain)
     }
-    
-    private func iconFor(status: WorkStatus) -> (icon: String, tint: Color) {
+}
+
+/// Leading status tile of a notification list row.
+struct NotificationStatusIcon: View {
+    let status: WorkStatus
+
+    var body: some View {
+        let icon = Self.icon(for: status)
+        Text(icon.symbol)
+            .font(.title3)
+            .frame(width: 44, height: 44)
+            .background(icon.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityHidden(true)
+    }
+
+    private static func icon(for status: WorkStatus) -> (symbol: String, tint: Color) {
         switch status {
         case .attention:
-            return ("⚠", FacilityTheme.red)
+            ("⚠", FacilityTheme.red)
         case .draft, .pending:
-            return ("💾", FacilityTheme.orange)
+            ("💾", FacilityTheme.orange)
         case .complete, .closedLocally:
-            return ("✅", FacilityTheme.accent)
+            ("✅", FacilityTheme.accent)
         case .open:
-            return ("📋", FacilityTheme.blue)
+            ("📋", FacilityTheme.blue)
         }
     }
 }
@@ -1109,7 +1117,7 @@ private struct NotificationCategoryBadgeView: View {
 
 /// Mirrors the legacy overview: a local closure remains visibly local and a
 /// defect found during that review stays visible beside it.
-private struct NotificationStatusBadges: View {
+struct NotificationStatusBadges: View {
     let notification: MaintenanceNotification
 
     var body: some View {

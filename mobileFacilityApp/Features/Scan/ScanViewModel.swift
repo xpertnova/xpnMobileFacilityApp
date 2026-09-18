@@ -10,8 +10,14 @@ final class ScanViewModel {
         case configuring
         case scanning
         case resolving
-        case results([SAPNotificationSummary])
+        case results(Lookup)
         case failure(Failure)
+    }
+
+    /// A scanned code and the maintenance notifications it resolved to.
+    struct Lookup: Equatable {
+        let payload: LegacyQRCodePayload
+        let matches: [SAPNotificationSummary]
     }
 
     enum Failure: Equatable {
@@ -47,14 +53,25 @@ final class ScanViewModel {
 
     private let sapDataStore: SAPDataStore
     private let isDemoMode: Bool
+    /// Opens the only notification a new lookup found. Results restored after
+    /// a cancelled scan are not opened again.
+    private let openSingleMatch: @MainActor (SAPNotificationSummary) -> Void
     private var acceptedValue: String?
     private var resolutionTask: Task<Void, Never>?
+    /// The results on screen when the current scan started. Cancelling the
+    /// scan returns to them instead of discarding the technician's list.
+    private var stateBeforeScan: State = .idle
 
     private(set) var state: State = .idle
 
-    init(sapDataStore: SAPDataStore, isDemoMode: Bool) {
+    init(
+        sapDataStore: SAPDataStore,
+        isDemoMode: Bool,
+        openSingleMatch: @escaping @MainActor (SAPNotificationSummary) -> Void
+    ) {
         self.sapDataStore = sapDataStore
         self.isDemoMode = isDemoMode
+        self.openSingleMatch = openSingleMatch
     }
 
     var cameraShouldRun: Bool {
@@ -78,8 +95,13 @@ final class ScanViewModel {
     func startQRCodeScan() {
         guard !isBusy else { return }
         resetTransientState()
+        if case .results = state {
+            stateBeforeScan = state
+        } else {
+            stateBeforeScan = .idle
+        }
         if isDemoMode {
-            accept(Self.demoPayload)
+            resolve(Self.demoPayload)
         } else {
             state = .requestingPermission
         }
@@ -96,6 +118,8 @@ final class ScanViewModel {
     }
 
     func cameraFailed(_ failure: QRCodeScannerFailure) {
+        // A permission answer can arrive after the technician cancelled.
+        guard cameraShouldRun else { return }
         switch failure {
         case .permissionDenied:
             state = .failure(.cameraPermissionDenied)
@@ -105,6 +129,19 @@ final class ScanViewModel {
     }
 
     func accept(_ rawValue: String) {
+        guard cameraShouldRun else { return }
+        resolve(rawValue)
+    }
+
+    /// Stops a running scan or lookup. Results found before the scan started
+    /// stay on screen.
+    func cancel() {
+        guard isBusy else { return }
+        resetTransientState()
+        state = stateBeforeScan
+    }
+
+    private func resolve(_ rawValue: String) {
         guard !rawValue.isEmpty, rawValue != acceptedValue else { return }
         acceptedValue = rawValue
         state = .resolving
@@ -115,33 +152,31 @@ final class ScanViewModel {
                 let payload = try LegacyQRCodeCodec.decode(rawValue)
                 let matches = try await sapDataStore.resolveQRCode(payload)
                 guard !Task.isCancelled else { return }
-                state = matches.isEmpty ? .failure(.noMatches) : .results(matches)
+                if matches.isEmpty {
+                    state = .failure(.noMatches)
+                } else {
+                    state = .results(Lookup(payload: payload, matches: matches))
+                    if matches.count == 1 { openSingleMatch(matches[0]) }
+                }
             } catch is CancellationError {
                 return
-            } catch LegacyQRCodeCodecError.invalidPayload {
-                state = .failure(.invalidCode)
-            } catch QRCodeResolutionError.synchronizationRequired {
-                state = .failure(.synchronizationRequired)
             } catch {
-                state = .failure(.cacheUnavailable)
+                guard !Task.isCancelled else { return }
+                state = .failure(Self.failure(for: error))
             }
         }
     }
 
-    func cancel() {
-        resolutionTask?.cancel()
-        resetTransientState()
-        state = .idle
+    private static func failure(for error: Error) -> Failure {
+        if error as? LegacyQRCodeCodecError == .invalidPayload { return .invalidCode }
+        if error as? QRCodeResolutionError == .synchronizationRequired { return .synchronizationRequired }
+        return .cacheUnavailable
     }
 
     private func resetTransientState() {
         resolutionTask?.cancel()
         resolutionTask = nil
         acceptedValue = nil
-    }
-
-    func scanAgain() {
-        startQRCodeScan()
     }
 
     private static let demoPayload = LegacyQRCodeCodec.encodeDemoMTFM(
