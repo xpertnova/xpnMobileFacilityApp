@@ -3,23 +3,24 @@ import SwiftUI
 /// Shared photo button with attachment counter badge reused across notification inspection checklists.
 struct NotificationPhotoButton: View {
     let count: Int
+    var isLimitReached = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: count == 0 ? "camera" : "camera.fill")
-                    .foregroundStyle(count == 0 ? FacilityTheme.ink : FacilityTheme.blue)
+                    .foregroundStyle(isLimitReached ? FacilityTheme.red : (count == 0 ? FacilityTheme.ink : FacilityTheme.blue))
                     .frame(width: 44, height: 44)
                     .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(.gray.opacity(0.25)))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(isLimitReached ? FacilityTheme.red : .gray.opacity(0.25)))
 
                 if count > 0 {
                     Text(count, format: .number)
                         .font(.caption2.bold())
                         .foregroundStyle(.white)
                         .frame(minWidth: 18, minHeight: 18)
-                        .background(FacilityTheme.blue, in: Circle())
+                        .background(isLimitReached ? FacilityTheme.red : FacilityTheme.blue, in: Circle())
                         .offset(x: 5, y: -5)
                 }
             }

@@ -635,7 +635,7 @@ struct NotificationStructuralFilterOverlay: View {
                     .buttonStyle(.borderedProminent)
                     .tint(FacilityTheme.accent)
                     .font(.body.weight(.regular))
-                    .disabled(!presentation.pendingFilter.hasBusinessEntity)
+                    .disabled(!presentation.pendingFilter.hasBusinessEntity && !presentation.appliedFilter.hasBusinessEntity)
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 24)
@@ -740,45 +740,83 @@ struct NotificationStructuralFilterOverlay: View {
             Text(titleKey)
                 .font(.subheadline.weight(.semibold))
 
-            Button {
-                guard isEnabled else { return }
-                withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
-                    presentation.expandedField = presentation.expandedField == field ? nil : field
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    if let selectedOption = options.first(where: { $0.id == selection }) {
-                        Text(selectedOption.label)
-                            .foregroundStyle(FacilityTheme.ink)
-                            .lineLimit(1)
-                    } else {
-                        Text(placeholderKey)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            HStack(spacing: 0) {
+                Button {
+                    guard isEnabled else { return }
+                    withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
+                        presentation.expandedField = presentation.expandedField == field ? nil : field
                     }
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(isEnabled ? FacilityTheme.accent : .secondary)
-                        .rotationEffect(.degrees(presentation.expandedField == field ? 180 : 0))
+                } label: {
+                    HStack(spacing: 12) {
+                        if let selectedOption = options.first(where: { $0.id == selection }) {
+                            Text(selectedOption.label)
+                                .foregroundStyle(FacilityTheme.ink)
+                                .lineLimit(1)
+                        } else {
+                            Text(placeholderKey)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(isEnabled ? FacilityTheme.accent : .secondary)
+                            .rotationEffect(.degrees(presentation.expandedField == field ? 180 : 0))
+                    }
+                    .padding(.leading, 14)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(isEnabled ? Color(white: 0.94) : Color(white: 0.91), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(presentation.expandedField == field ? FacilityTheme.accent : .clear, lineWidth: 2)
+                .buttonStyle(.plain)
+                .disabled(!isEnabled)
+                .accessibilityLabel(Text(titleKey))
+                .accessibilityValue(
+                    selection.isEmpty
+                        ? Text(placeholderKey)
+                        : Text(options.first(where: { $0.id == selection })?.label ?? selection)
+                )
+
+                if !selection.isEmpty {
+                    Button {
+                        clear(field)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(FacilityTheme.ink.opacity(0.55))
+                            .frame(width: 44, height: 50)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("notifications.structuralFilter.clearSelection") + Text(" ") + Text(titleKey))
+                } else {
+                    Color.clear.frame(width: 14, height: 50)
                 }
             }
-            .buttonStyle(.plain)
-            .disabled(!isEnabled)
+            .background(isEnabled ? Color(white: 0.94) : Color(white: 0.91), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(presentation.expandedField == field ? FacilityTheme.accent : .clear, lineWidth: 2)
+            }
             .anchorPreference(key: StructuralFilterControlAnchorKey.self, value: .bounds) { [field: $0] }
-            .accessibilityLabel(Text(titleKey))
-            .accessibilityValue(
-                selection.isEmpty
-                    ? Text(placeholderKey)
-                    : Text(options.first(where: { $0.id == selection })?.label ?? selection)
-            )
+        }
+    }
+
+    private func clear(_ field: StructuralFilterField) {
+        withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
+            switch field {
+            case .businessEntity:
+                presentation.pendingFilter = .empty
+            case .building:
+                presentation.pendingFilter.buildingCode = ""
+                presentation.pendingFilter.tradeCode = ""
+                presentation.pendingFilter.formCode = ""
+            case .trade:
+                presentation.pendingFilter.tradeCode = ""
+                presentation.pendingFilter.formCode = ""
+            case .form:
+                presentation.pendingFilter.formCode = ""
+            }
+            presentation.expandedField = nil
         }
     }
 

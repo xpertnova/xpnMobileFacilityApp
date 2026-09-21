@@ -86,6 +86,11 @@ final class SidebarPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(viewModel.isSidebarExpanded)
+        XCTAssertFalse(viewModel.suppressesKeyboardAvoidance)
+        viewModel.isBriefingValueHelpPresented = true
+        XCTAssertTrue(viewModel.suppressesKeyboardAvoidance)
+        viewModel.isBriefingValueHelpPresented = false
+        XCTAssertFalse(viewModel.suppressesKeyboardAvoidance)
     }
 
     func testCompactBadgeDisplaysZero() {

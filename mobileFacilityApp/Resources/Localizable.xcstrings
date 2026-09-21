@@ -1049,6 +1049,40 @@
         }
       }
     },
+    "briefing.partnerPicker.chooseCountry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Land wählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose country"
+          }
+        }
+      }
+    },
+    "briefing.partnerPicker.chooseSalutation" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrede wählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose title"
+          }
+        }
+      }
+    },
     "briefing.partnerPicker.city" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1232,6 +1266,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "House no."
+          }
+        }
+      }
+    },
+    "briefing.partnerPicker.keyboard.done" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fertig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
           }
         }
       }
@@ -11650,6 +11701,22 @@
         }
       }
     },
+    "notifications.structuralFilter.clearSelection" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auswahl löschen:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear selection:"
+          }
+        }
+      }
+    },
     "notifications.structuralFilter.form" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -12345,13 +12412,30 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das ausgewählte Foto konnte nicht importiert werden."
+            "value" : "Ein oder mehrere ausgewählte Fotos konnten nicht importiert werden."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "The selected photo could not be imported."
+            "value" : "One or more selected photos could not be imported."
+          }
+        }
+      }
+    },
+    "photos.workspace.error.limit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die maximale Anzahl an Fotos ist erreicht."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The photo limit has been reached."
           }
         }
       }
@@ -12385,6 +12469,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Photo"
+          }
+        }
+      }
+    },
+    "photos.workspace.importing" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos werden importiert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing photos"
           }
         }
       }

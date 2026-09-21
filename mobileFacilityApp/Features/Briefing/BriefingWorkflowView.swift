@@ -113,6 +113,12 @@ private struct BriefingFormScreen: View {
         }
         .animation(.easeOut(duration: 0.16), value: isShowingPartnerEditor)
         .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityEditor)
+        .onChange(of: isShowingPartnerEditor || isShowingBusinessEntityEditor, initial: true) { _, isPresented in
+            workspace.isBriefingValueHelpPresented = isPresented
+        }
+        .onDisappear {
+            workspace.isBriefingValueHelpPresented = false
+        }
         .alert("forms.briefing.title", isPresented: Binding(
             get: { viewModel.validationMessage != nil },
             set: { if !$0 { viewModel.validationMessage = nil } }

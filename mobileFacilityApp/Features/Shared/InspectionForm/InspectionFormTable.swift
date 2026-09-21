@@ -134,6 +134,7 @@ struct InspectionFormTable: View {
     let items: [InspectionFormItem]
     let state: (InspectionFormItem) -> InspectionFormItemState
     let isEditable: Bool
+    let isPhotoLimitReached: Bool
     var emptyState: InspectionFormEmptyState?
     /// Execution date shown in the toolbar band, for the forms whose variant
     /// asks for it.
@@ -215,6 +216,7 @@ struct InspectionFormTable: View {
                 state: state(item),
                 variant: variant,
                 isEditable: isEditable,
+                isPhotoLimitReached: isPhotoLimitReached,
                 existingI2Notifications: existingI2Notifications(for: item),
                 actions: actions
             )
@@ -363,6 +365,7 @@ struct InspectionFormRow: View {
     let state: InspectionFormItemState
     let variant: InspectionFormVariant
     let isEditable: Bool
+    let isPhotoLimitReached: Bool
     var existingI2Notifications: [SAPI2NotificationSummary] = []
     let actions: InspectionFormActions
 
@@ -465,7 +468,7 @@ struct InspectionFormRow: View {
                     .frame(width: InspectionFormMetrics.materialColumn, alignment: .center)
             }
 
-            NotificationPhotoButton(count: state.photoCount) {
+            NotificationPhotoButton(count: state.photoCount, isLimitReached: isPhotoLimitReached) {
                 actions.openPhotos(item)
             }
             .frame(width: InspectionFormMetrics.photoColumn)
