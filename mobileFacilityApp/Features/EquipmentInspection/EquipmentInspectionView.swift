@@ -377,8 +377,7 @@ struct EquipmentInspectionView: View {
                     actionID: model.actions[item.id],
                     isMaterialSelected: model.materials[item.id] ?? false,
                     comment: model.comments[item.id, default: ""],
-                    photoCount: model.attachments(for: item.id).count,
-                    isFlagged: model.validationErrors.contains(item.id)
+                    photoCount: model.attachments(for: item.id).count
                 )
             },
             isEditable: model.arePositionsEditable,
@@ -412,10 +411,12 @@ struct EquipmentInspectionView: View {
                 selectAction: { item, option in
                     guard model.arePositionsEditable else { return }
                     model.actions[item.id] = option.code
+                    model.validationErrors.remove(item.id)
                 },
                 toggleMaterial: { item in
                     guard model.arePositionsEditable else { return }
                     model.materials[item.id] = !(model.materials[item.id] ?? false)
+                    model.validationErrors.remove(item.id)
                 },
                 openPhotos: { photoWorkspaceItemID = $0.id },
                 editComment: { item in
@@ -445,6 +446,7 @@ struct EquipmentInspectionView: View {
                 } else {
                     model.comments[itemID] = newValue
                 }
+                model.validationErrors.remove(itemID)
             }
         )
     }

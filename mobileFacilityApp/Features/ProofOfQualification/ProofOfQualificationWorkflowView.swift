@@ -53,6 +53,7 @@ private struct ProofOfQualificationFormScreen: View {
   let onClose: () -> Void
   @State private var isShowingBusinessEntityPicker = false
   @State private var isShowingPartnerPicker = false
+  @State private var editingCommentID: String?
 
   var body: some View {
     @Bindable var viewModel = viewModel
@@ -128,6 +129,17 @@ private struct ProofOfQualificationFormScreen: View {
     }
     .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityPicker)
     .animation(.easeOut(duration: 0.16), value: isShowingPartnerPicker)
+    .overlay {
+      if let editingCommentID {
+        NotificationCommentEditorOverlay(
+          comment: Binding(
+            get: { viewModel.commentsByItemID[editingCommentID] ?? "" },
+            set: { viewModel.setComment($0, itemID: editingCommentID) }
+          ),
+          dismiss: { self.editingCommentID = nil }
+        )
+      }
+    }
     .alert(
       "qualification.form.title",
       isPresented: Binding(
@@ -226,7 +238,7 @@ private struct ProofOfQualificationFormScreen: View {
                 answerKey: viewModel.answerKeysByItemID[item.id],
                 comment: viewModel.commentsByItemID[item.id] ?? "",
                 setAnswer: { viewModel.setAnswer($0, itemID: item.id) },
-                setComment: { viewModel.setComment($0, itemID: item.id) }
+                editComment: { editingCommentID = item.id }
               )
             }
           }
@@ -323,9 +335,8 @@ private struct QualificationChecklistRow: View {
   let answerKey: String?
   let comment: String
   let setAnswer: (String) -> Void
-  let setComment: (String) -> Void
+  let editComment: () -> Void
   @State private var referenceDocument: BriefingReferenceDocument?
-  @State private var isEditingComment = false
   @Environment(\.facilityLayout) private var layout
 
   var body: some View {
@@ -347,9 +358,6 @@ private struct QualificationChecklistRow: View {
     .overlay(alignment: .bottom) { Divider() }
     .fullScreenCover(item: $referenceDocument) {
       BriefingReferenceDocumentPreview(document: $0)
-    }
-    .sheet(isPresented: $isEditingComment) {
-      QualificationCommentEditor(initialComment: comment, onSave: setComment)
     }
   }
 
@@ -407,48 +415,6 @@ private struct QualificationChecklistRow: View {
   }
 
   private var commentControl: some View {
-    Button {
-      isEditingComment = true
-    } label: {
-      Image(systemName: comment.isEmpty ? "pencil" : "pencil.circle.fill")
-        .font(.system(size: 30, weight: .medium))
-        .foregroundStyle(comment.isEmpty ? FacilityTheme.ink.opacity(0.75) : FacilityTheme.accent)
-        .frame(width: 60, height: 60)
-    }
-    .buttonStyle(.plain)
-    .accessibilityLabel("briefing.checklist.comment")
-  }
-}
-
-private struct QualificationCommentEditor: View {
-  let onSave: (String) -> Void
-  @Environment(\.dismiss) private var dismiss
-  @State private var comment: String
-
-  init(initialComment: String, onSave: @escaping (String) -> Void) {
-    self.onSave = onSave
-    _comment = State(initialValue: initialComment)
-  }
-
-  var body: some View {
-    NavigationStack {
-      TextEditor(text: $comment)
-        .padding(12)
-        .background(FacilityTheme.canvas)
-        .padding(24)
-        .navigationTitle("briefing.checklist.comment")
-        .toolbar {
-          ToolbarItem(placement: .cancellationAction) {
-            Button("common.cancel", action: dismiss.callAsFunction)
-          }
-          ToolbarItem(placement: .confirmationAction) {
-            Button("briefing.comment.save") {
-              onSave(comment)
-              dismiss()
-            }
-          }
-        }
-    }
-    .presentationDetents([.medium, .large])
+    NotificationCommentButton(hasComment: !comment.isEmpty, action: editComment)
   }
 }

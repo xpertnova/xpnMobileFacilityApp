@@ -171,6 +171,57 @@ final class InspectionFormStandardizationTests: XCTestCase {
             ),
             [.actionNotAllowedForResult]
         )
+        XCTAssertEqual(
+            InspectionFormRules.issues(
+                resultCode: "4",
+                actionCode: "9",
+                comment: "Documented",
+                variant: variant
+            ),
+            []
+        )
+        XCTAssertEqual(
+            InspectionFormRules.issues(resultCode: "3", actionCode: "9", variant: variant),
+            [.actionAndCommentRequired]
+        )
+        XCTAssertEqual(
+            InspectionFormRules.issues(
+                resultCode: "3",
+                actionCode: "9",
+                comment: "Documented",
+                variant: variant
+            ),
+            []
+        )
+    }
+
+    func testElevatorExceptionIconBecomesCheckWhenDefectIsDocumentedOrActionCorrected() {
+        let variant = InspectionFormVariant.forFormCode("TFM2")
+        func status(result: String, action: String, comment: String) -> InspectionFormRowStatus {
+            InspectionFormRowStatus.resolve(
+                issues: InspectionFormRules.issues(
+                    resultCode: result,
+                    actionCode: action,
+                    comment: comment,
+                    variant: variant
+                ),
+                isFlagged: false,
+                hasResult: true
+            )
+        }
+
+        XCTAssertEqual(status(result: "3", action: "9", comment: ""), .exception)
+        XCTAssertEqual(status(result: "3", action: "9", comment: "Documented"), .valid)
+        XCTAssertEqual(status(result: "4", action: "8", comment: "Documented"), .exception)
+        XCTAssertEqual(status(result: "4", action: "9", comment: "Documented"), .valid)
+        XCTAssertEqual(
+            InspectionFormRowStatus.resolve(issues: [], isFlagged: false, hasResult: false),
+            .none
+        )
+        XCTAssertEqual(
+            InspectionFormRowStatus.resolve(issues: [], isFlagged: true, hasResult: true),
+            .exception
+        )
     }
 
     /// TFM1 and TFM3 share one rule: a defect needs a comment.
@@ -620,6 +671,40 @@ final class InspectionFormStandardizationTests: XCTestCase {
         model.handleCloseTapped()
         XCTAssertTrue(model.isStatusDecisionPresented)
         XCTAssertFalse(model.isCloseConfirmationPresented)
+    }
+
+    @MainActor
+    func testElevatorRowBecomesValidAfterCommentAndActionCorrections() async throws {
+        let model = EquipmentInspectionViewModel(
+            detail: SAPNotificationDetail(summary: try makeElevatorSummary()),
+            offlineWorkStore: OfflineWorkStore(
+                repository: InMemoryOfflineWorkRepository(),
+                workerID: "S50828"
+            ),
+            photoStore: InMemoryPhotoAttachmentStore()
+        )
+        await model.load()
+        let item = try XCTUnwrap(model.items.first)
+
+        model.results[item.id] = "3"
+        model.actions[item.id] = "9"
+        XCTAssertFalse(model.isChecklistValid)
+
+        model.comments[item.id] = "Inspection documented"
+        XCTAssertTrue(model.isChecklistValid)
+
+        model.results[item.id] = "4"
+        model.actions[item.id] = "8"
+        XCTAssertFalse(model.isChecklistValid)
+        model.handleCloseTapped()
+        XCTAssertTrue(model.validationErrors.contains(item.id))
+        XCTAssertFalse(model.isStatusDecisionPresented)
+
+        model.actions[item.id] = "9"
+        XCTAssertTrue(model.isChecklistValid)
+        model.handleCloseTapped()
+        XCTAssertTrue(model.validationErrors.isEmpty)
+        XCTAssertTrue(model.isStatusDecisionPresented)
     }
 
     /// An out-of-service form confirms too, and stays open for the follow-up.
