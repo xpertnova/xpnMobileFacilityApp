@@ -12,6 +12,7 @@ struct InspectionOutOfServiceControls: View {
     let titleKey: String
     let isActive: Bool
     let photoCount: Int
+    let isPhotoLimitReached: Bool
     let hasComment: Bool
     /// The status is set but undocumented. `validateFormValues` refuses to
     /// close such a form, so the missing comment is marked here too.
@@ -55,13 +56,13 @@ struct InspectionOutOfServiceControls: View {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: photoCount == 0 ? "camera" : "camera.fill")
                         .font(.title2)
-                        .foregroundStyle(isActive ? FacilityTheme.blue : Color.secondary.opacity(0.45))
+                        .foregroundStyle(isPhotoLimitReached ? FacilityTheme.red : (isActive ? FacilityTheme.blue : Color.secondary.opacity(0.45)))
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                         .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(.gray.opacity(0.25))
+                                .stroke(isPhotoLimitReached ? FacilityTheme.red : .gray.opacity(0.25))
                         }
 
                     if photoCount > 0 {
@@ -69,7 +70,7 @@ struct InspectionOutOfServiceControls: View {
                             .font(.caption2.bold())
                             .foregroundStyle(.white)
                             .frame(minWidth: 18, minHeight: 18)
-                            .background(FacilityTheme.blue, in: Circle())
+                            .background(isPhotoLimitReached ? FacilityTheme.red : FacilityTheme.blue, in: Circle())
                             .offset(x: 3, y: -3)
                     }
                 }

@@ -169,6 +169,7 @@ struct WartungsplanDetailView: View {
                 )
             },
             isEditable: !model.isEditingDisabled,
+            isPhotoLimitReached: model.photoAttachments.count >= WartungsplanViewModel.maximumPhotoCount,
             emptyState: InspectionFormEmptyState(
                 titleKey: "notifications.detail.noInspectionItems.title",
                 messageKey: "notifications.detail.noInspectionItems.message",
@@ -250,7 +251,7 @@ struct WartungsplanDetailView: View {
             isReadOnly: model.isEditingDisabled,
             maxAttachments: WartungsplanViewModel.maximumPhotoCount - (model.photoAttachments.count - attachments.count),
             close: { photoWorkspaceItemID = nil },
-            addPhoto: { data in Task { await model.addPhoto(jpegData: data, to: item) } },
+            addPhoto: { data in await model.addPhoto(jpegData: data, to: item) },
             removePhoto: { id in
                 guard let attachment = attachments.first(where: { $0.id == id }) else { return }
                 Task { await model.removePhoto(attachment) }

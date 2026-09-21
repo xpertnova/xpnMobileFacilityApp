@@ -27,6 +27,7 @@ final class FacilityDemoViewModel {
     var manualCaptureRoute: ManualCaptureRoute = .landing
     var technicalPlacesRoute: TechnicalPlacesRoute = .hierarchy
     var selectedBriefingDraftID: UUID?
+    var isBriefingValueHelpPresented = false
     var selectedElectricalSafetyDraftID: UUID?
     var selectedProofOfQualificationDraftID: UUID?
     /// Changes for every new detail presentation, even when the technician
@@ -144,13 +145,13 @@ final class FacilityDemoViewModel {
         }
     }
 
-    /// The notification list keeps a fixed layout while its search field shows the keyboard.
-    /// Detail screens and the SAP password dialog have inputs that still need avoidance.
+    /// The notification list and briefing value-help card handle their own
+    /// keyboard overlap while the shell keeps its full-height layout.
     var suppressesKeyboardAvoidance: Bool {
-        selection == .notifications
+        isBriefingValueHelpPresented || (selection == .notifications
             && selectedNotificationDetail == nil
             && selectedOfflineNotificationDetail == nil
-            && !(!isDemoMode && shouldPresentSAPRefresh)
+            && !(!isDemoMode && shouldPresentSAPRefresh))
     }
 
     func demoNotificationDetail(for id: String) -> SAPNotificationDetail? {

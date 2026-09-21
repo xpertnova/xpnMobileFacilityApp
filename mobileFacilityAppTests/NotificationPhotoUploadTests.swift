@@ -3,6 +3,36 @@ import XCTest
 @testable import mobileFacilityApp
 
 final class NotificationPhotoUploadTests: XCTestCase {
+    func testLibrarySelectionUsesOnlyRemainingPhotoCapacity() {
+        XCTAssertEqual(PhotoLibrarySelectionLimit.remaining(maxAttachments: 20, currentCount: 0), 20)
+        XCTAssertEqual(PhotoLibrarySelectionLimit.remaining(maxAttachments: 20, currentCount: 18), 2)
+        XCTAssertEqual(PhotoLibrarySelectionLimit.remaining(maxAttachments: 20, currentCount: 20), 0)
+        XCTAssertEqual(PhotoLibrarySelectionLimit.remaining(maxAttachments: nil, currentCount: 0), 20)
+    }
+
+    @MainActor
+    func testLocalPhotoCollectionStopsAtTwenty() async {
+        let scope = LocalPhotoScope(
+            workflow: .defect,
+            ownerID: "photo-limit",
+            displayTitle: "Photos",
+            displaySubtitle: "Test"
+        )
+        let model = LocalPhotoCollectionViewModel(
+            scope: scope,
+            offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "test"),
+            photoStore: InMemoryPhotoAttachmentStore()
+        )
+        await model.load()
+        for _ in 0...PhotoLibrarySelectionLimit.maximumBatchCount {
+            await model.addPhoto(jpegData: Data([0xFF, 0xD8, 0xFF, 0xD9]))
+        }
+        XCTAssertEqual(model.entries.count, 20)
+        if case .photoLimitReached? = model.feedback { } else {
+            XCTFail("Expected the local photo limit feedback")
+        }
+    }
+
     @MainActor
     func testReviewDraftSaveReportsFailureWithoutClaimingSuccess() async throws {
         let model = NotificationReviewViewModel(

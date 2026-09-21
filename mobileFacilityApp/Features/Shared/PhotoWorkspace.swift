@@ -10,6 +10,14 @@ enum PhotoWorkspaceMotion {
     static let source = AnyTransition.opacity
 }
 
+enum PhotoLibrarySelectionLimit {
+    static let maximumBatchCount = 20
+
+    static func remaining(maxAttachments: Int?, currentCount: Int) -> Int {
+        min(maximumBatchCount, max(0, maxAttachments.map { $0 - currentCount } ?? maximumBatchCount))
+    }
+}
+
 struct PhotoWorkspaceEntry: Identifiable, Equatable {
     let id: String
     let localAttachmentID: String
@@ -24,6 +32,7 @@ final class LocalPhotoCollectionViewModel {
     enum Feedback: Identifiable {
         case saveFailed
         case importFailed
+        case photoLimitReached
         case cameraUnavailable
         case cameraPermissionDenied
 
@@ -34,6 +43,7 @@ final class LocalPhotoCollectionViewModel {
     private let offlineWorkStore: OfflineWorkStore
     private let photoStore: any PhotoAttachmentStore
     private let legacyAttachmentIDs: [String]
+    private let maxAttachments: Int
 
     private(set) var attachments: [LocalPhotoAttachment] = []
     private(set) var photoData: [String: Data] = [:]
@@ -45,12 +55,14 @@ final class LocalPhotoCollectionViewModel {
         scope: LocalPhotoScope,
         offlineWorkStore: OfflineWorkStore,
         photoStore: any PhotoAttachmentStore,
-        legacyAttachmentIDs: [String] = []
+        legacyAttachmentIDs: [String] = [],
+        maxAttachments: Int = PhotoLibrarySelectionLimit.maximumBatchCount
     ) {
         self.scope = scope
         self.offlineWorkStore = offlineWorkStore
         self.photoStore = photoStore
         self.legacyAttachmentIDs = legacyAttachmentIDs
+        self.maxAttachments = maxAttachments
     }
 
     var entries: [PhotoWorkspaceEntry] {
@@ -94,6 +106,10 @@ final class LocalPhotoCollectionViewModel {
 
     func addPhoto(jpegData: Data) async {
         guard !isSaving else { return }
+        guard attachments.count < maxAttachments else {
+            feedback = .photoLimitReached
+            return
+        }
         isSaving = true
         defer { isSaving = false }
 
@@ -155,7 +171,7 @@ final class LocalPhotoCollectionViewModel {
 
 struct LocalPhotoWorkspace: View {
     let isReadOnly: Bool
-    let maxAttachments: Int?
+    let maxAttachments: Int
     let close: () -> Void
     @State private var model: LocalPhotoCollectionViewModel
 
@@ -165,7 +181,7 @@ struct LocalPhotoWorkspace: View {
         photoStore: any PhotoAttachmentStore,
         legacyAttachmentIDs: [String] = [],
         isReadOnly: Bool = false,
-        maxAttachments: Int? = nil,
+        maxAttachments: Int = PhotoLibrarySelectionLimit.maximumBatchCount,
         close: @escaping () -> Void
     ) {
         self.isReadOnly = isReadOnly
@@ -175,7 +191,8 @@ struct LocalPhotoWorkspace: View {
             scope: scope,
             offlineWorkStore: offlineWorkStore,
             photoStore: photoStore,
-            legacyAttachmentIDs: legacyAttachmentIDs
+            legacyAttachmentIDs: legacyAttachmentIDs,
+            maxAttachments: maxAttachments
         ))
     }
 
@@ -190,7 +207,7 @@ struct LocalPhotoWorkspace: View {
             isReadOnly: isReadOnly,
             maxAttachments: maxAttachments,
             close: close,
-            addPhoto: { data in Task { await model.addPhoto(jpegData: data) } },
+            addPhoto: { data in await model.addPhoto(jpegData: data) },
             removePhoto: { id in Task { await model.removePhoto(id: id) } },
             updatePhoto: { id, name, description in
                 await model.updatePhoto(id: id, name: name, description: description)
@@ -215,6 +232,7 @@ private extension LocalPhotoCollectionViewModel.Feedback {
         switch self {
         case .saveFailed: "photos.workspace.error.save"
         case .importFailed: "photos.workspace.error.import"
+        case .photoLimitReached: "photos.workspace.error.limit"
         case .cameraUnavailable: "photos.workspace.error.cameraUnavailable"
         case .cameraPermissionDenied: "photos.workspace.error.cameraPermissionDenied"
         }
@@ -236,7 +254,7 @@ struct PhotoWorkspace: View {
     let isReadOnly: Bool
     let maxAttachments: Int?
     let close: () -> Void
-    let addPhoto: (Data) -> Void
+    let addPhoto: (Data) async -> Void
     let removePhoto: (String) -> Void
     let updatePhoto: (String, String, String) async -> Void
     let reportImportFailure: () -> Void
@@ -244,8 +262,9 @@ struct PhotoWorkspace: View {
     let reportCameraPermissionDenied: () -> Void
 
     @State private var selectedID: String?
-    @State private var selectedLibraryPhoto: PhotosPickerItem?
+    @State private var selectedLibraryPhotos: [PhotosPickerItem] = []
     @State private var isPhotoLibraryPresented = false
+    @State private var isImportingPhotos = false
     @State private var isCameraPresented = false
     @State private var draftName = ""
     @State private var draftDescription = ""
@@ -287,17 +306,23 @@ struct PhotoWorkspace: View {
         .background(FacilityTheme.canvas.ignoresSafeArea())
         .photosPicker(
             isPresented: $isPhotoLibraryPresented,
-            selection: $selectedLibraryPhoto,
+            selection: $selectedLibraryPhotos,
+            maxSelectionCount: max(1, remainingPhotoCapacity),
             matching: .images
         )
-        .onChange(of: selectedLibraryPhoto) { _, item in
-            guard let item else { return }
-            Task { await importPhoto(item) }
+        .onChange(of: selectedLibraryPhotos) { _, items in
+            guard !isPhotoLibraryPresented, !items.isEmpty else { return }
+            Task { await importPhotos(items) }
+        }
+        .onChange(of: isPhotoLibraryPresented) { _, isPresented in
+            guard !isPresented, !selectedLibraryPhotos.isEmpty else { return }
+            let items = selectedLibraryPhotos
+            Task { await importPhotos(items) }
         }
         .sheet(isPresented: $isCameraPresented) {
             CameraCaptureView(compressionQuality: 0.5) { data in
                 isCameraPresented = false
-                addPhoto(data)
+                Task { await addPhoto(data) }
             } onCancel: {
                 isCameraPresented = false
             }
@@ -325,6 +350,14 @@ struct PhotoWorkspace: View {
         }
     }
 
+    private var isAtAttachmentLimit: Bool {
+        maxAttachments.map { entries.count >= $0 } == true
+    }
+
+    private var remainingPhotoCapacity: Int {
+        PhotoLibrarySelectionLimit.remaining(maxAttachments: maxAttachments, currentCount: entries.count)
+    }
+
     private var header: some View {
         HStack(spacing: 16) {
             Button(action: close) {
@@ -333,6 +366,7 @@ struct PhotoWorkspace: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(FacilityTheme.blue)
+            .disabled(isImportingPhotos)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title.isEmpty ? String(localized: "photos.workspace.title") : title)
@@ -348,9 +382,14 @@ struct PhotoWorkspace: View {
 
             Spacer()
 
+            if isImportingPhotos {
+                ProgressView()
+                    .accessibilityLabel(Text("photos.workspace.importing"))
+            }
+
             Text(String(format: String(localized: "photos.workspace.count"), entries.count))
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isAtAttachmentLimit ? FacilityTheme.red : Color.secondary)
 
             if !isReadOnly {
                 Menu {
@@ -365,8 +404,8 @@ struct PhotoWorkspace: View {
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(FacilityTheme.accent)
-                .disabled(isSaving || maxAttachments.map { entries.count >= $0 } == true)
+                .tint(isAtAttachmentLimit ? FacilityTheme.red : FacilityTheme.accent)
+                .disabled(isSaving || isImportingPhotos || isAtAttachmentLimit)
             }
         }
         .padding(.horizontal, 24)
@@ -426,7 +465,7 @@ struct PhotoWorkspace: View {
                     Button(role: .destructive) { removePhoto(entry.id) } label: {
                         Label("photos.workspace.delete", systemImage: "trash")
                     }
-                    .disabled(isSaving)
+                    .disabled(isSaving || isImportingPhotos)
                 }
         } else {
             photoListRowContent(entry)
@@ -507,7 +546,7 @@ struct PhotoWorkspace: View {
                                     .frame(minHeight: 44)
                             }
                             .buttonStyle(.bordered)
-                            .disabled(isSaving)
+                            .disabled(isSaving || isImportingPhotos)
                         }
                     }
                 }
@@ -631,14 +670,25 @@ struct PhotoWorkspace: View {
         }
     }
 
-    private func importPhoto(_ item: PhotosPickerItem) async {
-        defer { selectedLibraryPhoto = nil }
-        guard let rawData = try? await item.loadTransferable(type: Data.self),
-              let jpegData = JPEGPhotoEncoder.encode(rawData, compressionQuality: 0.5) else {
-            reportImportFailure()
-            return
+    private func importPhotos(_ items: [PhotosPickerItem]) async {
+        guard !isImportingPhotos else { return }
+        isImportingPhotos = true
+        defer {
+            selectedLibraryPhotos = []
+            isImportingPhotos = false
         }
-        addPhoto(jpegData)
+
+        let allowedCount = remainingPhotoCapacity
+        var hadImportFailure = false
+        for item in items.prefix(allowedCount) {
+            guard let rawData = try? await item.loadTransferable(type: Data.self),
+                  let jpegData = JPEGPhotoEncoder.encode(rawData, compressionQuality: 0.5) else {
+                hadImportFailure = true
+                continue
+            }
+            await addPhoto(jpegData)
+        }
+        if hadImportFailure { reportImportFailure() }
     }
 
     private func synchronizeSelectedEntry(in entries: [PhotoWorkspaceEntry]) {

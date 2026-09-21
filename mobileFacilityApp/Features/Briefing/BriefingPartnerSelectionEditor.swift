@@ -10,12 +10,15 @@ struct BriefingPartnerSelectionEditor: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.briefingEditorKeyboardVisible) private var keyboardVisible
     @Namespace private var panelNamespace
     @State private var session = BriefingPartnerPickerSession()
     @State private var selectedPartnerID: String?
     @State private var isAddingPartner = false
     @State private var partnerDraft = BriefingTemporaryPartner(id: "NEU" + String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(6)), company: "", title: "", contactName: "", email: "", telephone: "", street: "", houseNumber: "", postalCode: "", city: "", country: "")
     @State private var hasAttemptedPartnerAdd = false
+    @State private var presentedPartnerDropdown: PartnerDropdown?
+    @FocusState private var focusedPartnerField: ValidationIssue?
 
     init(
         viewModel: BriefingWorkflowViewModel,
@@ -33,13 +36,23 @@ struct BriefingPartnerSelectionEditor: View {
             onConfirm: selectPartner
         ) {
             VStack(spacing: 16) {
-                panelNavigation
+                if !keyboardVisible {
+                    panelNavigation
+                }
                 ZStack {
                     if isAddingPartner {
-                        ScrollView(.vertical) {
-                            addPartnerForm
+                        ScrollViewReader { proxy in
+                            ScrollView(.vertical) {
+                                addPartnerForm
+                            }
+                            .scrollDismissesKeyboard(.interactively)
+                            .onChange(of: focusedPartnerField) { _, _ in
+                                scrollFocusedField(in: proxy)
+                            }
+                            .onChange(of: keyboardVisible) { _, visible in
+                                if visible { scrollFocusedField(in: proxy) }
+                            }
                         }
-                        .scrollDismissesKeyboard(.interactively)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .transition(partnerPanelTransition)
                     } else {
@@ -48,8 +61,8 @@ struct BriefingPartnerSelectionEditor: View {
                     }
                 }
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
+            .padding(.horizontal, keyboardVisible ? 12 : 24)
+            .padding(.vertical, keyboardVisible ? 8 : 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(partnerPanelAnimation, value: isAddingPartner)
         }
@@ -178,17 +191,15 @@ struct BriefingPartnerSelectionEditor: View {
             }
             partnerDraftRow("dlgAddPartner.form.name", required: true) {
                 HStack(spacing: 8) {
-                    Picker("briefing.partnerPicker.salutation", selection: $partnerDraft.title) {
-                        Text(verbatim: "—").tag("")
-                        Text("addUser.title.frau").tag("0001")
-                        Text("addUser.title.herr").tag("0002")
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .tint(FacilityTheme.accent)
-                    .frame(minWidth: 82, minHeight: 48)
-                    .background(FacilityTheme.canvas.opacity(0.6))
-                    .partnerFieldChrome(invalid: false)
+                    partnerDropdown(
+                        .salutation,
+                        title: "briefing.partnerPicker.salutation",
+                        placeholder: "briefing.partnerPicker.chooseSalutation",
+                        iconName: "person.text.rectangle",
+                        options: salutationOptions,
+                        selection: partnerDraft.title
+                    ) { partnerDraft.title = $0 }
+                    .frame(width: 156)
                     partnerDraftTextField("dlgAddPartner.form.vorname", text: $partnerDraft.contactName, issue: .contactName)
                 }
             }
@@ -220,20 +231,82 @@ struct BriefingPartnerSelectionEditor: View {
                 partnerDraftTextField("briefing.partnerPicker.city", text: $partnerDraft.city, issue: .city)
             }
             partnerDraftRow("dlgAddPartner.form.country") {
-                Picker("dlgAddPartner.form.country", selection: $partnerDraft.country) {
-                    Text(verbatim: "—").tag("")
-                    ForEach(Self.legacyCountryCodes, id: \.self) { code in
-                        Text(verbatim: countryName(for: code)).tag(code)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(FacilityTheme.accent)
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                .background(FacilityTheme.canvas.opacity(0.6))
-                .partnerFieldChrome(invalid: false)
+                partnerDropdown(
+                    .country,
+                    title: "dlgAddPartner.form.country",
+                    placeholder: "briefing.partnerPicker.chooseCountry",
+                    iconName: "globe.europe.africa",
+                    options: countryOptions,
+                    selection: partnerDraft.country
+                ) { partnerDraft.country = $0 }
             }
+        }
+    }
+
+    private var salutationOptions: [FacilityDropdownOption] {
+        [
+            FacilityDropdownOption(id: "", title: "—"),
+            FacilityDropdownOption(id: "0001", title: String(localized: "addUser.title.frau")),
+            FacilityDropdownOption(id: "0002", title: String(localized: "addUser.title.herr"))
+        ]
+    }
+
+    private var countryOptions: [FacilityDropdownOption] {
+        let countries = Self.legacyCountryCodes
+            .map { FacilityDropdownOption(id: $0, title: countryName(for: $0)) }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        return [FacilityDropdownOption(id: "", title: "—")] + countries
+    }
+
+    private func partnerDropdown(
+        _ field: PartnerDropdown,
+        title: LocalizedStringKey,
+        placeholder: String,
+        iconName: String,
+        options: [FacilityDropdownOption],
+        selection: String,
+        onSelect: @escaping (String) -> Void
+    ) -> some View {
+        let selectedTitle = options.first { $0.id == selection && !selection.isEmpty }?.title
+        let placeholderTitle = String(localized: String.LocalizationValue(placeholder))
+        return Button {
+            focusedPartnerField = nil
+            presentedPartnerDropdown = field
+        } label: {
+            HStack(spacing: 10) {
+                Text(verbatim: selectedTitle ?? placeholderTitle)
+                    .foregroundStyle(selectedTitle == nil ? .secondary : FacilityTheme.ink)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(FacilityTheme.blue)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(FacilityTheme.canvas.opacity(0.6))
+            .partnerFieldChrome(invalid: false)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(title))
+        .accessibilityValue(Text(verbatim: selectedTitle ?? placeholderTitle))
+        .facilityPopover(
+            isPresented: Binding(
+                get: { presentedPartnerDropdown == field },
+                set: { if !$0 && presentedPartnerDropdown == field { presentedPartnerDropdown = nil } }
+            ),
+            arrowEdge: .top
+        ) {
+            FacilityDropdownOptionsPicker(
+                label: Text(title),
+                iconName: iconName,
+                options: options,
+                selection: [selection],
+                onSelect: { option in
+                    onSelect(option.id)
+                    presentedPartnerDropdown = nil
+                }
+            )
         }
     }
 
@@ -282,6 +355,8 @@ struct BriefingPartnerSelectionEditor: View {
     ) -> some View {
         TextField(title, text: text)
             .textFieldStyle(.plain)
+            .focused($focusedPartnerField, equals: issue)
+            .id(issue)
             .keyboardType(keyboardType)
             .textInputAutocapitalization(keyboardType == .emailAddress ? .never : .sentences)
             .autocorrectionDisabled(keyboardType == .emailAddress)
@@ -289,6 +364,17 @@ struct BriefingPartnerSelectionEditor: View {
             .frame(maxWidth: .infinity, minHeight: 48)
             .background(FacilityTheme.canvas.opacity(0.6))
             .partnerFieldChrome(invalid: partnerDraftIsInvalid(issue))
+    }
+
+    private func scrollFocusedField(in proxy: ScrollViewProxy) {
+        guard let field = focusedPartnerField else { return }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard focusedPartnerField == field else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(field, anchor: .center)
+            }
+        }
     }
 
     private func partnerDraftIsInvalid(
@@ -375,8 +461,12 @@ struct BriefingPartnerSelectionEditor: View {
         "VA", "GB", "AT"
     ]
 
-    private enum ValidationIssue {
+    private enum ValidationIssue: Hashable {
         case company, contactName, email, telephone, street, houseNumber, postalCode, city, country
+    }
+
+    private enum PartnerDropdown: Hashable {
+        case salutation, country
     }
 }
 
