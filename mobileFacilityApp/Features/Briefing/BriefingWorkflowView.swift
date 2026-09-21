@@ -58,6 +58,7 @@ private struct BriefingFormScreen: View {
     @State private var isShowingBusinessEntityEditor = false
     @State private var isBuildingPickerPresented = false
     @State private var isOptionalSectionsExpanded = false
+    @State private var editingCommentID: String?
 
     var body: some View {
         @Bindable var viewModel = viewModel
@@ -118,6 +119,17 @@ private struct BriefingFormScreen: View {
         }
         .onDisappear {
             workspace.isBriefingValueHelpPresented = false
+        }
+        .overlay {
+            if let editingCommentID {
+                NotificationCommentEditorOverlay(
+                    comment: Binding(
+                        get: { viewModel.commentsByItemID[editingCommentID] ?? "" },
+                        set: { viewModel.commentsByItemID[editingCommentID] = $0 }
+                    ),
+                    dismiss: { self.editingCommentID = nil }
+                )
+            }
         }
         .alert("forms.briefing.title", isPresented: Binding(
             get: { viewModel.validationMessage != nil },
@@ -447,7 +459,7 @@ private struct BriefingFormScreen: View {
                             answerKey: viewModel.answerKeysByItemID[item.id],
                             comment: viewModel.commentsByItemID[item.id] ?? "",
                             setAnswer: { viewModel.answerKeysByItemID[item.id] = $0 },
-                            setComment: { viewModel.commentsByItemID[item.id] = $0 }
+                            editComment: { editingCommentID = item.id }
                         )
                     }
                 }
@@ -717,9 +729,8 @@ private struct BriefingChecklistRow: View {
     let answerKey: String?
     let comment: String
     let setAnswer: (String) -> Void
-    let setComment: (String) -> Void
+    let editComment: () -> Void
     @State private var referenceDocument: BriefingReferenceDocument?
-    @State private var isEditingComment = false
     @Environment(\.facilityLayout) private var layout
 
     var body: some View {
@@ -728,9 +739,6 @@ private struct BriefingChecklistRow: View {
         .overlay(alignment: .bottom) { Divider() }
         .fullScreenCover(item: $referenceDocument) { document in
             BriefingReferenceDocumentPreview(document: document)
-        }
-        .sheet(isPresented: $isEditingComment) {
-            BriefingChecklistCommentEditor(initialComment: comment, onSave: setComment)
         }
     }
 
@@ -818,49 +826,10 @@ private struct BriefingChecklistRow: View {
     }
 
     private var commentControl: some View {
-        Button { isEditingComment = true } label: {
-            Image(systemName: comment.isEmpty ? "pencil" : "pencil.circle.fill")
-                .font(.system(size: 30, weight: .medium))
-                .foregroundStyle(comment.isEmpty ? FacilityTheme.ink.opacity(0.75) : FacilityTheme.accent)
-                .frame(width: 60, height: 60)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("briefing.checklist.comment")
+        NotificationCommentButton(hasComment: !comment.isEmpty, action: editComment)
         .accessibilityValue(
             Text(LocalizedStringKey(comment.isEmpty ? "briefing.comment.none" : "briefing.comment.added"))
         )
-    }
-}
-
-private struct BriefingChecklistCommentEditor: View {
-    let onSave: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var comment: String
-
-    init(initialComment: String, onSave: @escaping (String) -> Void) {
-        self.onSave = onSave
-        _comment = State(initialValue: initialComment)
-    }
-
-    var body: some View {
-        NavigationStack {
-            TextEditor(text: $comment)
-                .padding(12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .background(FacilityTheme.canvas)
-                .padding(24)
-                .navigationTitle("briefing.checklist.comment")
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("common.cancel", action: dismiss.callAsFunction)
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("briefing.comment.save") { onSave(comment); dismiss() }
-                    }
-                }
-        }
-        .presentationDetents([.medium, .large])
     }
 }
 

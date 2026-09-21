@@ -4044,6 +4044,7 @@
       }
     },
     "elevator.status.defect" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4060,6 +4061,7 @@
       }
     },
     "elevator.status.inOrder" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7781,6 +7783,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Performed on"
+          }
+        }
+      }
+    },
+    "inspection.status.valid" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingabe gültig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entry valid"
           }
         }
       }

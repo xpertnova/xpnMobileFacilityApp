@@ -7,6 +7,7 @@ struct ElectricalSafetyWorkflowView: View {
     @State private var isSaveDraftConfirmationPresented = false
     @State private var isShowingPartnerPicker = false
     @State private var isShowingBusinessEntityPicker = false
+    @State private var isEditingInstructionNotes = false
 
     init(
         workspace: FacilityDemoViewModel,
@@ -125,6 +126,14 @@ struct ElectricalSafetyWorkflowView: View {
         }
         .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityPicker)
         .animation(.easeOut(duration: 0.16), value: isShowingPartnerPicker)
+        .overlay {
+            if isEditingInstructionNotes {
+                NotificationCommentEditorOverlay(
+                    comment: $viewModel.draft.instructionNotes,
+                    dismiss: { isEditingInstructionNotes = false }
+                )
+            }
+        }
         .fullScreenCover(item: $viewModel.pdfArtifact) { artifact in
             BriefingPDFPreview(artifact: artifact) {
                 Task {
@@ -253,7 +262,20 @@ struct ElectricalSafetyWorkflowView: View {
             Toggle("electricalSafety.workResponsible", isOn: $viewModel.draft.instructedWorkResponsible)
             Toggle("electricalSafety.additionalWorkers", isOn: $viewModel.draft.instructedAdditionalWorkers)
             SafetyFormField("electricalSafety.notes") {
-                SafetyFormTextEditor(text: $viewModel.draft.instructionNotes, minimumHeight: 150)
+                HStack(alignment: .center, spacing: 14) {
+                    NotificationCommentButton(
+                        hasComment: !viewModel.draft.instructionNotes.isEmpty,
+                        isReadOnly: viewModel.isReadOnly,
+                        action: { isEditingInstructionNotes = true }
+                    )
+                    Text(viewModel.draft.instructionNotes.isEmpty
+                         ? String(localized: "notifications.detail.commentEditor.placeholder")
+                         : viewModel.draft.instructionNotes)
+                        .foregroundStyle(viewModel.draft.instructionNotes.isEmpty ? .secondary : .primary)
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
         }
     }
