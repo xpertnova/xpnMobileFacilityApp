@@ -80,7 +80,10 @@ final class HoldOpenSystemInspectionTests: XCTestCase {
         XCTAssertEqual(model.outOfServiceRowID, "TFM6-0000")
         XCTAssertEqual(model.outOfServiceValueElementID, "TFM6-0000-1")
         XCTAssertEqual(model.outOfServiceCommentElementID, "TFM6-0000-9B")
-        XCTAssertEqual(model.reportTitle, String(localized: "holdOpenSystem.inspection.title"))
+        // The report is a German SAP document with a fixed header, not the
+        // localized screen title, which reads "Hold-Open System" on an
+        // English device.
+        XCTAssertEqual(model.reportTitle, "FSA")
     }
 
     @MainActor
@@ -189,7 +192,7 @@ final class HoldOpenSystemInspectionTests: XCTestCase {
 
         let artifact = try ElevatorInspectionPDFRenderer.render(payload)
         XCTAssertFalse(artifact.data.isEmpty)
-        XCTAssertEqual(payload.formTitle, "Feststellanlage")
+        XCTAssertEqual(payload.formTitle, "FSA")
     }
 
     // MARK: - Demo

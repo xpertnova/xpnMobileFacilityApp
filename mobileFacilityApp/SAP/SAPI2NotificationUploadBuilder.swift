@@ -59,8 +59,14 @@ enum SAPI2NotificationUploadBuilder {
         var base: [String: Any]
         if let template {
             base = template
+            // The decoded parent value keeps its JSON type (`TPWEH` is a
+            // number there), as `objectAssign` copies it.
             for key in template.keys where columnSet.contains(key) {
-                if let value = parentRow[key] { base[key] = value }
+                guard let value = parentRow[key] else { continue }
+                switch self.value(named: key, in: parentNotification) {
+                case let number as NSNumber: base[key] = number
+                default: base[key] = value
+                }
             }
         } else {
             base = parentRow

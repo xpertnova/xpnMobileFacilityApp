@@ -104,7 +104,9 @@ enum InspectionFormMetrics {
     static let actionColumn: CGFloat = 112
     static let materialColumn: CGFloat = 56
     static let photoColumn: CGFloat = 52
-    static let commentColumn: CGFloat = 68
+    /// Fits bold caption1 "Bemerkung" (69.2 pt), the widest of the narrow
+    /// column labels in either language.
+    static let commentColumn: CGFloat = 70
     static let rowSpacing: CGFloat = 12
     static let rowHorizontalPadding: CGFloat = 22
     static let rowMinimumHeight: CGFloat = 68

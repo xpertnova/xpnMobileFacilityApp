@@ -13,6 +13,26 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case mobileLadder
     case subdistribution
     case elevatorInspection
+    case firePermit
+}
+
+extension OfflineWorkType {
+    /// Work neither reference app sends to SAP. It is kept on the device, so
+    /// it reads as local instead of waiting for a synchronization that never
+    /// takes it.
+    var staysLocal: Bool {
+        switch self {
+        case .manualCapture, .defect, .meterReading, .technicalObjectEdit: true
+        default: false
+        }
+    }
+}
+
+extension OfflineWorkItem {
+    /// The status shown for the item.
+    var statusTitleKey: String {
+        type.staysLocal && status != .draft ? "offline.status.localOnly" : status.titleKey
+    }
 }
 
 enum LocalPhotoWorkflow: String, Codable, CaseIterable, Sendable {
@@ -399,6 +419,10 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     /// I2 notifications chosen in the defect dialog after closing. Uploaded
     /// with this review.
     var i2Requests: [I2NotificationRequest] = []
+    /// The report built when the review was closed, kept so the closed form
+    /// can be re-read from the local-work and defect lists. The upload builds
+    /// its own copy from the cached source notification.
+    var pdfData: Data? = nil
 
     init(
         notificationID: String,
@@ -409,7 +433,8 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         isClosedLocally: Bool,
         notificationSnapshot: OfflineNotificationSnapshot? = nil,
         outgoingProcessID: String? = nil,
-        i2Requests: [I2NotificationRequest] = []
+        i2Requests: [I2NotificationRequest] = [],
+        pdfData: Data? = nil
     ) {
         self.notificationID = notificationID
         self.performedOn = performedOn
@@ -420,6 +445,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         self.notificationSnapshot = notificationSnapshot
         self.outgoingProcessID = outgoingProcessID
         self.i2Requests = i2Requests
+        self.pdfData = pdfData
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -433,6 +459,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         case notificationSnapshot
         case outgoingProcessID
         case i2Requests
+        case pdfData
     }
 
     init(from decoder: Decoder) throws {
@@ -452,6 +479,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         )
         outgoingProcessID = try container.decodeIfPresent(String.self, forKey: .outgoingProcessID)
         i2Requests = try container.decodeIfPresent([I2NotificationRequest].self, forKey: .i2Requests) ?? []
+        pdfData = try container.decodeIfPresent(Data.self, forKey: .pdfData)
         // Older versions stored only checklist IDs in `photoItemIDs`; those
         // values represented a colored icon and never referred to image data.
         // Decode the key for compatibility, but deliberately do not turn it
@@ -472,6 +500,7 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
         if !i2Requests.isEmpty {
             try container.encode(i2Requests, forKey: .i2Requests)
         }
+        try container.encodeIfPresent(pdfData, forKey: .pdfData)
     }
 }
 
@@ -498,6 +527,17 @@ struct BriefingDraftPayload: Codable, Equatable, Sendable {
     var instructorSignature: Data?
     var instructedPersonSignature: Data?
     var completedAt: Date?
+    /// The report shown when the briefing was closed; it goes to SAP as the
+    /// I3 notification's `TO_T0302` document.
+    var pdfData: Data? = nil
+    /// `USR02` symbols of the positions answered "Ja" that point at a standard
+    /// SAP document (legacy `_additionalDocs` of `InstructFormCreate`). Each
+    /// one is posted as its own `TO_T0302` reference row beside the report.
+    ///
+    /// Optional, not a defaulted array: this payload has synthesized `Codable`,
+    /// which decodes a missing key only for an optional property. Drafts saved
+    /// before instruction documents were sent must keep decoding.
+    var additionalDocumentSymbolIDs: [String]? = nil
 }
 
 /// A partner entered for this briefing only. The legacy workflow calls these
@@ -548,6 +588,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case mobileLadder(MobileLadderDraftPayload)
     case subdistribution(SubdistributionDraftPayload)
     case elevatorInspection(ElevatorInspectionDraftPayload)
+    case firePermit(FirePermitDraftPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -606,6 +647,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var elevatorInspection: ElevatorInspectionDraftPayload? {
         guard case let .elevatorInspection(payload) = self else { return nil }
+        return payload
+    }
+
+    var firePermit: FirePermitDraftPayload? {
+        guard case let .firePermit(payload) = self else { return nil }
         return payload
     }
 }

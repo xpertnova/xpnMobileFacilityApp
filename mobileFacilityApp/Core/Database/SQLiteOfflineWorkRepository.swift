@@ -127,6 +127,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
                 }
             case .elevatorInspection:
                 payload = .elevatorInspection(try decoder.decode(ElevatorInspectionDraftPayload.self, from: data))
+            case .firePermit:
+                payload = .firePermit(try decoder.decode(FirePermitDraftPayload.self, from: data))
             }
             return OfflineWorkItem(id: id, workerID: row.1, type: type, status: status,
                                    payload: payload, createdAt: createdAt, updatedAt: updatedAt, syncError: row.7)
@@ -160,6 +162,8 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
         case let (.subdistribution, .subdistribution(payload)):
             payloadData = payload.legacyJSONData ?? (try? JSONEncoder().encode(payload))
         case let (.elevatorInspection, .elevatorInspection(payload)):
+            payloadData = try? JSONEncoder().encode(payload)
+        case let (.firePermit, .firePermit(payload)):
             payloadData = try? JSONEncoder().encode(payload)
         default:
             payloadData = nil

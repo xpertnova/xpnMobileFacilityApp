@@ -176,7 +176,7 @@ struct ManualCaptureView: View {
                     .foregroundStyle(FacilityTheme.ink)
                 Spacer()
                 if defectModel.isReadOnly {
-                    FacilityTemplateBadge(localized: .init("offline.status.pending"), style: .open)
+                    FacilityTemplateBadge(localized: .init("offline.status.localOnly"), style: .temporarilySaved)
                 } else if defectModel.isExistingDraft {
                     FacilityTemplateBadge(localized: .init("offline.status.draft"), style: .temporarilySaved)
                 }
@@ -366,7 +366,7 @@ struct ManualCaptureView: View {
                     .foregroundStyle(FacilityTheme.ink)
                 Spacer()
                 if meterModel.isReadOnly {
-                    FacilityTemplateBadge(localized: .init("offline.status.pending"), style: .open)
+                    FacilityTemplateBadge(localized: .init("offline.status.localOnly"), style: .temporarilySaved)
                 }
             }
 

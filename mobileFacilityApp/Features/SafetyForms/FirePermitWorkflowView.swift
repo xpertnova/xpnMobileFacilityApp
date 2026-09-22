@@ -93,7 +93,15 @@ struct FirePermitWorkflowView: View {
             if viewModel.isRenderingPDF { BriefingPDFRenderingOverlay() }
         }
         .fullScreenCover(item: $viewModel.pdfArtifact) { artifact in
-            BriefingPDFPreview(artifact: artifact, onFinish: onClose)
+            BriefingPDFPreview(artifact: artifact) {
+                Task {
+                    if await viewModel.saveClosed(using: workspace.offlineWorkStore) {
+                        onClose()
+                    } else {
+                        viewModel.pdfArtifact = nil
+                    }
+                }
+            }
         }
     }
 

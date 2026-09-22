@@ -8,12 +8,14 @@ struct SAPRefreshPasswordDialog: View {
     let failureContext: SAPRefreshFailureContext?
     let refresh: () -> Void
     let cancel: () -> Void
+    /// Stops waiting for SAP; the next synchronization continues the request.
+    let continueLater: () -> Void
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
         Group {
             if isRefreshing {
-                SAPRefreshProgressDialog(stage: stage ?? .authenticating)
+                SAPRefreshProgressDialog(stage: stage ?? .authenticating, continueLater: continueLater)
             } else {
                 passwordEntry
             }
@@ -134,17 +136,36 @@ private struct SAPRefreshFailureDetailsView: View {
 
 private struct SAPRefreshProgressDialog: View {
     let stage: SAPReadRefreshStage
+    let continueLater: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
-            Text(stage.messageText)
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .contentTransition(.opacity)
-            ProgressView()
-                .controlSize(.large)
-                .tint(FacilityTheme.accent)
+            VStack(spacing: 24) {
+                VStack(spacing: 8) {
+                    Text(stage.messageText)
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .contentTransition(.opacity)
+                    if let statusText = stage.sapStatusText {
+                        Text(statusText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(FacilityTheme.accent)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.updatesFrequently)
+
+            if stage.canContinueLater {
+                Button("sap.refresh.continueLater", action: continueLater)
+                    .buttonStyle(.bordered)
+            }
         }
         .frame(maxWidth: .infinity, minHeight: 150)
         .facilityDialogFrame(width: 476, padding: 28, alignment: .center)
@@ -154,8 +175,6 @@ private struct SAPRefreshProgressDialog: View {
                 .stroke(.primary.opacity(0.14), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.24), radius: 26, y: 12)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
@@ -164,6 +183,8 @@ private extension SAPReadRefreshStage {
         switch self {
         case .authenticating:
             String(localized: "sap.refresh.stage.authenticating")
+        case .resumingInterruptedSynchronization:
+            String(localized: "sap.refresh.stage.resuming")
         case .uploadingOutgoingMetadata:
             String(localized: "sap.refresh.stage.uploading")
         case let .uploadingOutgoingDocuments(current, total):
@@ -188,6 +209,16 @@ private extension SAPReadRefreshStage {
             String(localized: "sap.refresh.stage.saving")
         }
     }
+
+    /// The progress text SAP sends while it works (`PARAMETER5`).
+    var sapStatusText: String? {
+        switch self {
+        case let .waitingForOutgoingAcknowledgement(statusText), let .waitingForIncomingData(statusText):
+            statusText
+        default:
+            nil
+        }
+    }
 }
 
 private extension SAPRefreshFailureContext {
@@ -200,6 +231,8 @@ private extension SAPRefreshFailureContext {
             case .savedToken:
                 String(localized: "sap.refresh.details.savedTokenOperation")
             }
+        case .resumingInterruptedSynchronization:
+            String(localized: "sap.refresh.details.resumeOperation")
         case .uploadingOutgoingMetadata:
             String(localized: "sap.refresh.details.uploadMetadataOperation")
         case .uploadingOutgoingDocuments:
@@ -274,7 +307,8 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
             error: .invalidCredentials,
             failureContext: nil,
             refresh: {},
-            cancel: {}
+            cancel: {},
+            continueLater: {}
         )
     }
     .facilityLayoutRoot()

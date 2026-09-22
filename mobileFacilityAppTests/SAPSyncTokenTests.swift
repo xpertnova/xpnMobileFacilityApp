@@ -307,7 +307,7 @@ final class SAPSyncTokenTests: XCTestCase {
     func testPasswordRefreshFailureAfterPostUsesThePostAcknowledgementStage() async throws {
         let workerID = "TEST_WORKER"
         let mockService = MockTokenRefreshService()
-        mockService.passwordFailureStage = .waitingForOutgoingAcknowledgement
+        mockService.passwordFailureStage = .waitingForOutgoingAcknowledgement()
         mockService.passwordRefreshError = .serviceUnavailable
         let dataStore = SAPDataStore(
             repository: InMemorySAPDataCacheRepository(workerID: workerID),
@@ -321,7 +321,7 @@ final class SAPSyncTokenTests: XCTestCase {
         guard let failureContext = dataStore.refreshFailureContext else {
             return XCTFail("Expected the dialog to retain the post failure stage")
         }
-        XCTAssertEqual(failureContext.stage, .waitingForOutgoingAcknowledgement)
+        XCTAssertEqual(failureContext.stage, .waitingForOutgoingAcknowledgement())
         guard case .serviceUnavailable = failureContext.error else {
             return XCTFail("Expected the original service-unavailable error")
         }

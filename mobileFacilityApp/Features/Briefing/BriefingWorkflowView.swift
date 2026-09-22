@@ -833,7 +833,7 @@ private struct BriefingChecklistRow: View {
     }
 }
 
-private extension SAPBriefingAnswerOption {
+extension SAPBriefingAnswerOption {
     var isNegativeBriefingAnswer: Bool {
         Self.negativeValues.contains(normalizedBriefingAnswer)
             || Self.negativeValues.contains(title.normalizedBriefingAnswer)
@@ -853,7 +853,7 @@ private extension SAPBriefingAnswerOption {
             : String(localized: "notifications.detail.result.yes")
     }
 
-    private var normalizedBriefingAnswer: String {
+    var normalizedBriefingAnswer: String {
         key.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
@@ -861,13 +861,13 @@ private extension SAPBriefingAnswerOption {
     private static let affirmativeValues = ["1", "TRUE", "J", "JA", "YES"]
 }
 
-private extension String {
+extension String {
     var normalizedBriefingAnswer: String {
         trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 }
 
-private extension Array where Element == SAPBriefingAnswerOption {
+extension Array where Element == SAPBriefingAnswerOption {
     /// SAP occasionally supplies only one side of the boolean pair. The
     /// reference briefing app completes it for display and preserves supplied
     /// keys wherever they are available.
@@ -893,33 +893,6 @@ private enum BriefingSafetySymbol {
         case "X001": "BriefingSafety_X001"
         default: nil
         }
-    }
-}
-
-struct BriefingReferenceDocument: Identifiable {
-    let symbolID: String
-    let fileName: String
-    let title: String
-    var id: String { symbolID }
-
-    init?(symbolID: String?) {
-        guard let symbolID else { return nil }
-        switch symbolID {
-        case "1": self.init(symbolID: symbolID, fileName: "EinweisungsDienstleistungen", title: "Einweisungsformular nur für Dienstleistungen")
-        case "2": self.init(symbolID: symbolID, fileName: "SichOrdnEnerUmwelt", title: "Sicherheits-, Ordnungs-, Energie- und Umweltvorschriften")
-        case "3": self.init(symbolID: symbolID, fileName: "SicherheitsCheckliste", title: "Sicherheits-Checkliste")
-        case "4": self.init(symbolID: symbolID, fileName: "Matrix", title: "Matrix")
-        case "5": self.init(symbolID: symbolID, fileName: "GasFeuerLoeschanlage", title: "Gas-Feuerlöschanlage")
-        case "6": self.init(symbolID: symbolID, fileName: "Sicherheitsbereich", title: "Sicherheitsbereich")
-        case "7": self.init(symbolID: symbolID, fileName: "Qualifikationsnachweis", title: "Qualifikationsnachweis")
-        default: return nil
-        }
-    }
-
-    private init(symbolID: String, fileName: String, title: String) {
-        self.symbolID = symbolID
-        self.fileName = fileName
-        self.title = title
     }
 }
 
@@ -1310,6 +1283,13 @@ final class BriefingWorkflowViewModel {
     func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
         guard !isReadOnly, var payload = draftPayload() else { return false }
         payload.completedAt = pdfArtifact?.createdAt ?? .now
+        payload.pdfData = pdfArtifact?.data
+        // `_setStatusAndCollectDocs` only collects while closing for good.
+        payload.additionalDocumentSymbolIDs = InstructionFormReferenceDocuments.symbolIDs(
+            sections: template?.sections ?? [],
+            answerKeysByItemID: answerKeysByItemID,
+            selectedOptionalSectionIDs: selectedOptionalSectionIDs
+        )
         do {
             let item = try await store.saveBriefing(
                 id: savedWorkID,

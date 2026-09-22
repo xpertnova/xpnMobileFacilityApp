@@ -795,15 +795,64 @@ struct LegacySAPOutgoingPayload: Encodable, Sendable {
     let T_0302: [[String: String]]
 }
 
+/// The `TBL_REQUEST.STEP` values `edata.luw.synchronize` records, so that
+/// `checkBeforeSynchronize` can finish or clear an interrupted synchronization.
+enum SAPSynchronizationStep: String, CaseIterable, Sendable {
+    /// The `TO_*` rows are copied into `TMP_TO_*` under the TO request.
+    case outgoingStaged = "1"
+    /// `M0002001` accepted the staged rows.
+    case outgoingMetadataSent = "2"
+    /// The documents are sent and `M0002021` is triggered.
+    case outgoingPosted = "3"
+    /// `MMTFM004` is triggered for the FROM request.
+    case incomingRequested = "4"
+    /// `MMTFM003` confirmed the FROM package; `M0002003` reads it.
+    case incomingReceiving = "5"
+}
+
+/// The local work one TO request carries, so a confirmation that arrives in
+/// a later synchronization can still remove exactly that work.
+struct SAPOutgoingBatchManifest: Codable, Equatable, Sendable {
+    var workItemIDs: [UUID]
+    var attachmentIDs: [String]
+
+    static let empty = SAPOutgoingBatchManifest(workItemIDs: [], attachmentIDs: [])
+}
+
+/// A synchronization `TBL_REQUEST` still records.
+struct SAPPendingSynchronization: Equatable, Sendable {
+    let step: SAPSynchronizationStep
+    let requestID: String
+    /// The work of the TO request; empty for the FROM steps.
+    let outgoingBatch: SAPOutgoingBatchManifest
+}
+
 protocol SAPLegacySynchronizationStore: Sendable {
-    func stageOutgoing(requestID: String) async throws -> LegacySAPOutgoingPayload
+    func pendingSynchronization() async throws -> SAPPendingSynchronization?
+    /// Copies `TO_*` into `TMP_TO_*` and records step 1 with the batch.
+    func stageOutgoing(
+        requestID: String,
+        batch: SAPOutgoingBatchManifest
+    ) async throws -> LegacySAPOutgoingPayload
+    func recordSynchronizationStep(_ step: SAPSynchronizationStep, requestID: String) async throws
+    /// Removes the staged `TO_*` rows after SAP confirmed the TO request.
     func confirmOutgoing(requestID: String) async throws
+    /// Forgets the TO request; its `TO_*` rows stay to be sent again.
     func abortOutgoing(requestID: String) async
+    /// Forgets the FROM request without touching the committed cache.
+    func abortIncomingRequest(requestID: String) async
     func beginIncoming() async throws
     func appendIncoming(_ package: LegacySAPIncomingPackage) async throws
+    /// Replaces `FROM_*` and forgets the FROM request in one transaction.
     func commitIncoming(sapWorkerID: String, refreshedAt: Date) async throws -> SAPCachedData
     func incomingCacheSummary() async throws -> SAPIncomingCacheSummary
     func abortIncoming() async
+}
+
+extension SAPLegacySynchronizationStore {
+    func stageOutgoing(requestID: String) async throws -> LegacySAPOutgoingPayload {
+        try await stageOutgoing(requestID: requestID, batch: .empty)
+    }
 }
 
 protocol SAPNotificationOutgoingStore: Sendable {
@@ -817,11 +866,41 @@ protocol SAPNotificationOutgoingStore: Sendable {
         functionalLocations: [LegacySAPRow],
         proposals: [LegacySAPRow],
         i2Notifications: [LegacySAPRow],
-        i2Documents: [LegacySAPRow]
+        i2Documents: [LegacySAPRow],
+        i3Notifications: [LegacySAPRow],
+        i3Documents: [LegacySAPRow]
     ) async throws
 }
 
 extension SAPNotificationOutgoingStore {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow],
+        i2Notifications: [LegacySAPRow],
+        i2Documents: [LegacySAPRow]
+    ) async throws {
+        try await replaceNotificationOutgoingRows(
+            processIDs: processIDs,
+            equipmentIDs: equipmentIDs,
+            headers: headers,
+            values: values,
+            documents: documents,
+            equipment: equipment,
+            functionalLocations: functionalLocations,
+            proposals: proposals,
+            i2Notifications: i2Notifications,
+            i2Documents: i2Documents,
+            i3Notifications: [],
+            i3Documents: []
+        )
+    }
+
     func replaceNotificationOutgoingRows(
         processIDs: [String],
         equipmentIDs: [String],
@@ -842,7 +921,9 @@ extension SAPNotificationOutgoingStore {
             functionalLocations: functionalLocations,
             proposals: proposals,
             i2Notifications: [],
-            i2Documents: []
+            i2Documents: [],
+            i3Notifications: [],
+            i3Documents: []
         )
     }
 
@@ -864,22 +945,36 @@ extension SAPNotificationOutgoingStore {
             functionalLocations: [],
             proposals: [],
             i2Notifications: [],
-            i2Documents: []
+            i2Documents: [],
+            i3Notifications: [],
+            i3Documents: []
         )
     }
 }
 
 enum SAPReadRefreshStage: Equatable, Sendable {
     case authenticating
+    /// Clearing a request an earlier synchronization left unfinished in SAP.
+    case resumingInterruptedSynchronization
     case uploadingOutgoingMetadata
     case uploadingOutgoingDocuments(current: Int, total: Int)
     case postingOutgoingData
-    case waitingForOutgoingAcknowledgement
+    /// `statusText` is the progress text SAP returns in `PARAMETER5`.
+    case waitingForOutgoingAcknowledgement(statusText: String? = nil)
     case checkingAppVersion
     case preparingIncomingData
-    case waitingForIncomingData
+    case waitingForIncomingData(statusText: String? = nil)
     case receivingIncomingPackages(packageNumber: Int = 1)
     case savingSnapshot
+
+    /// SAP is working on its own; stopping only pauses the check, and the
+    /// next synchronization continues from `TBL_REQUEST`.
+    var canContinueLater: Bool {
+        switch self {
+        case .waitingForOutgoingAcknowledgement, .waitingForIncomingData: true
+        default: false
+        }
+    }
 }
 
 enum SAPRefreshAuthenticationMethod: Equatable, Sendable {

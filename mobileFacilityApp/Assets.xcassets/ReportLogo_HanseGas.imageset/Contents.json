@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "ReportLogo_HanseGas.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

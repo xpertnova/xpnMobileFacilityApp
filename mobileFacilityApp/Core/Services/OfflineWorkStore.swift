@@ -68,6 +68,7 @@ final class OfflineWorkStore {
         localWorkNotificationItems.count + briefingItems.count + electricalSafetyItems.count
             + technicalObjectEditItems.count + defectItems.count + meterReadingItems.count
             + proofOfQualificationItems.count
+            + firePermitItems.count
             + photoCollectionItems.filter {
                 let workflow = $0.payload.photoCollection?.scope.workflow
                 return workflow != .mobileLadder && workflow != .subdistribution
@@ -102,6 +103,10 @@ final class OfflineWorkStore {
 
     var proofOfQualificationItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .proofOfQualification }
+    }
+
+    var firePermitItems: [OfflineWorkItem] {
+        activeQueueItems.filter { $0.type == .firePermit }
     }
 
     var photoCollectionItems: [OfflineWorkItem] {
@@ -420,6 +425,24 @@ final class OfflineWorkStore {
             id: existing?.id ?? UUID(), workerID: workerID, type: .technicalObjectEdit,
             status: status, payload: .technicalObjectEdit(payload),
             createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+        return item
+    }
+
+    /// A fire permit is kept only once it is closed, to be sent to SAP.
+    func saveClosedFirePermit(_ payload: FirePermitDraftPayload) async throws -> OfflineWorkItem {
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: UUID(),
+            workerID: workerID,
+            type: .firePermit,
+            status: .pendingSynchronization,
+            payload: .firePermit(payload),
+            createdAt: now,
+            updatedAt: now,
+            syncError: nil
         )
         try await repository.save(item)
         await load()

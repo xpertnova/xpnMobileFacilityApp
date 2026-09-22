@@ -264,7 +264,7 @@ private struct TechnicalObjectRow: View {
                     if row.node.isCityGroup { ObjectBadge(String(localized: "places.badge.city"), color: FacilityTheme.accent) }
                     if row.node.directEquipmentCount > 0 { ObjectBadge("\(row.node.directEquipmentCount) EQ", color: .gray) }
                     if pendingStatus == .conflict { ObjectBadge(String(localized: "places.badge.conflict"), color: .red) }
-                    else if pendingStatus != nil { ObjectBadge(String(localized: "places.badge.pending"), color: .orange) }
+                    else if pendingStatus != nil { ObjectBadge(String(localized: "offline.status.localOnly"), color: .orange) }
                     if row.node.reference.kind == .equipment {
                         ObjectBadge(String(localized: "places.badge.equipment"), color: .blue)
                     }
