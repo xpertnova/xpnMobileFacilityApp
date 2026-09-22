@@ -657,7 +657,7 @@ struct LegacyBriefingPDFRenderer: Sendable {
     }
 
     private var checklistColumnWidths: [CGFloat] {
-        [contentWidth * 0.08, contentWidth * 0.48, contentWidth * 0.28, contentWidth * 0.16]
+        [contentWidth * 0.08, contentWidth * 0.48, contentWidth * 0.20, contentWidth * 0.24]
     }
 
     private func drawChecklistNumber(_ number: String, in rect: CGRect) {

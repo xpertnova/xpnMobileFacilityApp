@@ -5,6 +5,11 @@ struct SAPNotificationOutgoingDocument: Sendable {
     /// JPEG inspection evidence and the TFM7 PDF report use the exact same
     /// metadata -> binary upload -> final post transport sequence.
     let data: Data
+    /// A row that only points at a document SAP already holds under its
+    /// `DOKNR` (legacy `_insertDocument`). `synchronizeDocTo._prepareAndSend302`
+    /// sends such a row like any other, with an empty `FELDWERT`, so the
+    /// empty-content guard does not apply to it.
+    var referencesExistingDocument: Bool = false
 }
 
 struct SAPNotificationOutgoingBatch: Sendable {
@@ -25,11 +30,34 @@ struct SAPNotificationOutgoingBatch: Sendable {
     /// `TO_T0285` documents of those I2 notifications. They reuse the parent
     /// photos but are uploaded separately as `I2` documents.
     var i2Documents: [SAPNotificationOutgoingDocument] = []
+    /// `TO_T0300` I3 notifications of closed instruction forms.
+    var i3Notifications: [LegacySAPRow] = []
+    /// `TO_T0302` PDF reports of those I3 notifications, uploaded as `I3`.
+    var i3Documents: [SAPNotificationOutgoingDocument] = []
+    /// `TO_T0302` rows that only point at a standard SAP DMS document by its
+    /// `DOKNR` (legacy `_insertDocument`). They carry no bytes but travel the
+    /// same way as every other `TO_T0302` row: staged with the metadata and
+    /// sent through `M0002031` with an empty `FELDWERT`.
+    var i3DocumentReferences: [SAPNotificationOutgoingDocument] = []
 
     static let empty = SAPNotificationOutgoingBatch(
         workItemIDs: [], attachmentIDs: [], processIDs: [], equipmentIDs: [],
         headers: [], values: [], documents: [], equipment: []
     )
+
+    var manifest: SAPOutgoingBatchManifest {
+        SAPOutgoingBatchManifest(workItemIDs: workItemIDs, attachmentIDs: attachmentIDs)
+    }
+}
+
+/// Turns closed local work into `TO_*` rows before a TO request and settles
+/// that work once SAP answered for it.
+protocol SAPOutgoingWorkCoordinating: Sendable {
+    func prepare() async throws -> SAPNotificationOutgoingBatch
+    /// SAP confirmed the TO request: the work is removed from the device.
+    func complete(_ batch: SAPOutgoingBatchManifest) async throws
+    /// The TO request did not reach ABAP processing: the work is sent again.
+    func fail(_ batch: SAPOutgoingBatchManifest, error: Error) async
 }
 
 enum SAPNotificationReviewUploadError: Error {
@@ -45,6 +73,7 @@ enum SAPNotificationReviewUploadBuilder {
         source: SAPNotificationSummary,
         syncUserID: String,
         photoData: [String: Data],
+        reportPDF: Data? = nil,
         now: Date = .now
     ) throws -> SAPNotificationOutgoingBatch {
         guard case let .notificationReview(review) = workItem.payload,
@@ -147,11 +176,11 @@ enum SAPNotificationReviewUploadBuilder {
 
         let mapping: (documentClass: String, valueList: String)?
         if review.photoAttachments.isEmpty {
-            mapping = nil
+            mapping = try? documentMapping(notificationData: notificationData, formNumber: formNumber)
         } else {
             mapping = try documentMapping(notificationData: notificationData, formNumber: formNumber)
         }
-        let documents = try review.photoAttachments.map { attachment -> SAPNotificationOutgoingDocument in
+        var documents = try review.photoAttachments.map { attachment -> SAPNotificationOutgoingDocument in
             guard detail.inspectionItems.contains(where: {
                 $0.id == attachment.checklistItemID && $0.commentElementID == attachment.sapElementID
             }), let data = photoData[attachment.localAttachmentID], !data.isEmpty else {
@@ -178,6 +207,27 @@ enum SAPNotificationReviewUploadBuilder {
                 "DMS_DOCID": mapping.valueList
             ]) { _, value in value }
             return SAPNotificationOutgoingDocument(metadata: metadata, data: data)
+        }
+
+        // `BaseFormController.closeProcess`: the report of the closed form is
+        // one more `T0282` document of the notification.
+        if let reportPDF, !reportPDF.isEmpty, let mapping {
+            var metadata = Dictionary(uniqueKeysWithValues:
+                (LegacySQLiteSchema.byName["TO_T0282"]?.columns ?? []).map { ($0.name, "") }
+            )
+            metadata.merge([
+                "MANDT": source.client, "REQID": "", "VORGANGSNR": processID,
+                "DOCID": "NEU\(processID)PDF", "ELEMENTNR": "\(formNumber)-pdf",
+                "DOKNR": "", "QMNUM": review.notificationID,
+                "CREATEDBY": userID, "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
+                "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime, "MODIFIEDBY": userID,
+                "DOC_TYPE": "PDF", "DOC_MIMETYPE": "application/pdf",
+                "NAME": "Bericht_\(format(now, "dd_MM_yyyy_HH_mm_ss_SSS"))", "DESCRIPTION": "Bericht",
+                "FELDWERT": "", "DOKAR": "FMD", "DOKOB": "SMQMEL",
+                "OBJKY": review.notificationID, "DMS_CONTENTTYPE": mapping.documentClass,
+                "DMS_DOCID": mapping.valueList
+            ]) { _, value in value }
+            documents.append(SAPNotificationOutgoingDocument(metadata: metadata, data: reportPDF))
         }
 
         return SAPNotificationOutgoingBatch(
@@ -254,7 +304,7 @@ enum SAPNotificationReviewUploadBuilder {
     }
 }
 
-struct SAPNotificationReviewOutgoingCoordinator: Sendable {
+struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
     let workerID: String
     let syncUserID: String
     let offlineRepository: any OfflineWorkRepository
@@ -272,14 +322,28 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
             if let inspection = item.payload.elevatorInspection { return inspection.isClosedLocally }
             if let ladder = item.payload.mobileLadder { return ladder.isClosedLocally == true }
             if let subdistribution = item.payload.subdistribution { return subdistribution.isClosedLocally }
+            if let briefing = item.payload.briefing { return briefing.completedAt != nil }
+            if let qualification = item.payload.proofOfQualification { return qualification.completedAt != nil }
+            if let electricalSafety = item.payload.electricalSafety { return electricalSafety.completedAt != nil }
+            if item.payload.firePermit != nil { return true }
             return false
         }
         guard !pending.isEmpty else { return .empty }
 
+        // An instruction form that cannot be built, such as one closed before
+        // its report was kept, is marked failed on its own instead of holding
+        // back every other form.
+        var rejected: [(item: OfflineWorkItem, error: Error)] = []
         do {
             var batches: [SAPNotificationOutgoingBatch] = []
             for item in pending {
                 switch item.payload {
+                case .briefing, .proofOfQualification, .electricalSafety, .firePermit:
+                    do {
+                        batches.append(try await instructionFormBatch(for: item))
+                    } catch {
+                        rejected.append((item, error))
+                    }
                 case let .notificationReview(review):
                     let page = try await cacheRepository.loadNotifications(
                         for: workerID, matching: review.notificationID,
@@ -292,8 +356,21 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                     for attachment in review.photoAttachments {
                         photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
                     }
+                    let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
+                    let detail = SAPNotificationDetail(summary: source)
+                    let report = NotificationReviewReportPDF.render(NotificationReviewReportPayload(
+                        formCode: detail.formCode,
+                        notificationID: review.notificationID,
+                        fields: NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON),
+                        items: detail.inspectionItems,
+                        results: review.results,
+                        comments: review.comments,
+                        performedOn: review.performedOn,
+                        worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: syncUserID)
+                    ))
                     var batch = try SAPNotificationReviewUploadBuilder.build(
-                        workItem: item, source: source, syncUserID: syncUserID, photoData: photos
+                        workItem: item, source: source, syncUserID: syncUserID, photoData: photos,
+                        reportPDF: report
                     )
                     try await addI2Notifications(review.i2Requests, source: source, to: &batch)
                     batches.append(batch)
@@ -325,29 +402,32 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                             if let matID = itm.materialElementID { mats[itm.id] = inspection.materialFlags[matID] ?? false }
                             notes[itm.id] = inspection.comments[itm.commentElementID] ?? inspection.comments[itm.id] ?? ""
                         }
+                        let fields = NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON)
                         let payload = ElevatorInspectionPDFPayload(
                             formTitle: form.reportTitleFallback,
                             masterDataTitle: form.reportMasterDataTitle,
                             notificationID: inspection.notificationID,
-                            notificationTitle: source.title,
+                            notificationTitle: fields["PLTXT"].isEmpty ? source.title : fields["PLTXT"],
                             functionalLocation: source.functionalLocationID,
                             equipmentID: source.equipmentID.isEmpty ? nil : source.equipmentID,
-                            equipmentName: nil,
-                            locationCity: "",
-                            locationStreet: "",
-                            weGe: "",
+                            equipmentName: fields["EQKTX"],
+                            locationCity: fields["CITY1_TO"],
+                            locationStreet: fields["STREET_TO"],
+                            weGe: "\(fields["TPWEH"])/ \(fields["TPGEB"])",
                             workerName: [userProfile?.firstName, userProfile?.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "),
                             workerID: userProfile?.personalNumber ?? workerID,
                             company: userProfile?.company ?? "",
-                            orgUnit: "",
-                            plant: "",
+                            orgUnit: fields["GEWRK"],
+                            plant: fields["IWERK"],
                             performedAt: inspection.performedOn,
                             items: items,
                             results: res,
                             actions: acts,
                             materials: mats,
                             notes: notes,
-                            hasMaterialColumn: hasMat
+                            hasMaterialColumn: hasMat,
+                            outOfOperationComment: inspection.isOutOfOperation == true
+                                ? inspection.outOfOperationComment ?? "" : nil
                         )
                         pdfData = (try? ElevatorInspectionPDFRenderer.render(payload).data) ?? Data()
                     }
@@ -409,8 +489,15 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                 functionalLocations: batches.flatMap(\.functionalLocations),
                 proposals: batches.flatMap(\.proposals),
                 i2Notifications: batches.flatMap(\.i2Notifications),
-                i2Documents: batches.flatMap(\.i2Documents)
+                i2Documents: batches.flatMap(\.i2Documents),
+                i3Notifications: batches.flatMap(\.i3Notifications),
+                i3Documents: batches.flatMap(\.i3Documents),
+                // Leaving this out defaults it to empty, which still stages
+                // the rows but drops them from the document upload.
+                i3DocumentReferences: batches.flatMap(\.i3DocumentReferences)
             )
+            let i3DocumentRows = merged.i3Documents.map(\.legacyRow)
+                + merged.i3DocumentReferences.map(\.legacyRow)
             try await outgoingStore.replaceNotificationOutgoingRows(
                 processIDs: merged.processIDs, equipmentIDs: merged.equipmentIDs,
                 headers: merged.headers,
@@ -420,10 +507,18 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
                 functionalLocations: merged.functionalLocations,
                 proposals: merged.proposals,
                 i2Notifications: merged.i2Notifications,
-                i2Documents: merged.i2Documents.map(\.legacyRow)
+                i2Documents: merged.i2Documents.map(\.legacyRow),
+                i3Notifications: merged.i3Notifications,
+                i3Documents: i3DocumentRows
             )
             for item in pending {
-                try await offlineRepository.save(copy(item, status: .synchronizing, error: nil))
+                if let rejection = rejected.first(where: { $0.item.id == item.id }) {
+                    try await offlineRepository.save(copy(
+                        item, status: .failed, error: rejection.error.localizedDescription
+                    ))
+                } else {
+                    try await offlineRepository.save(copy(item, status: .synchronizing, error: nil))
+                }
             }
             return merged
         } catch {
@@ -434,12 +529,12 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
         }
     }
 
-    func complete(_ batch: SAPNotificationOutgoingBatch) async throws {
+    func complete(_ batch: SAPOutgoingBatchManifest) async throws {
         try await offlineRepository.delete(ids: batch.workItemIDs)
         for id in batch.attachmentIDs { try? await photoStore.delete(id: id) }
     }
 
-    func fail(_ batch: SAPNotificationOutgoingBatch, error: Error) async {
+    func fail(_ batch: SAPOutgoingBatchManifest, error: Error) async {
         guard !batch.workItemIDs.isEmpty else { return }
         let work = (try? await offlineRepository.loadWork(for: workerID)) ?? []
         for item in work where batch.workItemIDs.contains(item.id) {
@@ -462,19 +557,152 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
         source: SAPNotificationSummary,
         to batch: inout SAPNotificationOutgoingBatch
     ) async throws {
+        SAPSynchronizationDiagnostics.logI2(
+            "I1 \(source.id) carries \(requests.count) request(s) " +
+                requests.map { "\($0.id)=\($0.category.code)" }.joined(separator: ", ")
+        )
         guard !requests.isEmpty else { return }
         guard let parent = SAPI2NotificationUploadBuilder.parentNotification(from: source) else {
+            SAPSynchronizationDiagnostics.logI2("I1 \(source.id) has no readable cached payload")
             throw SAPNotificationReviewUploadError.missingSourceNotification(source.id)
         }
+        let template = try await newNotificationTemplate()
         let output = try SAPI2NotificationUploadBuilder.build(
             requests: requests,
             parentNotification: parent,
-            template: try await newNotificationTemplate(),
+            template: template,
             parentDocuments: batch.documents,
             syncUserID: syncUserID
         )
+        SAPSynchronizationDiagnostics.logI2(
+            "I1 \(source.id): template \(template == nil ? "missing" : "found"), " +
+                "\(output.notifications.count) TO_T0284 row(s), \(output.documents.count) TO_T0285 document(s)"
+        )
+        for row in output.notifications {
+            let fields = ["MANDT", "QMNUM", "QMART", "REFNUM", "QMCOD", "QMGRP", "PRIOK", "STSMA", "USTXT", "STRNO", "EQUNR"]
+                .map { "\($0)=\(row[$0].flatMap { $0 } ?? "nil")" }
+                .joined(separator: " ")
+            SAPSynchronizationDiagnostics.logI2(
+                "TO_T0284 \(fields) FELDWERT=\((row["FELDWERT"].flatMap { $0 } ?? "").count) chars"
+            )
+            if let feldwert = row["FELDWERT"].flatMap({ $0 }),
+               let object = SAPLegacyDataExchangeCodec.decodedFeldwertObject(feldwert),
+               let json = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) {
+                SAPSynchronizationDiagnostics.logI2("TO_T0284 FELDWERT decoded \(String(decoding: json, as: UTF8.self))")
+            }
+        }
         batch.i2Notifications += output.notifications
         batch.i2Documents += output.documents
+    }
+
+    /// `insertI3Meldung` for a closed briefing, qualification check,
+    /// electrical-safety form or fire permit.
+    private func instructionFormBatch(for item: OfflineWorkItem) async throws -> SAPNotificationOutgoingBatch {
+        guard let provider = cacheRepository as? any I3NotificationContextProviding else {
+            throw I3NotificationUploadError.contextUnavailable
+        }
+        let input: I3NotificationInput
+        switch item.payload {
+        case let .briefing(draft):
+            let directory = try await cacheRepository.loadFunctionalLocationDirectory(for: workerID)
+            guard let building = directory.buildings.first(where: {
+                $0.businessEntityID == draft.businessEntityID && $0.buildingCode == draft.buildingCode
+            }) else {
+                throw I3NotificationUploadError.missingFunctionalLocation(
+                    "\(draft.businessEntityID) \(draft.buildingCode)"
+                )
+            }
+            input = I3NotificationInput(
+                form: .briefing, workItemID: item.id, functionalLocationID: building.id,
+                instructedPerson: draft.instructedPerson, coordinator: draft.coordinator,
+                task: draft.taskDescription, start: draft.startDate, end: draft.endDate,
+                partner: Self.instructionPartner(id: draft.selectedPartnerID, temporary: draft.temporaryPartner),
+                partnerEmail: draft.partnerEmail,
+                selectedOptionalSectionIDs: draft.selectedOptionalSectionIDs,
+                pdfData: draft.pdfData ?? Data(), completedAt: draft.completedAt ?? item.updatedAt,
+                additionalDocumentSymbolIDs: draft.additionalDocumentSymbolIDs ?? []
+            )
+        case let .proofOfQualification(draft):
+            guard let context = draft.context else {
+                throw I3NotificationUploadError.missingFunctionalLocation(draft.workLocation)
+            }
+            input = I3NotificationInput(
+                form: .qualification, workItemID: item.id, functionalLocationID: context.functionalLocationID,
+                instructedPerson: draft.contactPerson, coordinator: draft.coordinator,
+                task: draft.taskDescription, start: draft.executionStart, end: draft.executionEnd,
+                partner: Self.instructionPartner(draft.partner), partnerEmail: draft.partnerEmail,
+                selectedOptionalSectionIDs: [],
+                pdfData: draft.pdfData ?? Data(), completedAt: draft.completedAt ?? item.updatedAt,
+                additionalDocumentSymbolIDs: draft.additionalDocumentSymbolIDs ?? []
+            )
+        case let .electricalSafety(draft):
+            guard let context = draft.context else {
+                throw I3NotificationUploadError.missingFunctionalLocation(draft.workplace)
+            }
+            // Forms closed before the report was kept render it again from
+            // the saved draft, which holds every value and signature.
+            var pdfData = draft.pdfData ?? Data()
+            if pdfData.isEmpty {
+                pdfData = (try? LegacyElectricalSafetyPDFRenderer().render(draft).data) ?? Data()
+            }
+            input = I3NotificationInput(
+                form: .electricalSafety, workItemID: item.id, functionalLocationID: context.functionalLocationID,
+                instructedPerson: draft.instructedPerson, coordinator: draft.coordinator,
+                task: draft.workDescription, start: draft.executionStart, end: draft.executionEnd,
+                partner: Self.instructionPartner(draft.partner), partnerEmail: draft.partnerEmail,
+                selectedOptionalSectionIDs: [],
+                pdfData: pdfData, completedAt: draft.completedAt ?? item.updatedAt
+            )
+        case let .firePermit(draft):
+            guard let context = draft.context else {
+                throw I3NotificationUploadError.missingFunctionalLocation(draft.workDescription)
+            }
+            input = I3NotificationInput(
+                form: .firePermit, workItemID: item.id, functionalLocationID: context.functionalLocationID,
+                instructedPerson: draft.instructedPerson, coordinator: draft.coordinator,
+                task: draft.workDescription, start: draft.executionStart, end: draft.executionEnd,
+                partner: Self.instructionPartner(draft.partner), partnerEmail: draft.partnerEmail,
+                selectedOptionalSectionIDs: [],
+                pdfData: draft.pdfData, completedAt: draft.completedAt
+            )
+        default:
+            throw I3NotificationUploadError.contextUnavailable
+        }
+        var existingPartner = ""
+        if case let .existing(addressNumber) = input.partner { existingPartner = addressNumber }
+        let context = try await provider.loadI3NotificationContext(
+            functionalLocationID: input.functionalLocationID,
+            planNumber: input.form.planNumber,
+            partnerAddressNumber: existingPartner
+        )
+        return try SAPI3NotificationUploadBuilder.build(input: input, context: context, syncUserID: syncUserID)
+    }
+
+    /// The briefing keeps a partner entered on the device beside its choice.
+    private static func instructionPartner(
+        id: String,
+        temporary: BriefingTemporaryPartner?
+    ) -> I3NotificationPartner {
+        if let temporary, temporary.id == id {
+            return .new(.init(
+                addressNumber: temporary.id, title: temporary.title, company: temporary.company,
+                contactName: temporary.contactName, email: temporary.email, telephone: temporary.telephone,
+                street: temporary.street, houseNumber: temporary.houseNumber,
+                postalCode: temporary.postalCode, city: temporary.city, country: temporary.country
+            ))
+        }
+        return id.isEmpty ? .none : .existing(addressNumber: id)
+    }
+
+    /// `getData4PartnerCreate` treats an address number with `NEU` as new.
+    private static func instructionPartner(_ partner: SAPBriefingPartner?) -> I3NotificationPartner {
+        guard let partner, !partner.id.isEmpty else { return .none }
+        guard partner.id.contains("NEU") else { return .existing(addressNumber: partner.id) }
+        return .new(.init(
+            addressNumber: partner.id, company: partner.name, contactName: partner.contactName,
+            email: partner.email, street: partner.street, houseNumber: partner.houseNumber,
+            postalCode: partner.postalCode, city: partner.city, country: partner.country
+        ))
     }
 
     private func newNotificationTemplate() async throws -> [String: Any]? {
@@ -493,13 +721,16 @@ struct SAPNotificationReviewOutgoingCoordinator: Sendable {
 
 private extension SAPNotificationOutgoingBatch {
     func addingCleanupWorkItemIDs(_ ids: [UUID]) -> Self {
-        Self(
+        var copy = Self(
             workItemIDs: workItemIDs + ids, attachmentIDs: attachmentIDs,
             processIDs: processIDs, equipmentIDs: equipmentIDs, headers: headers,
             values: values, documents: documents, equipment: equipment,
             functionalLocations: functionalLocations, proposals: proposals,
-            i2Notifications: i2Notifications, i2Documents: i2Documents
+            i2Notifications: i2Notifications, i2Documents: i2Documents,
+            i3Notifications: i3Notifications, i3Documents: i3Documents
         )
+        copy.i3DocumentReferences = i3DocumentReferences
+        return copy
     }
 }
 

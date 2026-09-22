@@ -124,11 +124,25 @@ struct DefectsView: View {
 
 /// The text and badges of a defect card: side by side on a wide card, with
 /// the badges under the text once they would squeeze it.
+enum DefectCardMetrics {
+    static let layout = FacilitySideColumnLayout(
+        sideWidth: nil,
+        minimumMainWidth: 220,
+        spacing: 12,
+        alignment: .center
+    )
+
+    /// Photo tile and the spacing before the columns, which the card spends
+    /// before `layout` gets its width.
+    static let photoTileWidth: CGFloat = 52
+    static let photoTileSpacing: CGFloat = 16
+}
+
 private struct DefectCardColumns<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        FacilitySideColumnLayout(sideWidth: nil, minimumMainWidth: 220, spacing: 12, alignment: .center) {
+        DefectCardMetrics.layout {
             content
         }
     }
@@ -167,8 +181,8 @@ private struct ManualDefectCard: View {
                             style: defect.priority == .high ? .attention : .temporarilySaved
                         )
                         FacilityTemplateBadge(
-                            localized: .init(item.status.titleKey),
-                            style: item.status == .draft ? .temporarilySaved : .open
+                            localized: .init(item.statusTitleKey),
+                            style: item.status == .draft || item.type.staysLocal ? .temporarilySaved : .open
                         )
                     }
                     .fixedSize(horizontal: true, vertical: false)
@@ -187,6 +201,8 @@ private struct ClosedDefectNotificationCard: View {
     let snapshot: OfflineNotificationSnapshot?
     let photoCount: Int
     let fallbackTitleKey: String
+    /// The report stored when the notification was closed.
+    let report: FormReportPDFArtifact?
     let action: () -> Void
 
     init(item: OfflineWorkItem, review: NotificationReviewDraftPayload, action: @escaping () -> Void) {
@@ -195,6 +211,9 @@ private struct ClosedDefectNotificationCard: View {
         snapshot = review.notificationSnapshot
         photoCount = review.photoAttachments.count
         fallbackTitleKey = "drafts.notification.title"
+        report = review.isClosedLocally
+            ? FormReportPDFArtifact(notificationID: review.notificationID, data: review.pdfData)
+            : nil
         self.action = action
     }
 
@@ -204,6 +223,9 @@ private struct ClosedDefectNotificationCard: View {
         snapshot = inspection.notificationSnapshot
         photoCount = inspection.photoAttachments.count
         fallbackTitleKey = inspection.form.titleKey
+        report = inspection.isClosedLocally
+            ? FormReportPDFArtifact(notificationID: inspection.notificationID, data: inspection.pdfBytes)
+            : nil
         self.action = action
     }
 
@@ -218,8 +240,18 @@ private struct ClosedDefectNotificationCard: View {
     }
 
     var body: some View {
+        HStack(spacing: FormReportPaperclipButton.rowSpacing) {
+            notificationButton
+            if let report {
+                FormReportPaperclipButton(report: report)
+            }
+        }
+        .facilityCard()
+    }
+
+    private var notificationButton: some View {
         Button(action: action) {
-            HStack(alignment: .center, spacing: 16) {
+            HStack(alignment: .center, spacing: DefectCardMetrics.photoTileSpacing) {
                 DefectPhotoTile(photoCount: photoCount)
 
                 DefectCardColumns {
@@ -264,7 +296,6 @@ private struct ClosedDefectNotificationCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint(Text("drafts.accessibility.openNotification"))
-        .facilityCard()
     }
 
     private var notificationMetadata: some View {
@@ -295,7 +326,7 @@ private struct DefectPhotoTile: View {
     var body: some View {
         Text("📷")
             .font(.title3)
-            .frame(width: 52, height: 52)
+            .frame(width: DefectCardMetrics.photoTileWidth, height: 52)
             .background(
                 LinearGradient(
                     colors: [

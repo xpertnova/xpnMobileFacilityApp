@@ -231,6 +231,22 @@ struct FirePermitRecord: Equatable, Sendable {
     }
 }
 
+/// A closed fire permit as it waits for SAP: the values the I3 notification
+/// reads (`FeuererlaubnisscheinFormCreate._updateT0271`) and the report. The
+/// form itself is not kept as a draft.
+struct FirePermitDraftPayload: Codable, Equatable, Sendable {
+    var context: SafetyFormContext?
+    var instructedPerson: String
+    var partner: SAPBriefingPartner?
+    var partnerEmail: String
+    var coordinator: String
+    var workDescription: String
+    var executionStart: Date
+    var executionEnd: Date
+    var pdfData: Data
+    var completedAt: Date
+}
+
 enum FirePermitValidationIssue: Hashable, Sendable {
     case context
     case coordinator
@@ -298,6 +314,9 @@ struct ElectricalSafetyDraftPayload: Codable, Equatable, Sendable {
     var returnDate: Date
     var signatures: [ElectricalSafetySignatureSlot: SafetyFormSignature] = [:]
     var completedAt: Date?
+    /// The report shown when the form was closed; it goes to SAP as the I3
+    /// notification's `TO_T0302` document.
+    var pdfData: Data?
 
     init(source: SafetyFormSource, now: Date = .now) {
         instructorName = source.instructorName

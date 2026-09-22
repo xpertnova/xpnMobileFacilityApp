@@ -758,7 +758,7 @@ final class InspectionFormStandardizationTests: XCTestCase {
         XCTAssertEqual(localized(InspectionFormColumn.comment, english), "Comment")
         XCTAssertEqual(localized(InspectionFormColumn.performedOn, english), "Performed on")
         XCTAssertEqual(localized("inspection.outOfService", english), "Out of operation")
-        XCTAssertEqual(localized("inspection.outOfService.demounted", english), "Disassembled")
+        XCTAssertEqual(localized("inspection.outOfService.demounted", english), "Demounted")
 
         let german = Locale(identifier: "de")
         XCTAssertEqual(localized(InspectionFormColumn.asset, german), "Überprüfte Anlagentechnik")
@@ -897,11 +897,14 @@ final class InspectionFormStandardizationTests: XCTestCase {
         XCTAssertEqual(item.title, "Fluchtwege")
     }
 
+    /// Reads the key straight out of the requested `<language>.lproj`.
+    /// `String(localized:bundle:locale:)` resolves against the bundle's own
+    /// preferred localization and returns the English text whatever `locale`
+    /// says, which would let a missing German translation pass unnoticed.
     private func localized(_ key: String, _ locale: Locale) -> String {
-        String(
-            localized: String.LocalizationValue(key),
-            bundle: .main,
-            locale: locale
-        )
+        let bundle = Bundle.main.path(forResource: locale.identifier, ofType: "lproj")
+            .flatMap(Bundle.init(path:))
+        XCTAssertNotNil(bundle, "no \(locale.identifier).lproj in the app bundle")
+        return bundle?.localizedString(forKey: key, value: nil, table: nil) ?? key
     }
 }

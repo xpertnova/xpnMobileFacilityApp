@@ -187,18 +187,30 @@ enum EquipmentInspectionForm: String, CaseIterable, Sendable {
 
     // MARK: - Report and upload
 
-    /// German report title used when the class definition carries no `TXTBZ`.
-    /// The PDF is an SAP document and is always German, like the legacy
-    /// `PdfBuilder` output. `Aufzugskontrolle.buildPDF` falls back to
-    /// "Aufzugskontrolle"; `MasterDataForm.buildPDF` always uses `TXTBZ`.
-    /// TFM4, TFM6 and TFM8 cannot open without class characteristics, so their fallback only
+    /// Whether the report header carries the form's own name instead of the
+    /// SAP class description (`klassenMerkmale.TXTBZ`) that legacy `buildPDF`
+    /// prints. TFM2 shows "Aufzugskontrolle" rather than the class text
+    /// "e.on Aufzug Merkmale"; TFM6 is pinned to "FSA" the same way, so a
+    /// class description maintained in SAP cannot reach the header.
+    /// It is also what the upload rebuilds when a form was closed before its
+    /// report was kept.
+    var reportTitleIgnoresClassDescription: Bool {
+        self == .elevator || self == .holdOpenSystem
+    }
+
+    /// German report title used when the class definition carries no `TXTBZ`,
+    /// and the header itself for a form that names itself. The PDF is an SAP
+    /// document and is always German, like the legacy `PdfBuilder` output.
+    /// `Aufzugskontrolle.buildPDF` falls back to "Aufzugskontrolle";
+    /// `MasterDataForm.buildPDF` always uses `TXTBZ`. TFM4, TFM6 and TFM8
+    /// cannot open without class characteristics, so their fallback only
     /// covers a class definition with an empty `TXTBZ`.
     var reportTitleFallback: String {
         switch self {
         case .elevator: "Aufzugskontrolle"
         case .fixedLadder: "Steigleitern"
         case .subdistribution: "Unterverteilung"
-        case .holdOpenSystem: "Feststellanlage"
+        case .holdOpenSystem: "FSA"
         case .roofSystem: "Dachanlagen"
         }
     }

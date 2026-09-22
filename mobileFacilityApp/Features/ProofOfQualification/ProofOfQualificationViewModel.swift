@@ -229,8 +229,13 @@ final class ProofOfQualificationViewModel {
     guard !isReadOnly,
       !isSaving,
       let artifact = pdfArtifact,
-      let payload = makePayload(pdfData: artifact.data, completedAt: artifact.createdAt)
+      var payload = makePayload(pdfData: artifact.data, completedAt: artifact.createdAt)
     else { return false }
+    // Legacy `_additionalDocs`: only a final close sends the documents.
+    payload.additionalDocumentSymbolIDs = InstructionFormReferenceDocuments.symbolIDs(
+      sections: payload.template.sections,
+      answerKeysByItemID: payload.answerKeysByItemID
+    )
     isSaving = true
     defer { isSaving = false }
     do {

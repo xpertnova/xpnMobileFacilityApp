@@ -44,6 +44,8 @@ final class NotificationReviewViewModel {
     /// I2 notifications SAP already holds for this technical object.
     private(set) var existingI2Notifications: [SAPI2NotificationSummary] = []
     private var canCreateI2 = false
+    /// Reporter shown in the report built when the review is closed.
+    private var userProfile: SAPUserProfile?
 
     init(
         detail: SAPNotificationDetail,
@@ -84,7 +86,8 @@ final class NotificationReviewViewModel {
         await discardStagedPhotos()
         await offlineWorkStore.load()
         if let sapDataStore {
-            canCreateI2 = await sapDataStore.loadUserProfile()?.canCreateI2 ?? false
+            userProfile = await sapDataStore.loadUserProfile()
+            canCreateI2 = userProfile?.canCreateI2 ?? false
             existingI2Notifications = await sapDataStore.loadI2Notifications(for: detail)
         }
         guard let draft = offlineWorkStore.notificationReview(notificationID: detail.summary.id) else { return }
@@ -201,7 +204,8 @@ final class NotificationReviewViewModel {
             photoAttachments: photoAttachments,
             isClosedLocally: closed,
             notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
-            outgoingProcessID: processID
+            outgoingProcessID: processID,
+            pdfData: closed ? reportPDF() : persistedDraft?.pdfData
         )
 
         do {
@@ -216,6 +220,12 @@ final class NotificationReviewViewModel {
             persistedDraft = draft
             // `Rundgang._afterSetMeldung` offers the deficient positions for
             // I2 notifications instead of finishing the form.
+            if closed {
+                SAPSynchronizationDiagnostics.logI2(
+                    "form closed: user may create I2 \(canCreateI2), " +
+                        "\(I2NotificationRules.segmentedCandidates(detail: detail, results: results, comments: comments).count) defective position(s) offered"
+                )
+            }
             let offersI2 = closed && canCreateI2 && i2Selection.present(
                 I2NotificationRules.segmentedCandidates(detail: detail, results: results, comments: comments)
             )
@@ -229,17 +239,40 @@ final class NotificationReviewViewModel {
         }
     }
 
+    /// `Rundgang.buildPDF` / `WartungsPlan.buildPDF` of the closed review,
+    /// kept with the draft so the report stays readable from the local-work
+    /// and defect lists after the form is closed.
+    private func reportPDF() -> Data {
+        NotificationReviewReportPDF.render(
+            NotificationReviewReportPayload(
+                formCode: detail.formCode,
+                notificationID: detail.summary.id,
+                fields: NotificationReportFields(rawPayloadJSON: detail.summary.rawPayloadJSON),
+                items: detail.inspectionItems,
+                results: results,
+                comments: comments,
+                performedOn: performedOn,
+                worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: "")
+            )
+        )
+    }
+
     /// Stores the notifications chosen in the defect dialog with the closed
     /// review. Returns `false` when nothing was chosen, so the form can be
     /// left straight away as `onDefectPosItemAccept` does.
     func acceptI2Selection() async -> Bool {
         let requests = i2Selection.accept()
+        SAPSynchronizationDiagnostics.logI2(
+            "dialog accepted with \(requests.count) request(s), closed draft present: " +
+                "\(persistedDraft?.isClosedLocally == true)"
+        )
         guard !requests.isEmpty, var draft = persistedDraft, draft.isClosedLocally else { return false }
         isSaving = true
         defer { isSaving = false }
         draft.i2Requests = requests
         do {
             _ = try await offlineWorkStore.saveNotificationReview(draft)
+            SAPSynchronizationDiagnostics.logI2("stored \(requests.count) request(s) with the closed form")
             persistedDraft = draft
             feedback = .i2NotificationsQueued
         } catch {

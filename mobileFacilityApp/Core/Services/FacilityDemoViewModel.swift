@@ -571,6 +571,14 @@ final class FacilityDemoViewModel {
         proceedWithSAPRefresh()
     }
 
+    /// Stops waiting for SAP and closes the dialog. The request stays in
+    /// `TBL_REQUEST`, so the next synchronization continues it.
+    func continueSAPRefreshLater() {
+        sapDataStore.continueRefreshLater()
+        shouldPresentSAPRefresh = false
+        Task { await offlineWorkStore.load() }
+    }
+
     func confirmDiscardDraftsAndSync() {
         shouldPresentDraftWarningBeforeSync = false
         proceedWithSAPRefresh()

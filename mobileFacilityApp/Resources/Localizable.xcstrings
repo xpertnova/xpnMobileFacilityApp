@@ -5265,6 +5265,23 @@
         }
       }
     },
+    "firePermit.saveFailed.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Feuererlaubnisschein konnte nicht lokal gespeichert werden. Bitte versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The fire permit could not be saved locally. Please try again."
+          }
+        }
+      }
+    },
     "firePermit.section.alarm" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6270,7 +6287,6 @@
       }
     },
     "forms.fire.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12019,6 +12035,23 @@
         }
       }
     },
+    "offline.status.localOnly" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur lokal"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local only"
+          }
+        }
+      }
+    },
     "offline.status.pending" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -14210,6 +14243,39 @@
         }
       }
     },
+    "report.preview.open" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht anzeigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show report"
+          }
+        }
+      }
+    },
+    "report.preview.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Report"
+          }
+        }
+      }
+    },
     "RFID" : {
 
     },
@@ -15431,6 +15497,23 @@
         }
       }
     },
+    "sap.refresh.continueLater" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Später fortsetzen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue later"
+          }
+        }
+      }
+    },
     "sap.refresh.details.forbiddenExplanation" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -15597,6 +15680,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Server response"
+          }
+        }
+      }
+    },
+    "sap.refresh.details.resumeOperation" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM001 / MMTFM005 · Unterbrochene Synchronisierung bereinigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MMTFM001 / MMTFM005 · clean up interrupted synchronization"
           }
         }
       }
@@ -16239,6 +16339,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Receiving package %d"
+          }
+        }
+      }
+    },
+    "sap.refresh.stage.resuming" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterbrochene Synchronisierung wird bereinigt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cleaning up the interrupted synchronization."
           }
         }
       }

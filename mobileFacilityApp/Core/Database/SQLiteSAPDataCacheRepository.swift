@@ -18,10 +18,22 @@ private actor LegacyIncomingSynchronizationRegistry {
 
 private let legacyIncomingSynchronizationRegistry = LegacyIncomingSynchronizationRegistry()
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, I2NotificationReading, I2NotificationTemplateProviding, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, I2NotificationReading, I2NotificationTemplateProviding, I3NotificationContextProviding, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
+    /// The staged TO request survives an app restart here, beside the
+    /// `TBL_REQUEST` step, because the legacy schema has no table for it.
+    private static let synchronizationCategory = "MOBILE_FACILITY_APP_SYNC"
+    private static let outgoingCheckpointParameter = "OUTGOING_REQUEST"
+
+    /// What a TO request staged: the `TO_*` rows to delete once SAP confirms
+    /// it and the local work those rows came from.
+    private struct OutgoingCheckpoint: Codable {
+        let requestID: String
+        let rowIDs: [String: [Int64]]
+        let batch: SAPOutgoingBatchManifest
+    }
 
     private static let outgoingMappings: [(source: String, temporary: String, payload: String)] = [
         ("TO_T0281", "TMP_TO_T0281", "T_0281"),
@@ -47,8 +59,6 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     /// The last built technical-object hierarchy and the connection's change
     /// count it was built at. See `technicalObjects(for:)`.
     private var technicalObjectsCache: (changeCount: Int32, objects: [TechnicalObjectNode])?
-    private var stagedOutgoingRowIDs: [String: [Int64]] = [:]
-    private var stagedOutgoingRequestID: String?
     private var incomingUserRows: [LegacySAPRow] = []
     private var incomingSawUserTable = false
     private var incomingSawLastPackage = false
@@ -189,16 +199,70 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         }
     }
 
+    /// `_resultToObjectFeldwertArray(result).pop()`: the last matching row.
     func loadNewNotificationTemplateJSON() async throws -> String? {
         guard let database else { throw SAPReadError.serviceUnavailable }
         let schema = try Self.schema(named: "FROM_T0268")
         let feldwert = try Self.query(
             on: database,
             "SELECT FELDWERT FROM \(schema.name) WHERE LKEY = 'MELDUNG' AND LPAR = 'MELDUNG'"
-        ) { Self.string(at: 0, from: $0) }.first
+        ) { Self.string(at: 0, from: $0) }.last
         guard let feldwert,
               let template = SAPLegacyDataExchangeCodec.decodedFeldwertObject(feldwert),
               let data = try? JSONSerialization.data(withJSONObject: template, options: [.sortedKeys])
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// The rows `getItemNewMeldung` reads for a new I3 notification.
+    func loadI3NotificationContext(
+        functionalLocationID: String,
+        planNumber: String,
+        partnerAddressNumber: String
+    ) async throws -> I3NotificationLegacyContext {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        guard let functionalLocation = try Self.rows(in: "FROM_T0272", on: database)
+            .last(where: { Self.text("STRNO", in: $0) == functionalLocationID }) else {
+            throw I3NotificationUploadError.missingFunctionalLocation(functionalLocationID)
+        }
+        let template = try Self.rows(in: "FROM_T0268", on: database)
+            .last { Self.text("LKEY", in: $0) == "MELDUNG" && Self.text("LPAR", in: $0) == "MELDUNG" }
+            .flatMap { SAPLegacyDataExchangeCodec.decodedFeldwertObject(Self.text("FELDWERT", in: $0)) }
+        // `resultItem.T0267 = aAnleitung[0]`: the first plan's decoded positions.
+        let planPositions = try Self.rows(in: "FROM_T0267", on: database)
+            .first {
+                Self.text("EQART", in: $0) == "TFMINSTRUC" && Self.text("PLNNR", in: $0) == planNumber
+            }
+            .map { row -> [[String: Any]] in
+                let feldwert = Self.text("FELDWERT", in: row)
+                if let object = SAPLegacyDataExchangeCodec.decodedFeldwertObject(feldwert),
+                   let positions = object["T_PLPOD"] as? [[String: Any]] {
+                    return positions
+                }
+                return SAPLegacyDataExchangeCodec.decodedFeldwertObjects(feldwert)
+            }
+        // `getAllItemFrom_T0298`: the decoded partner with `CLIENT = MANDT2`.
+        var partner: [String: Any]?
+        if !partnerAddressNumber.isEmpty,
+           let row = try Self.rows(in: "FROM_T0298", on: database)
+            .first(where: { Self.text("ADDRNUMBER", in: $0) == partnerAddressNumber }),
+           var object = SAPLegacyDataExchangeCodec.decodedFeldwertObject(Self.text("FELDWERT", in: row)) {
+            object["CLIENT"] = Self.text("MANDT2", in: row)
+            partner = object
+        }
+        let user = try Self.rows(in: "USER", on: database).first ?? [:]
+        return I3NotificationLegacyContext(
+            templateJSON: template.flatMap { Self.jsonString($0) },
+            functionalLocationJSON: Self.jsonString(functionalLocation) ?? "{}",
+            planPositionsJSON: planPositions.flatMap { Self.jsonString($0) },
+            partnerJSON: partner.flatMap { Self.jsonString($0) },
+            userJSON: Self.jsonString(user) ?? "{}"
+        )
+    }
+
+    private static func jsonString(_ value: Any) -> String? {
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
         else { return nil }
         return String(data: data, encoding: .utf8)
     }
@@ -734,18 +798,41 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         try technicalObjects(for: localWorkerID).filter { $0.reference.kind == kind }.count
     }
 
-    func stageOutgoing(requestID: String) async throws -> LegacySAPOutgoingPayload {
+    func pendingSynchronization() async throws -> SAPPendingSynchronization? {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        // `checkBeforeSynchronize` reads the step of the last row.
+        guard let request = try Self.query(
+            on: database,
+            "SELECT STEP, REQID FROM TBL_REQUEST ORDER BY rowid DESC LIMIT 1",
+            map: { (Self.string(at: 0, from: $0), Self.string(at: 1, from: $0)) }
+        ).first,
+              let step = SAPSynchronizationStep(rawValue: request.0),
+              !request.1.isEmpty
+        else { return nil }
+        var batch = SAPOutgoingBatchManifest.empty
+        if [.outgoingStaged, .outgoingMetadataSent, .outgoingPosted].contains(step),
+           let checkpoint = try Self.outgoingCheckpoint(on: database),
+           checkpoint.requestID == request.1 {
+            batch = checkpoint.batch
+        }
+        return SAPPendingSynchronization(step: step, requestID: request.1, outgoingBatch: batch)
+    }
+
+    func stageOutgoing(
+        requestID: String,
+        batch: SAPOutgoingBatchManifest
+    ) async throws -> LegacySAPOutgoingPayload {
         guard let database, !requestID.isEmpty else { throw SAPReadError.serviceUnavailable }
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
-            stagedOutgoingRowIDs = [:]
+            var stagedRowIDs: [String: [Int64]] = [:]
             for mapping in Self.outgoingMappings {
                 let sourceSchema = try Self.schema(named: mapping.source)
                 let temporarySchema = try Self.schema(named: mapping.temporary)
                 let rowIDs = try Self.query(on: database, "SELECT rowid FROM \(sourceSchema.name)") {
                     SQLiteC.columnInt64($0, 0)
                 }
-                stagedOutgoingRowIDs[sourceSchema.name] = rowIDs
+                stagedRowIDs[sourceSchema.name] = rowIDs
                 try Self.execute(on: database, "DELETE FROM \(temporarySchema.name)")
                 let columns = sourceSchema.columns.map(\.name).joined(separator: ", ")
                 try Self.execute(
@@ -760,18 +847,20 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                     )
                 }
             }
-            try Self.execute(on: database, "DELETE FROM TBL_REQUEST")
-            try Self.execute(
-                on: database,
-                "INSERT INTO TBL_REQUEST (STEP, REQID) VALUES (?, ?)",
-                bindings: ["1", requestID]
+            try Self.replaceSynchronizationRequest(.outgoingStaged, requestID: requestID, on: database)
+            let checkpoint = OutgoingCheckpoint(requestID: requestID, rowIDs: stagedRowIDs, batch: batch)
+            guard let checkpointJSON = String(data: try JSONEncoder().encode(checkpoint), encoding: .utf8) else {
+                throw SAPReadError.serviceUnavailable
+            }
+            try Self.setParameter(
+                Self.outgoingCheckpointParameter,
+                value: checkpointJSON,
+                category: Self.synchronizationCategory,
+                on: database
             )
             try Self.execute(on: database, "COMMIT")
-            stagedOutgoingRequestID = requestID
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
-            stagedOutgoingRowIDs = [:]
-            stagedOutgoingRequestID = nil
             throw error
         }
 
@@ -797,14 +886,39 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         )
     }
 
+    func recordSynchronizationStep(_ step: SAPSynchronizationStep, requestID: String) async throws {
+        guard let database, !requestID.isEmpty else { throw SAPReadError.serviceUnavailable }
+        try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
+        do {
+            try Self.replaceSynchronizationRequest(step, requestID: requestID, on: database)
+            if [.incomingRequested, .incomingReceiving].contains(step) {
+                try Self.deleteParameter(
+                    Self.outgoingCheckpointParameter,
+                    category: Self.synchronizationCategory,
+                    on: database
+                )
+            }
+            try Self.execute(on: database, "COMMIT")
+        } catch {
+            try? Self.execute(on: database, "ROLLBACK")
+            throw error
+        }
+    }
+
     func confirmOutgoing(requestID: String) async throws {
-        guard let database, stagedOutgoingRequestID == requestID else {
-            throw SAPReadError.serviceUnavailable
+        guard let database, !requestID.isEmpty else { throw SAPReadError.serviceUnavailable }
+        // Without its checkpoint the staged rows cannot be told apart from
+        // newer ones. They stay queued rather than keep the request pending.
+        var stagedRowIDs: [String: [Int64]] = [:]
+        if let checkpoint = try Self.outgoingCheckpoint(on: database), checkpoint.requestID == requestID {
+            stagedRowIDs = checkpoint.rowIDs
+        } else {
+            SAPSynchronizationDiagnostics.logSynchronizationStep("Confirmed TO request has no staged rows recorded")
         }
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             for mapping in Self.outgoingMappings {
-                let rowIDs = stagedOutgoingRowIDs[mapping.source] ?? []
+                let rowIDs = stagedRowIDs[mapping.source] ?? []
                 for start in stride(from: 0, to: rowIDs.count, by: 500) {
                     let batch = Array(rowIDs[start..<min(start + 500, rowIDs.count)])
                     let placeholders = Array(repeating: "?", count: batch.count).joined(separator: ",")
@@ -821,9 +935,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                 "DELETE FROM TBL_REQUEST WHERE REQID = ?",
                 bindings: [requestID]
             )
+            try Self.deleteParameter(
+                Self.outgoingCheckpointParameter,
+                category: Self.synchronizationCategory,
+                on: database
+            )
             try Self.execute(on: database, "COMMIT")
-            stagedOutgoingRowIDs = [:]
-            stagedOutgoingRequestID = nil
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
             throw error
@@ -840,8 +957,20 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             "DELETE FROM TBL_REQUEST WHERE REQID = ?",
             bindings: [requestID]
         )
-        stagedOutgoingRowIDs = [:]
-        stagedOutgoingRequestID = nil
+        try? Self.deleteParameter(
+            Self.outgoingCheckpointParameter,
+            category: Self.synchronizationCategory,
+            on: database
+        )
+    }
+
+    func abortIncomingRequest(requestID: String) async {
+        guard let database else { return }
+        try? Self.execute(
+            on: database,
+            "DELETE FROM TBL_REQUEST WHERE REQID = ?",
+            bindings: [requestID]
+        )
     }
 
     func beginIncoming() async throws {
@@ -930,6 +1059,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             let timestamp = ISO8601DateFormatter().string(from: refreshedAt)
             try Self.setParameter(Self.refreshParameter, value: timestamp, on: database)
             try Self.setParameter(Self.workerParameter, value: sapWorkerID, on: database)
+            // `deleteFROM_TBL_REQUEST` ends the synchronization.
+            try Self.execute(on: database, "DELETE FROM TBL_REQUEST")
             try Self.execute(on: database, "COMMIT")
             incomingUserRows = []
             incomingSawUserTable = false
@@ -945,6 +1076,23 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                 databasePath: databaseURL.standardizedFileURL.path
             )
             throw error
+        }
+        // Diagnostics: the I2 notifications SAP returned, newest first, so an
+        // I2 sent in the TO request can be recognised by its `REFNUM`.
+        if let i2Rows = try? Self.query(
+            on: database,
+            "SELECT QMNUM, REFNUM, QMCOD, STTXT, QMNAM, STRMN, TPLNR FROM FROM_T0271 WHERE QMART = 'I2' "
+                + "ORDER BY STRMN DESC, QMNUM DESC LIMIT 10"
+        ) { statement in
+            (Int32(0)..<7).map { Self.string(at: $0, from: statement) }.joined(separator: " ")
+        } {
+            let total = (try? Self.query(on: database, "SELECT COUNT(*) FROM FROM_T0271 WHERE QMART = 'I2'") {
+                SQLiteC.columnInt($0, 0)
+            }.first) ?? 0
+            SAPSynchronizationDiagnostics.logI2(
+                "FROM package holds \(total) I2 notification(s); newest [QMNUM REFNUM QMCOD STTXT QMNAM STRMN TPLNR]: "
+                    + i2Rows.joined(separator: " | ")
+            )
         }
         if let metadata = try? Self.metadata(on: database) {
             await rebuildNotificationListIndexIfNeeded(
@@ -1027,7 +1175,9 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         functionalLocations: [LegacySAPRow],
         proposals: [LegacySAPRow],
         i2Notifications: [LegacySAPRow],
-        i2Documents: [LegacySAPRow]
+        i2Documents: [LegacySAPRow],
+        i3Notifications: [LegacySAPRow],
+        i3Documents: [LegacySAPRow]
     ) async throws {
         guard let database else { throw SAPReadError.serviceUnavailable }
         let headerSchema = try Self.schema(named: "TO_T0281")
@@ -1038,6 +1188,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let proposalSchema = try Self.schema(named: "TO_T0211")
         let i2NotificationSchema = try Self.schema(named: "TO_T0284")
         let i2DocumentSchema = try Self.schema(named: "TO_T0285")
+        let i3NotificationSchema = try Self.schema(named: "TO_T0300")
+        let i3DocumentSchema = try Self.schema(named: "TO_T0302")
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             // `TO_T0284` has no process number. Its temporary `QMNUM` is kept
@@ -1049,10 +1201,18 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                     bindings: [notificationID]
                 )
             }
+            // `insertI3Meldung` replaces the notification's own `TO_T0300` row.
+            for notificationID in Set(i3Notifications.compactMap { $0["QMNUM"] ?? nil }) where !notificationID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(i3NotificationSchema.name) WHERE QMNUM = ?",
+                    bindings: [notificationID]
+                )
+            }
             for processID in Set(processIDs) where !processID.isEmpty {
                 for table in [
                     headerSchema.name, valueSchema.name, documentSchema.name,
-                    proposalSchema.name, i2DocumentSchema.name
+                    proposalSchema.name, i2DocumentSchema.name, i3DocumentSchema.name
                 ] {
                     try Self.execute(
                         on: database,
@@ -1084,6 +1244,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             for row in proposals { try Self.insert(row: row, into: proposalSchema, on: database) }
             for row in i2Notifications { try Self.insert(row: row, into: i2NotificationSchema, on: database) }
             for row in i2Documents { try Self.insert(row: row, into: i2DocumentSchema, on: database) }
+            for row in i3Notifications { try Self.insert(row: row, into: i3NotificationSchema, on: database) }
+            for row in i3Documents { try Self.insert(row: row, into: i3DocumentSchema, on: database) }
             try Self.execute(on: database, "COMMIT")
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
@@ -1364,18 +1526,51 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     private static func setParameter(
         _ parameter: String,
         value: String,
+        category: String = SQLiteSAPDataCacheRepository.metadataCategory,
+        on database: OpaquePointer
+    ) throws {
+        try deleteParameter(parameter, category: category, on: database)
+        try execute(
+            on: database,
+            "INSERT INTO PARVALUE (CATEGORY, PARAMETER, VALUE) VALUES (?, ?, ?)",
+            bindings: [category, parameter, value]
+        )
+    }
+
+    private static func deleteParameter(
+        _ parameter: String,
+        category: String,
         on database: OpaquePointer
     ) throws {
         try execute(
             on: database,
             "DELETE FROM PARVALUE WHERE CATEGORY = ? AND PARAMETER = ?",
-            bindings: [metadataCategory, parameter]
+            bindings: [category, parameter]
         )
+    }
+
+    /// `insert_TBL_REQUEST`: the table holds only the current request.
+    private static func replaceSynchronizationRequest(
+        _ step: SAPSynchronizationStep,
+        requestID: String,
+        on database: OpaquePointer
+    ) throws {
+        try execute(on: database, "DELETE FROM TBL_REQUEST")
         try execute(
             on: database,
-            "INSERT INTO PARVALUE (CATEGORY, PARAMETER, VALUE) VALUES (?, ?, ?)",
-            bindings: [metadataCategory, parameter, value]
+            "INSERT INTO TBL_REQUEST (STEP, REQID) VALUES (?, ?)",
+            bindings: [step.rawValue, requestID]
         )
+    }
+
+    private static func outgoingCheckpoint(on database: OpaquePointer) throws -> OutgoingCheckpoint? {
+        guard let json = try query(
+            on: database,
+            "SELECT VALUE FROM PARVALUE WHERE CATEGORY = ? AND PARAMETER = ?",
+            bindings: [synchronizationCategory, outgoingCheckpointParameter],
+            map: { string(at: 0, from: $0) }
+        ).first else { return nil }
+        return try? JSONDecoder().decode(OutgoingCheckpoint.self, from: Data(json.utf8))
     }
 
     private static func inboundDigits(from name: String) -> String? {

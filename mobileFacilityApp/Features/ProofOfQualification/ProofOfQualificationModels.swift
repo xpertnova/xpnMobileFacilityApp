@@ -22,6 +22,10 @@ struct ProofOfQualificationDraftPayload: Codable, Equatable, Sendable {
   var instructedPersonSignature: Data?
   var pdfData: Data?
   var completedAt: Date?
+  /// `USR02` symbols of the positions answered "Ja" that point at a standard
+  /// SAP document. Optional so drafts written before this decode unchanged
+  /// (synthesized `Codable` only tolerates a missing key for an optional).
+  var additionalDocumentSymbolIDs: [String]?
 
   var instructorName: String {
     [instructorFirstName, instructorLastName]

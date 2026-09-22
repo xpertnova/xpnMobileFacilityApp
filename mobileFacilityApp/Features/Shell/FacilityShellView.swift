@@ -206,7 +206,8 @@ struct FacilityShellView: View {
                     error: demo.sapDataStore.refreshError,
                     failureContext: demo.sapDataStore.refreshFailureContext,
                     refresh: refreshSAPData,
-                    cancel: dismissSAPRefresh
+                    cancel: dismissSAPRefresh,
+                    continueLater: demo.continueSAPRefreshLater
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.scale(scale: 0.95).combined(with: .opacity))

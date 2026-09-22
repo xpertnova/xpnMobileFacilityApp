@@ -51,6 +51,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     /// `.refreshing` and start a second transfer.
     private var activeRefreshID: UUID?
     private var preparedTokenRefreshID: UUID?
+    @ObservationIgnored private var runningRefresh: Task<SAPCachedData, Error>?
 
     init(
         repository: any SAPDataCacheRepository,
@@ -266,8 +267,10 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         guard let refreshID = beginRefreshOperation() else { return }
         defer { finishRefreshOperation(refreshID) }
         do {
-            cachedData = try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
-                self?.refreshStage = stage
+            cachedData = try await runRefresh {
+                try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
+                    self?.refreshStage = stage
+                }
             }
             try await loadTotalNotificationCount()
             try await loadNotificationFilterMetadata()
@@ -340,8 +343,10 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             return false
         }
         do {
-            cachedData = try await refreshService.refresh(usingToken: token) { [weak self] stage in
-                self?.refreshStage = stage
+            cachedData = try await runRefresh {
+                try await refreshService.refresh(usingToken: token) { [weak self] stage in
+                    self?.refreshStage = stage
+                }
             }
             try await loadTotalNotificationCount()
             try await loadNotificationFilterMetadata()
@@ -378,6 +383,12 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         }
     }
 
+    /// Stops waiting for SAP. The synchronization request stays recorded, so
+    /// the next synchronization continues where this one stopped.
+    func continueRefreshLater() {
+        runningRefresh?.cancel()
+    }
+
     func deleteSavedToken() {
         tokenStore?.deleteToken(for: tokenStoreAccountID)
     }
@@ -408,6 +419,15 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             stage: refreshStage ?? .authenticating,
             error: error
         )
+    }
+
+    private func runRefresh(
+        _ operation: @escaping @Sendable () async throws -> SAPCachedData
+    ) async throws -> SAPCachedData {
+        let task = Task { try await operation() }
+        runningRefresh = task
+        defer { runningRefresh = nil }
+        return try await task.value
     }
 
     private func beginRefreshOperation() -> UUID? {

@@ -42,6 +42,7 @@ struct ProofOfQualificationPDFRenderer: Sendable {
     static let bodyBoldFont = UIFont.boldSystemFont(ofSize: 9)
     static let footerFont = UIFont.italicSystemFont(ofSize: 9)
     static let tableHeaderHeight: CGFloat = 24
+    static let answerLineHeight: CGFloat = 16
     static let borderColor = UIColor.black.withAlphaComponent(0.75)
     static let sectionFill = UIColor(white: 0.93, alpha: 1)
   }
@@ -55,7 +56,7 @@ struct ProofOfQualificationPDFRenderer: Sendable {
   }
 
   private var checklistColumnWidths: [CGFloat] {
-    [contentWidth * 0.08, contentWidth * 0.48, contentWidth * 0.28, contentWidth * 0.16]
+    [contentWidth * 0.08, contentWidth * 0.48, contentWidth * 0.20, contentWidth * 0.24]
   }
 
   func render(_ payload: ProofOfQualificationPDFPayload) throws -> BriefingPDFArtifact {
@@ -360,7 +361,21 @@ struct ProofOfQualificationPDFRenderer: Sendable {
   private func checklistItemHeight(_ item: SAPBriefingTemplateItem, comment: String) -> CGFloat {
     let titleH = textHeight(item.title, width: checklistColumnWidths[1] - 8, font: Layout.bodyFont)
     let commentH = textHeight(comment, width: checklistColumnWidths[3] - 8, font: Layout.bodyFont)
-    return max(28, ceil(max(titleH, commentH)) + 10)
+    let answerH = answerOptionsStacked(item.answerOptions)
+      ? CGFloat(item.answerOptions.count) * Layout.answerLineHeight + 8
+      : 0
+    return max(28, ceil(max(titleH, commentH)) + 10, answerH)
+  }
+
+  /// Horizontal option layout used when every option fits in the answer column.
+  private func answerOptionsRowWidth(_ options: [SAPBriefingAnswerOption]) -> CGFloat {
+    options.reduce(12.0) { width, opt in
+      width + 11.0 + 5.0 + ceil(textWidth(opt.title, font: Layout.bodyFont)) + 4 + 12.0
+    }
+  }
+
+  private func answerOptionsStacked(_ options: [SAPBriefingAnswerOption]) -> Bool {
+    options.count > 1 && answerOptionsRowWidth(options) > checklistColumnWidths[2]
   }
 
   private func drawChecklistItem(
@@ -411,6 +426,17 @@ struct ProofOfQualificationPDFRenderer: Sendable {
       drawCheckboxBox(isSelected: isSelected, in: box, context: context)
       let labelRect = CGRect(x: box.maxX + 6.0, y: rect.minY + 5.0, width: 35, height: boxSize + 4)
       drawText(opt.title, in: labelRect, font: Layout.bodyFont)
+      return
+    }
+
+    if answerOptionsStacked(item.answerOptions) {
+      for (index, opt) in item.answerOptions.enumerated() {
+        let lineY = rect.minY + CGFloat(index) * Layout.answerLineHeight
+        let box = CGRect(x: rect.minX + 6.0, y: lineY + 6.0, width: boxSize, height: boxSize)
+        drawCheckboxBox(isSelected: selectedKey == opt.key, in: box, context: context)
+        let labelRect = CGRect(x: box.maxX + 5.0, y: lineY + 5.0, width: rect.maxX - box.maxX - 9.0, height: boxSize + 4)
+        drawText(opt.title, in: labelRect, font: Layout.bodyFont)
+      }
       return
     }
 

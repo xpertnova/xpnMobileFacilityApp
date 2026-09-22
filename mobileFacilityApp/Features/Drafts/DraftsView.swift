@@ -52,6 +52,7 @@ struct DraftsView: View {
                         && demo.offlineWorkStore.meterReadingItems.isEmpty
                         && demo.offlineWorkStore.technicalObjectEditItems.isEmpty
                         && demo.offlineWorkStore.proofOfQualificationItems.isEmpty
+                        && demo.offlineWorkStore.firePermitItems.isEmpty
                         && demo.offlineWorkStore.mobileLadderItems.isEmpty
                         && demo.offlineWorkStore.subdistributionItems.isEmpty
                         && demo.offlineWorkStore.photoCollectionItems.isEmpty {
@@ -114,6 +115,7 @@ struct DraftsView: View {
             savedMeterReadingRows
             savedBriefingRows
             savedElectricalSafetyRows
+            savedFirePermitRows
             savedTechnicalObjectEditList
             savedProofOfQualificationList
             savedPhotoCollections
@@ -192,7 +194,7 @@ struct DraftsView: View {
                     icon: "⚠️",
                     title: Text(defect.shortText),
                     subtitle: Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)"),
-                    status: .offline(item.status),
+                    status: .for(item),
                     syncError: item.syncError,
                     action: { demo.openManualDefect(item.id) }
                 )
@@ -208,7 +210,7 @@ struct DraftsView: View {
                     icon: reading.meter.kind == .electricity ? "⚡" : (reading.meter.kind == .gas ? "🔥" : "💧"),
                     title: Text("manual.localWork.meter.title"),
                     subtitle: Text("\(reading.meter.id) · \(MeterReadingViewModel.displayString(reading.value)) \(reading.meter.unit)"),
-                    status: demo.isDemoMode ? .demoLocal : .offline(item.status),
+                    status: demo.isDemoMode ? .demoLocal : .for(item),
                     syncError: item.syncError,
                     action: { demo.openMeterReading(item.id) }
                 )
@@ -263,6 +265,23 @@ struct DraftsView: View {
         }
     }
 
+    /// A closed fire permit only waits for SAP; it is not reopened.
+    @ViewBuilder
+    private var savedFirePermitRows: some View {
+        ForEach(demo.offlineWorkStore.firePermitItems) { item in
+            if let firePermit = item.payload.firePermit {
+                LocalWorkTemplateRow(
+                    icon: "🔥",
+                    title: Text("forms.fire.title"),
+                    subtitle: Text(firePermit.context.map { "\($0.businessEntityTitle) · \($0.buildingTitle)" } ?? firePermit.workDescription),
+                    status: .offline(item.status),
+                    syncError: item.syncError,
+                    action: nil
+                )
+            }
+        }
+    }
+
     @ViewBuilder
     private var savedTechnicalObjectEditList: some View {
         ForEach(demo.offlineWorkStore.technicalObjectEditItems) { item in
@@ -286,7 +305,11 @@ struct DraftsView: View {
                             Text("\(edit.equipmentID) · \(edit.functionalLocationID)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
-                        OfflineStatusPill(status: item.status)
+                        if item.type.staysLocal, item.status != .draft {
+                            FacilityTemplateBadge(localized: .init(item.statusTitleKey), style: .temporarilySaved)
+                        } else {
+                            OfflineStatusPill(status: item.status)
+                        }
                     }.padding(17).contentShape(Rectangle())
                 }.buttonStyle(.plain).facilityCard(padding: 0)
             }
@@ -341,6 +364,12 @@ private struct SavedEquipmentInspectionRow: View {
             : savedTitle
     }
 
+    /// The stored report, offered only once the inspection is closed.
+    private var report: FormReportPDFArtifact? {
+        guard inspection.isClosedLocally else { return nil }
+        return FormReportPDFArtifact(notificationID: inspection.notificationID, data: inspection.pdfBytes)
+    }
+
     var body: some View {
         LocalWorkTemplateRow(
             icon: inspection.form.draftIcon,
@@ -348,6 +377,7 @@ private struct SavedEquipmentInspectionRow: View {
             subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks"))"),
             status: inspection.isClosedLocally ? .closedLocally : .offline(item.status),
             syncError: item.syncError,
+            report: report,
             action: action
         )
         .accessibilityHint(Text("drafts.accessibility.openNotification"))
@@ -364,6 +394,12 @@ private struct SavedNotificationRow: View {
         return savedTitle.isEmpty ? String(localized: "drafts.notification.title") : savedTitle
     }
 
+    /// The stored report, offered only once the review is closed.
+    private var report: FormReportPDFArtifact? {
+        guard review.isClosedLocally else { return nil }
+        return FormReportPDFArtifact(notificationID: review.notificationID, data: review.pdfData)
+    }
+
     var body: some View {
         LocalWorkTemplateRow(
             icon: "📋",
@@ -371,6 +407,7 @@ private struct SavedNotificationRow: View {
             subtitle: Text("\(review.notificationID) · \(review.results.count) \(String(localized: "drafts.notification.checks"))"),
             status: review.isClosedLocally ? .closedLocally : .offline(item.status),
             syncError: item.syncError,
+            report: report,
             action: action
         )
         .accessibilityHint(Text("drafts.accessibility.openNotification"))
@@ -381,12 +418,19 @@ private enum LocalWorkTemplateStatus {
     case offline(OfflineWorkStatus)
     case closedLocally
     case demoLocal
+    /// Closed work that is not sent to SAP (`OfflineWorkType.staysLocal`).
+    case localOnly
+
+    static func `for`(_ item: OfflineWorkItem) -> Self {
+        item.type.staysLocal && item.status != .draft ? .localOnly : .offline(item.status)
+    }
 
     var titleKey: String {
         switch self {
         case let .offline(status): status.titleKey
         case .closedLocally: WorkStatus.closedLocally.titleKey
         case .demoLocal: "offline.status.demoLocal"
+        case .localOnly: "offline.status.localOnly"
         }
     }
 
@@ -394,6 +438,7 @@ private enum LocalWorkTemplateStatus {
         switch self {
         case .closedLocally, .offline(.synchronized): .complete
         case .demoLocal: .open
+        case .localOnly: .temporarilySaved
         case .offline(.failed), .offline(.conflict): .attention
         case .offline(.draft): .temporarilySaved
         case .offline(.pendingSynchronization), .offline(.synchronizing): .open
@@ -407,51 +452,65 @@ private struct LocalWorkTemplateRow: View {
     let subtitle: Text
     let status: LocalWorkTemplateStatus
     let syncError: String?
-    let action: () -> Void
+    /// Report of a closed notification; nil while it is still a draft.
+    var report: FormReportPDFArtifact? = nil
+    /// Nil for work that cannot be opened again once closed.
+    let action: (() -> Void)?
 
     var body: some View {
-        Button(action: action) {
-            HStack(alignment: .center, spacing: 16) {
-                LocalWorkTemplateIcon(icon: icon)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    title
-                        .font(.headline)
-                        .foregroundStyle(FacilityTheme.ink)
-                        .lineLimit(2)
-                    subtitle
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 12)
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    FacilityTemplateBadge(
-                        localized: .init(status.titleKey),
-                        style: status.badgeStyle
-                    )
-
-                    if let syncError, !syncError.isEmpty {
-                        HStack(spacing: 4) {
-                            Text("⚠")
-                                .accessibilityHidden(true)
-                            Text(syncError)
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(FacilityTheme.red)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 190, alignment: .trailing)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: FormReportPaperclipButton.rowSpacing) {
+            if let action {
+                Button(action: action) { content }
+                    .buttonStyle(.plain)
+            } else {
+                content
             }
-            .contentShape(Rectangle())
+            if let report {
+                FormReportPaperclipButton(report: report)
+            }
         }
-        .buttonStyle(.plain)
         .facilityCard()
+    }
+
+    private var content: some View {
+        HStack(alignment: .center, spacing: 16) {
+            LocalWorkTemplateIcon(icon: icon)
+
+            VStack(alignment: .leading, spacing: 4) {
+                title
+                    .font(.headline)
+                    .foregroundStyle(FacilityTheme.ink)
+                    .lineLimit(2)
+                subtitle
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 12)
+
+            VStack(alignment: .trailing, spacing: 6) {
+                FacilityTemplateBadge(
+                    localized: .init(status.titleKey),
+                    style: status.badgeStyle
+                )
+
+                if let syncError, !syncError.isEmpty {
+                    HStack(spacing: 4) {
+                        Text("⚠")
+                            .accessibilityHidden(true)
+                        Text(syncError)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(FacilityTheme.red)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 190, alignment: .trailing)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .contentShape(Rectangle())
     }
 }
 

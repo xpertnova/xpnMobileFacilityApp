@@ -192,9 +192,11 @@ final class EquipmentInspectionViewModel {
     }
 
     /// Report title: the class description, like `buildPDF` in both legacy
-    /// controllers, or the form's German name when the class has none.
+    /// controllers, or the form's German name when the class has none or the
+    /// form names itself (`reportTitleIgnoresClassDescription`).
     var reportTitle: String {
-        masterDataClassTitle.isEmpty ? form.reportTitleFallback : masterDataClassTitle
+        if form.reportTitleIgnoresClassDescription { return form.reportTitleFallback }
+        return masterDataClassTitle.isEmpty ? form.reportTitleFallback : masterDataClassTitle
     }
 
     var canCreateI2Defects: Bool {
@@ -698,7 +700,8 @@ final class EquipmentInspectionViewModel {
         let street = payloadDict["STREET_TO"] as? String ?? ""
         let we = payloadDict["TPWEH"] as? String ?? ""
         let ge = payloadDict["TPGEB"] as? String ?? ""
-        let weGe = we.isEmpty && ge.isEmpty ? "" : "\(we) / \(ge)"
+        let weGe = "\(we)/ \(ge)"
+        let placeText = payloadDict["PLTXT"] as? String ?? ""
         let eqktx = payloadDict["EQKTX"] as? String ?? ""
         let plant = payloadDict["IWERK"] as? String ?? ""
         let orgUnit = payloadDict["GEWRK"] as? String ?? ""
@@ -712,7 +715,7 @@ final class EquipmentInspectionViewModel {
             formTitle: reportTitle,
             masterDataTitle: form.reportMasterDataTitle,
             notificationID: detail.summary.id,
-            notificationTitle: detail.summary.title,
+            notificationTitle: placeText.isEmpty ? detail.summary.title : placeText,
             functionalLocation: detail.summary.functionalLocationID,
             equipmentID: detail.summary.equipmentID.isEmpty ? nil : detail.summary.equipmentID,
             equipmentName: eqktx.isEmpty ? nil : eqktx,
@@ -732,7 +735,8 @@ final class EquipmentInspectionViewModel {
             notes: comments,
             hasMaterialColumn: hasMaterialColumn,
             assetCharacteristics: elevatorAssetCharacteristics,
-            assetValues: masterDataValues
+            assetValues: masterDataValues,
+            outOfOperationComment: isOutOfService ? outOfServiceComment : nil
         )
 
         if let artifact = try? ElevatorInspectionPDFRenderer.render(pdfPayload) {
@@ -772,6 +776,12 @@ final class EquipmentInspectionViewModel {
             persistedDraft = draft
             // `_afterSetMeldung` offers the deficient positions for I2
             // notifications instead of finishing the form.
+            if closed {
+                SAPSynchronizationDiagnostics.logI2(
+                    "form closed: user may create I2 \(canCreateI2Defects), " +
+                        "\(i2Candidates.count) defective position(s) offered"
+                )
+            }
             let offersI2 = closed && canCreateI2Defects && i2Selection.present(i2Candidates)
             if !offersI2 {
                 feedback = closed ? .closedLocally : .savedLocally
@@ -788,12 +798,17 @@ final class EquipmentInspectionViewModel {
     /// left straight away as `onDefectPosItemAccept` does.
     func acceptI2Selection() async -> Bool {
         let requests = i2Selection.accept()
+        SAPSynchronizationDiagnostics.logI2(
+            "dialog accepted with \(requests.count) request(s), closed draft present: " +
+                "\(persistedDraft?.isClosedLocally == true)"
+        )
         guard !requests.isEmpty, var draft = persistedDraft, draft.isClosedLocally else { return false }
         isSaving = true
         defer { isSaving = false }
         draft.i2Requests = requests
         do {
             _ = try await offlineWorkStore.saveElevatorInspection(draft)
+            SAPSynchronizationDiagnostics.logI2("stored \(requests.count) request(s) with the closed form")
             persistedDraft = draft
             feedback = .i2NotificationsQueued
         } catch {

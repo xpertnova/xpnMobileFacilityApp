@@ -12,6 +12,7 @@ final class FirePermitViewModel {
     var pdfArtifact: BriefingPDFArtifact?
     var selectedBusinessEntityID: String?
     var selectedBuildingCode: String?
+    private var isSaving = false
 
     init(source: SafetyFormSource) {
         self.source = source
@@ -166,6 +167,32 @@ final class FirePermitViewModel {
                 return
             }
             pdfArtifact = artifact
+        }
+    }
+
+    /// Keeps the closed permit and its report until SAP confirms them.
+    func saveClosed(using store: OfflineWorkStore) async -> Bool {
+        guard !isSaving, let pdfArtifact else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        let payload = FirePermitDraftPayload(
+            context: record.context,
+            instructedPerson: record.instructedPerson,
+            partner: record.partner,
+            partnerEmail: record.partnerEmail,
+            coordinator: record.coordinator,
+            workDescription: record.workDescription,
+            executionStart: record.executionStart,
+            executionEnd: record.executionEnd,
+            pdfData: pdfArtifact.data,
+            completedAt: pdfArtifact.createdAt
+        )
+        do {
+            _ = try await store.saveClosedFirePermit(payload)
+            return true
+        } catch {
+            validationMessage = String(localized: "firePermit.saveFailed.message")
+            return false
         }
     }
 }
@@ -359,6 +386,7 @@ final class ElectricalSafetyViewModel {
         defer { isSaving = false }
         var payload = draft
         payload.completedAt = isCompletion ? .now : nil
+        payload.pdfData = isCompletion ? pdfArtifact?.data : nil
         do {
             let item = try await store.saveElectricalSafety(
                 id: savedWorkID,

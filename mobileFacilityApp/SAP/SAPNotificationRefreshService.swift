@@ -139,6 +139,12 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) \(step).")
     }
 
+    /// Follows the I2 notifications of a closed form from the defect dialog
+    /// to the TO request, so a missing I2 in SAP can be traced to its step.
+    static func logI2(_ detail: String) {
+        print("\(prefix) I2: \(detail).")
+    }
+
     static func logSynchronizationStage(_ stage: Int, _ detail: String) {
         print("\(prefix) Stage \(stage)/5: \(detail).")
     }
@@ -344,13 +350,12 @@ struct SAPReadConnection: @unchecked Sendable {
 /// response payloads, tokens, or complete device/user identifiers here.
 
 struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
-    private static let downloadSchemaVersion = "1.3.8-58-358"
     private let connection: SAPReadConnection
-    private  let synchronizationUserID: String
+    private let synchronizationUserID: String
     private let synchronizationStore: any SAPLegacySynchronizationStore
     private let tokenStore: (any SAPSyncTokenStore)?
     private let tokenStoreAccountID: String
-    private let notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator?
+    private let outgoingWork: (any SAPOutgoingWorkCoordinating)?
 
     init(
         connection: SAPReadConnection,
@@ -358,14 +363,14 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         tokenStore: (any SAPSyncTokenStore)? = nil,
         tokenStoreAccountID: String? = nil,
         synchronizationStore: any SAPLegacySynchronizationStore,
-        notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator? = nil
+        notificationOutgoingCoordinator: (any SAPOutgoingWorkCoordinating)? = nil
     ) {
         self.connection = connection
         self.synchronizationUserID = synchronizationUserID
         self.synchronizationStore = synchronizationStore
         self.tokenStore = tokenStore
         self.tokenStoreAccountID = tokenStoreAccountID ?? synchronizationUserID
-        self.notificationOutgoingCoordinator = notificationOutgoingCoordinator
+        self.outgoingWork = notificationOutgoingCoordinator
     }
 
     private var sapWorkerID: String {
@@ -409,15 +414,13 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             deviceID: synchronizationConnection.deviceID
         )
         await progress(.authenticating)
-        let token = try await verify(password: password, connection: synchronizationConnection)
+        let client = SAPLiveLegacyDataExchangeClient(connection: synchronizationConnection, sapWorkerID: sapWorkerID)
+        let token = try await verify(password: password, client: client)
         if let token, !token.isEmpty {
             try? tokenStore?.save(token: token, for: tokenStoreAccountID)
         }
 
-        return try await performInboundSynchronization(
-            connection: synchronizationConnection,
-            progress: progress
-        )
+        return try await synchronize(client: client, progress: progress)
     }
 
     func refresh(
@@ -444,134 +447,39 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             deviceID: synchronizationConnection.deviceID
         )
         await progress(.authenticating)
+        let client = SAPLiveLegacyDataExchangeClient(connection: synchronizationConnection, sapWorkerID: sapWorkerID)
         do {
-            try await verify(token: trimmedToken, connection: synchronizationConnection)
+            try await verify(token: trimmedToken, client: client)
         } catch {
             tokenStore?.deleteToken(for: tokenStoreAccountID)
             throw error
         }
 
-        return try await performInboundSynchronization(
-            connection: synchronizationConnection,
-            progress: progress
-        )
+        return try await synchronize(client: client, progress: progress)
     }
 
-    private func performInboundSynchronization(
-        connection synchronizationConnection: SAPReadConnection,
+    private func synchronize(
+        client: SAPLiveLegacyDataExchangeClient,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
-        // SAP prepares the FROM package only after the regular TO lifecycle,
-        // including an otherwise-empty M0002001 payload. The old SwiftUI app
-        // sends it even when there are no pending supported records.
-        let fromRequestID = Self.makeRequestID(prefix: "MTFMSYNCFROM")
-        let toRequestID = Self.makeRequestID(prefix: "MTFMSYNCTO")
-        SAPSynchronizationDiagnostics.logSynchronizationStage(1, "Uploading TO metadata")
-        // Preparing the local outgoing queue can fail before any SAP request.
-        // Report that work as the upload stage so the dialog never attributes
-        // a local queue error to the already-completed password check.
-        await progress(.uploadingOutgoingMetadata)
-        let notificationBatch = try await notificationOutgoingCoordinator?.prepare() ?? .empty
-        let outgoingPayload = try await synchronizationStore.stageOutgoing(requestID: toRequestID)
-        do {
-            try await submitOutgoingMetadata(
-                requestID: toRequestID,
-                synchronizationData: outgoingPayload,
-                connection: synchronizationConnection
-            )
-            SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO rows staged with request ID")
-
-            // `synchronizeDocTo` uploads the `TO_T0282` documents as `I1`,
-            // then the `TO_T0285` copies of the I2 notifications as `I2`.
-            let outgoingDocuments = notificationBatch.documents.map { (document: $0, notificationType: "I1") }
-                + notificationBatch.i2Documents.map { (document: $0, notificationType: "I2") }
-            for (index, entry) in outgoingDocuments.enumerated() {
-                await progress(.uploadingOutgoingDocuments(
-                    current: index + 1,
-                    total: outgoingDocuments.count
-                ))
-                try await submitOutgoingDocument(
-                    requestID: toRequestID,
-                    document: entry.document,
-                    notificationType: entry.notificationType,
-                    connection: synchronizationConnection
-                )
-            }
-
-            SAPSynchronizationDiagnostics.logSynchronizationStage(3, "Triggering TO post")
-            await progress(.postingOutgoingData)
-            try triggerOutgoingPost(requestID: toRequestID, connection: synchronizationConnection)
-
-            SAPSynchronizationDiagnostics.logSynchronizationStep("Waiting for TO acknowledgement")
-            await progress(.waitingForOutgoingAcknowledgement)
-            try await waitForOutgoingAcknowledgement(
-                requestID: toRequestID,
-                connection: synchronizationConnection
-            )
-            try await synchronizationStore.confirmOutgoing(requestID: toRequestID)
-            try await notificationOutgoingCoordinator?.complete(notificationBatch)
-        } catch {
-            await synchronizationStore.abortOutgoing(requestID: toRequestID)
-            await notificationOutgoingCoordinator?.fail(notificationBatch, error: error)
-            throw error
-        }
-        
-        SAPSynchronizationDiagnostics.logSynchronizationStep("Checking app version")
-        await progress(.checkingAppVersion)
-        try await checkAppVersion(requestID: toRequestID, connection: synchronizationConnection)
-
-        SAPSynchronizationDiagnostics.logSynchronizationStage(4, "Preparing FROM package")
-        await progress(.preparingIncomingData)
-        try prepareIncomingData(
-            fromRequestID: fromRequestID,
-            toRequestID: toRequestID,
-            connection: synchronizationConnection
+        let lifecycle = SAPLegacySynchronizationLifecycle(
+            sapWorkerID: sapWorkerID,
+            client: client,
+            store: synchronizationStore,
+            outgoingWork: outgoingWork
         )
-        await progress(.waitingForIncomingData)
-        try await waitForIncomingData(requestID: fromRequestID, connection: synchronizationConnection)
-
-        try await synchronizationStore.beginIncoming()
-        do {
-            var isLastPack = false
-            for packageIndex in 1...256 {
-                await progress(.receivingIncomingPackages(packageNumber: packageIndex))
-                guard let response = try await call(method: "M0002003", parameters: Self.parameters([
-                    "PARAMETER1": sapWorkerID,
-                    "PARAMETER2": fromRequestID,
-                    "PARAMETER3": "D"
-                ]), connection: synchronizationConnection) else {
-                    throw SAPReadError.malformedPayload
-                }
-                let package = try SAPLegacyDataExchangeCodec.inboundPack(from: response)
-                try await synchronizationStore.appendIncoming(package)
-                isLastPack = package.isLastPackage
-                if isLastPack { break }
-            }
-            guard isLastPack else { throw SAPReadError.malformedPayload }
-            await progress(.savingSnapshot)
-            let cachedData = try await synchronizationStore.commitIncoming(
-                sapWorkerID: sapWorkerID,
-                refreshedAt: Date()
-            )
-            let cacheSummary = try await synchronizationStore.incomingCacheSummary()
-            SAPSynchronizationDiagnostics.logSynchronizationCompleted(cacheSummary)
-            return cachedData
-        } catch {
-            await synchronizationStore.abortIncoming()
-            throw error
-        }
+        return try await lifecycle.run(progress: progress)
     }
 
-    private func verify(password: String, connection: SAPReadConnection) async throws -> String? {
-        guard let response = try await call(
+    private func verify(password: String, client: SAPLiveLegacyDataExchangeClient) async throws -> String? {
+        guard let response = try await client.call(
             method: "M0153003",
-            parameters: Self.parameters([
+            parameters: SAPReadParameters(values: [
                 "PARAMETER1": sapWorkerID,
                 "PARAMETER2": password,
-                "PARAMETER3": connection.deviceID
+                "PARAMETER3": client.connection.deviceID
             ]),
-            usesLegacyAuthenticationEnvelope: true,
-            connection: connection
+            usesLegacyAuthenticationEnvelope: true
         ) else {
             throw SAPReadError.malformedPayload
         }
@@ -596,16 +504,15 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         return authorization.token
     }
 
-    private func verify(token: String, connection: SAPReadConnection) async throws {
-        guard let response = try await call(
+    private func verify(token: String, client: SAPLiveLegacyDataExchangeClient) async throws {
+        guard let response = try await client.call(
             method: "M0155003",
-            parameters: Self.parameters([
+            parameters: SAPReadParameters(values: [
                 "PARAMETER1": sapWorkerID,
-                "PARAMETER2": connection.deviceID,
+                "PARAMETER2": client.connection.deviceID,
                 "PARAMETER3": token
             ]),
-            usesLegacyAuthenticationEnvelope: true,
-            connection: connection
+            usesLegacyAuthenticationEnvelope: true
         ) else {
             throw SAPReadError.malformedPayload
         }
@@ -622,21 +529,24 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         }
         SAPSynchronizationDiagnostics.logTokenAccepted()
     }
+}
 
-    private func submitOutgoingMetadata(
-        requestID: String,
-        synchronizationData: LegacySAPOutgoingPayload,
-        connection: SAPReadConnection
-    ) async throws {
+/// The `DATAEXCHANGESet` calls of one synchronization session.
+private struct SAPLiveLegacyDataExchangeClient: SAPLegacyDataExchangeClient {
+    /// The app, build and database version ABAP checks (`gAppVersion`).
+    private static let downloadSchemaVersion = "1.3.8-58-358"
+    let connection: SAPReadConnection
+    let sapWorkerID: String
+
+    func sendOutgoingMetadata(_ payload: LegacySAPOutgoingPayload, requestID: String) async throws {
         do {
             let response = try await call(
                 method: "M0002001",
-                parameters: Self.parameters([
+                parameters: SAPReadParameters(values: [
                     "PARAMETER1": sapWorkerID,
                     "PARAMETER2": requestID
                 ]),
-                synchronizationData: synchronizationData,
-                connection: connection,
+                synchronizationData: payload,
                 responseMayBeEmpty: true
             )
             if let response {
@@ -645,142 +555,152 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         } catch let error as SAPReadError {
             // The legacy client lets MMTFM002 establish whether ABAP accepted
             // an M0002001 request whose gateway response timed out.
-            guard Self.isRecoverableLifecyclePollingError(error) else { throw error }
+            guard SAPLegacySynchronizationLifecycle.isTransient(error) else { throw error }
         }
     }
 
-    private func submitOutgoingDocument(
-        requestID: String,
-        document: SAPNotificationOutgoingDocument,
+    func sendOutgoingDocument(
+        _ document: SAPNotificationOutgoingDocument,
         notificationType: String,
-        connection: SAPReadConnection
+        requestID: String
     ) async throws {
         var row = document.metadata
         row["REQID"] = requestID
         row["FELDWERT"] = document.data.base64EncodedString()
-        guard !row["FELDWERT", default: ""].isEmpty else {
-            throw SAPReadError.malformedPayload
+        // A reference row legitimately has no content: SAP resolves the file
+        // from its own DMS by `DOKNR`. Every other document without bytes is
+        // a lost photo or an unbuilt report and must not reach SAP.
+        if !document.referencesExistingDocument {
+            guard !row["FELDWERT", default: ""].isEmpty else {
+                throw SAPReadError.malformedPayload
+            }
         }
         let response = try await call(
             method: "M0002031",
-            parameters: Self.parameters([
+            parameters: SAPReadParameters(values: [
                 "PARAMETER1": sapWorkerID,
                 "PARAMETER2": requestID,
                 "PARAMETER3": notificationType
             ]),
             document: row,
-            connection: connection,
             responseMayBeEmpty: true
         )
         if let response { try SAPLegacyDataExchangeCodec.validateNoBackendError(response) }
     }
 
-    private func triggerOutgoingPost(requestID: String, connection: SAPReadConnection) throws {
-        let ivData = try SAPLegacyDataExchangeCodec.pack(
-            method: "M0002021",
-            parameters: Self.parameters([
+    func triggerOutgoingPost(requestID: String) throws {
+        try trigger(method: "M0002021", parameters: SAPReadParameters(values: [
+            "PARAMETER1": sapWorkerID,
+            "PARAMETER2": requestID,
+            "PARAMETER3": "D",
+            "PARAMETER4": Self.downloadSchemaVersion
+        ]))
+    }
+
+    func outgoingPostStatus(requestID: String) async throws -> SAPLegacyRequestStatus {
+        try await status(method: "MMTFM002", requestID: requestID)
+    }
+
+    func clearOutgoingRequest(requestID: String) async throws -> Bool {
+        guard let response = try await call(
+            method: "MMTFM001",
+            parameters: SAPReadParameters(values: [
                 "PARAMETER1": sapWorkerID,
                 "PARAMETER2": requestID,
-                "PARAMETER3": "D",
-                "PARAMETER4": Self.downloadSchemaVersion
-            ])
-        )
-        let request = try dataExchangeRequest(ivData: ivData, connection: connection)
-
-        // M0002021 is a trigger. Its separate completion check below is the
-        // source of truth, matching the legacy client.
-        Task {
-            do {
-                let (data, response) = try await connection.sapURLSession.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse,
-                      (200...299).contains(httpResponse.statusCode),
-                      !data.isEmpty,
-                      let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                else { return }
-                let payload = (object["d"] as? [String: Any]) ?? object
-                let evData = payload["EvData"] as? String ?? ""
-                if !evData.isEmpty {
-                    try SAPLegacyDataExchangeCodec.validateNoBackendError(evData)
-                }
-            } catch {
-                // MMTFM002 below determines whether ABAP accepted the TO post.
-            }
+                "PARAMETER3": "D"
+            ]),
+            responseMayBeEmpty: true
+        ) else {
+            return false
         }
+        return try SAPLegacyDataExchangeCodec.lifecycleStatus(from: response) == .completed
     }
 
-    private func waitForOutgoingAcknowledgement(
-        requestID: String,
-        connection: SAPReadConnection
-    ) async throws {
-        // MMTFM002 is first polled one second after the asynchronous M0002021
-        // trigger, then every 30 seconds, as in the old SwiftUI application.
-        for attempt in 1...10 {
-            try await Task.sleep(for: .seconds(attempt == 1 ? 1 : 30))
-            do {
-                guard let response = try await call(method: "MMTFM002", parameters: Self.parameters([
-                    "PARAMETER1": sapWorkerID,
-                    "PARAMETER2": requestID,
-                    "PARAMETER3": "D"
-                ]), connection: connection) else {
-                    throw SAPReadError.malformedPayload
-                }
-                switch try SAPLegacyDataExchangeCodec.outgoingPostAcknowledgement(from: response) {
-                case .confirmed:
-                    return
-                case .processing:
-                    continue
-                case .rejected:
-                    throw SAPReadError.malformedPayload
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as SAPReadError {
-                guard Self.isRecoverableLifecyclePollingError(error) else { throw error }
-            }
-        }
-        throw SAPReadError.preparationTimedOut
-    }
-
-    private func checkAppVersion(requestID: String, connection: SAPReadConnection) async throws {
+    func checkAppVersion(requestID: String) async throws {
         let response = try await call(
             method: "MMTFM008",
-            parameters: Self.parameters([
+            parameters: SAPReadParameters(values: [
                 "PARAMETER1": sapWorkerID,
                 "PARAMETER2": requestID,
                 "PARAMETER3": "D",
                 "PARAMETER4": Self.downloadSchemaVersion
             ]),
-            connection: connection,
             responseMayBeEmpty: true
         )
         try SAPLegacyDataExchangeCodec.validateAppVersion(response)
     }
 
-    private func prepareIncomingData(
-        fromRequestID: String,
-        toRequestID: String,
-        connection: SAPReadConnection
-    ) throws {
-        let ivData = try SAPLegacyDataExchangeCodec.pack(
-            method: "MMTFM004",
-            parameters: Self.parameters([
+    func prepareIncomingData(fromRequestID: String, toRequestID: String) throws {
+        try trigger(method: "MMTFM004", parameters: SAPReadParameters(values: [
+            "PARAMETER1": sapWorkerID,
+            "PARAMETER2": fromRequestID,
+            "PARAMETER3": "D",
+            "PARAMETER4": Self.downloadSchemaVersion,
+            "PARAMETER5": toRequestID
+        ]))
+    }
+
+    func incomingPreparationStatus(requestID: String) async throws -> SAPLegacyRequestStatus {
+        try await status(method: "MMTFM003", requestID: requestID)
+    }
+
+    func incomingPackage(requestID: String) async throws -> LegacySAPIncomingPackage {
+        guard let response = try await call(method: "M0002003", parameters: SAPReadParameters(values: [
+            "PARAMETER1": sapWorkerID,
+            "PARAMETER2": requestID,
+            "PARAMETER3": "D"
+        ])) else {
+            throw SAPReadError.malformedPayload
+        }
+        return try SAPLegacyDataExchangeCodec.inboundPack(from: response)
+    }
+
+    func discardIncomingRequest(requestID: String) async throws {
+        let response = try await call(
+            method: "MMTFM005",
+            parameters: SAPReadParameters(values: [
                 "PARAMETER1": sapWorkerID,
-                "PARAMETER2": fromRequestID,
-                "PARAMETER3": "D",
-                "PARAMETER4": Self.downloadSchemaVersion,
-                "PARAMETER5": toRequestID
-            ])
+                "PARAMETER2": requestID,
+                "PARAMETER3": "D"
+            ]),
+            responseMayBeEmpty: true
         )
-        let request = try dataExchangeRequest(ivData: ivData, connection: connection)
-        
-        // The legacy app starts this long-running ABAP operation without
-        // waiting for its response. MMTFM003 is the authoritative completion
-        // check, so an empty or delayed MMTFM004 response cannot replace a
-        // previously cached notification snapshot.
-        Task {
+        if let response { try SAPLegacyDataExchangeCodec.validateNoBackendError(response) }
+    }
+
+    private func status(method: String, requestID: String) async throws -> SAPLegacyRequestStatus {
+        guard let response = try await call(method: method, parameters: SAPReadParameters(values: [
+            "PARAMETER1": sapWorkerID,
+            "PARAMETER2": requestID,
+            "PARAMETER3": "D"
+        ])) else {
+            throw SAPReadError.malformedPayload
+        }
+        SAPSynchronizationDiagnostics.logSynchronizationStep(
+            "\(method) answered: \(SAPLegacyDataExchangeCodec.envelopeSummary(of: response))"
+        )
+        return try SAPLegacyDataExchangeCodec.lifecycleStatus(from: response)
+    }
+
+    /// Starts a long-running ABAP operation without waiting for its response,
+    /// as the legacy client does. The MMTFM002 or MMTFM003 check that follows
+    /// is the source of truth, so a delayed or empty response is ignored.
+    private func trigger(method: String, parameters: SAPReadParameters) throws {
+        SAPSynchronizationDiagnostics.logDownloadRequest(
+            method: method,
+            fromRequestID: method == "MMTFM004" ? parameters.PARAMETER2 : "",
+            toRequestID: method == "MMTFM004" ? parameters.PARAMETER5 : parameters.PARAMETER2
+        )
+        let ivData = try SAPLegacyDataExchangeCodec.pack(method: method, parameters: parameters)
+        let request = try dataExchangeRequest(ivData: ivData)
+        // Resumed before this returns and independent of the calling task:
+        // the session finishes it even when the synchronization stops early,
+        // so a trigger SAP may act on is never withdrawn.
+        connection.sapURLSession.dataTask(with: request) { data, response, error in
             do {
-                let (data, response) = try await connection.sapURLSession.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse,
+                if let error { throw error }
+                guard let data,
+                      let httpResponse = response as? HTTPURLResponse,
                       (200...299).contains(httpResponse.statusCode),
                       !data.isEmpty,
                       let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -791,52 +711,26 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                     try SAPLegacyDataExchangeCodec.validateNoBackendError(evData)
                 }
             } catch {
-                // MMTFM003 below determines whether SAP completed the read.
+                SAPSynchronizationDiagnostics.logRequestFailure(method: method, error: error)
             }
         }
+        .resume()
     }
 
-    private func waitForIncomingData(
-        requestID: String,
-        connection: SAPReadConnection
-    ) async throws {
-        for attempt in 1...10 {
-            try await Task.sleep(for: .seconds(attempt == 1 ? 10 : 30))
-            do {
-                guard let response = try await call(method: "MMTFM003", parameters: Self.parameters([
-                    "PARAMETER1": sapWorkerID,
-                    "PARAMETER2": requestID,
-                    "PARAMETER3": "D"
-                ]), connection: connection) else {
-                    throw SAPReadError.malformedPayload
-                }
-                if try SAPLegacyDataExchangeCodec.isPreparationComplete(response) {
-                    return
-                }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch let error as SAPReadError {
-                guard Self.isRecoverableLifecyclePollingError(error) else { throw error }
-            }
-        }
-        throw SAPReadError.preparationTimedOut
-    }
-
-    private func call(
+    func call(
         method: String,
         parameters: SAPReadParameters,
         usesLegacyAuthenticationEnvelope: Bool = false,
         synchronizationData: LegacySAPOutgoingPayload? = nil,
         document: [String: String]? = nil,
-        connection: SAPReadConnection,
         responseMayBeEmpty: Bool = false
     ) async throws -> String? {
-        let fromRequestID = ["M0002003", "MMTFM003", "MMTFM004"].contains(method) ? parameters.PARAMETER2 : ""
-        let toRequestID = method == "MMTFM004" ? parameters.PARAMETER5 : (["M0002001", "MMTFM002", "MMTFM008"].contains(method) ? parameters.PARAMETER2 : "")
-        if method != "M0153003" {
+        let fromRequestID = ["M0002003", "MMTFM003", "MMTFM005"].contains(method) ? parameters.PARAMETER2 : ""
+        let toRequestID = ["M0002001", "MMTFM001", "MMTFM002", "MMTFM008"].contains(method) ? parameters.PARAMETER2 : ""
+        if !["M0153003", "M0155003"].contains(method) {
             SAPSynchronizationDiagnostics.logDownloadRequest(method: method, fromRequestID: fromRequestID, toRequestID: toRequestID)
         }
-        
+
         let ivData: String
         if let document {
             ivData = try SAPLegacyDataExchangeCodec.packDocument(
@@ -855,12 +749,13 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         }
         let isAuthentication = (method == "M0153003" || method == "M0155003")
         let timeout: TimeInterval = isAuthentication ? 60 : 300
-        let request = try dataExchangeRequest(ivData: ivData, connection: connection, timeoutInterval: timeout)
+        let request = try dataExchangeRequest(ivData: ivData, timeoutInterval: timeout)
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await connection.sapURLSession.data(for: request)
         } catch let error as URLError {
+            if error.code == .cancelled || Task.isCancelled { throw CancellationError() }
             switch error.code {
             case .timedOut:
                 throw SAPReadError.requestTimedOut
@@ -871,6 +766,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
                 throw SAPReadError.serviceUnavailable
             }
         } catch {
+            if error is CancellationError || Task.isCancelled { throw CancellationError() }
             throw SAPReadError.serviceUnavailable
         }
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -906,11 +802,14 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
 
     private func dataExchangeRequest(
         ivData: String,
-        connection: SAPReadConnection,
         timeoutInterval: TimeInterval = 300
     ) throws -> URLRequest {
-        let url = try serviceRoot(connection: connection).appendingPathComponent("DATAEXCHANGESet")
-        var request = URLRequest(url: url)
+        guard let serviceRoot = SAPDataExchangeEndpoint.configuredServiceRoot(
+            backendURL: connection.backendURL
+        ) else {
+            throw SAPReadError.configurationUnavailable
+        }
+        var request = URLRequest(url: serviceRoot.appendingPathComponent("DATAEXCHANGESet"))
         request.httpMethod = "POST"
         request.timeoutInterval = timeoutInterval
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -920,38 +819,6 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         encoder.outputFormatting = .withoutEscapingSlashes
         request.httpBody = try encoder.encode(SAPDataExchangeRequest(IvData: ivData, EvData: "", IvKey: false))
         return request
-    }
-
-    private func serviceRoot(connection: SAPReadConnection) throws -> URL {
-        guard let serviceRoot = SAPDataExchangeEndpoint.configuredServiceRoot(
-            backendURL: connection.backendURL
-        ) else {
-            throw SAPReadError.configurationUnavailable
-        }
-        return serviceRoot
-    }
-
-    private static func parameters(_ overrides: [String: String]) -> SAPReadParameters {
-        SAPReadParameters(values: overrides)
-    }
-
-    private static func makeRequestID(prefix: String) -> String {
-        let identifier = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(16).uppercased()
-        return "\(prefix)-\(identifier)"
-    }
-
-    private static func isRecoverableLifecyclePollingError(_ error: SAPReadError) -> Bool {
-        switch error {
-        // SAPURLSession can surface a transient gateway/session interruption as
-        // `serviceUnavailable` instead of a URLError.  MMTFM002/MMTFM003 are
-        // explicitly the authoritative lifecycle checks, so retain the legacy
-        // client's retry behavior for those interruptions rather than treating
-        // an already-started ABAP operation as failed.
-        case .httpStatus(504), .requestTimedOut, .networkUnavailable, .serviceUnavailable:
-            true
-        default:
-            false
-        }
     }
 }
 
@@ -991,12 +858,6 @@ struct SAPReadAuthorization {
     let isAccepted: Bool
     let requiresInitialPasswordChange: Bool
     let token: String?
-}
-
-private enum SAPOutgoingPostAcknowledgement {
-    case confirmed
-    case processing
-    case rejected
 }
 
 enum SAPLegacyDataExchangeCodec {
@@ -1427,24 +1288,15 @@ enum SAPLegacyDataExchangeCodec {
         }
     }
 
-    fileprivate static func outgoingPostAcknowledgement(
-        from response: String
-    ) throws -> SAPOutgoingPostAcknowledgement {
-        let envelopes = try decodeEnvelopes(response)
-        try throwBackendMessage(in: envelopes)
-        for envelope in envelopes {
-            guard let fields = try? dictionary(from: envelope.VALUE) else { continue }
-            if !stringValue(value(named: "PARAMETER2", in: fields)).isEmpty {
-                return .confirmed
-            }
-            if !stringValue(value(named: "PARAMETER4", in: fields)).isEmpty {
-                return .processing
-            }
-        }
-        return .rejected
+    /// `MMTFM001`, `MMTFM002` and `MMTFM003` answer in one parameter
+    /// structure: `PARAMETER2` once ABAP is done, `PARAMETER4` while it works.
+    /// Every envelope of a status response, for the diagnostics log.
+    static func envelopeSummary(of response: String) -> String {
+        guard let envelopes = try? decodeEnvelopes(response) else { return "undecodable response" }
+        return envelopes.map { "\($0.KEY)[\($0.PAR ?? "")]=\($0.VALUE.prefix(600))" }.joined(separator: " | ")
     }
 
-    static func isPreparationComplete(_ response: String) throws -> Bool {
+    static func lifecycleStatus(from response: String) throws -> SAPLegacyRequestStatus {
         let envelopes = try decodeEnvelopes(response)
         try throwBackendMessage(in: envelopes)
         let parameterSets = envelopes.compactMap { envelope -> [String: Any]? in
@@ -1452,14 +1304,14 @@ enum SAPLegacyDataExchangeCodec {
                   fields.keys.contains(where: { $0.uppercased().hasPrefix("PARAMETER") }) else { return nil }
             return fields
         }
-        guard !parameterSets.isEmpty else { throw SAPReadError.malformedPayload }
         if parameterSets.contains(where: { !stringValue(value(named: "PARAMETER2", in: $0)).isEmpty }) {
-            return true
+            return .completed
         }
-        if parameterSets.contains(where: { !stringValue(value(named: "PARAMETER4", in: $0)).isEmpty }) {
-            return false
+        if let working = parameterSets.first(where: { !stringValue(value(named: "PARAMETER4", in: $0)).isEmpty }) {
+            let statusText = stringValue(value(named: "PARAMETER5", in: working))
+            return .processing(statusText: statusText.isEmpty ? nil : statusText)
         }
-        throw SAPReadError.malformedPayload
+        return .notAccepted
     }
 
     fileprivate static func inboundPack(from response: String) throws -> LegacySAPIncomingPackage {
