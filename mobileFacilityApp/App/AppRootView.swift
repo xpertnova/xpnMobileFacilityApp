@@ -1,14 +1,13 @@
 import SwiftUI
 
 struct AppRootView: View {
-    let productionOfflineWorkRepository: any OfflineWorkRepository
-    let productionPhotoAttachmentStore: any PhotoAttachmentStore
     @State private var phase: AppPhase = Self.debugStartsInDemoMode ? .demo : .launching
     @State private var onboarding = SAPOnboardingState()
     @State private var demo: FacilityDemoViewModel? = Self.debugStartsInDemoMode ? Self.makeDemoWorkspace() : nil
     @State private var authenticationWorkspace: FacilityDemoViewModel?
     @State private var productionWorkspace: FacilityDemoViewModel?
     @State private var productionSession: FacilityUserSession?
+    @State private var isPreparingProductionWorkspace = false
 
     var body: some View {
         Group {
@@ -35,6 +34,12 @@ struct AppRootView: View {
                                 displayName: user.displayName
                             )
                             enterProductionWorkspace(for: session)
+                        }
+                        if isPreparingProductionWorkspace {
+                            Color.black.opacity(0.25)
+                                .ignoresSafeArea()
+                            ProgressView()
+                                .tint(.white)
                         }
                     }
                 } else {
@@ -120,20 +125,37 @@ struct AppRootView: View {
     }
 
     private func enterProductionWorkspace(for session: FacilityUserSession) {
-        productionSession = session
-        productionWorkspace = FacilityDemoViewModel(
-            isDemoMode: false,
-            offlineWorkStore: OfflineWorkStore(
-                repository: productionOfflineWorkRepository,
-                workerID: session.workerID
-            ),
-            sapDataStore: productionSAPDataStore(for: session),
-            meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
-            photoAttachmentStore: productionPhotoAttachmentStore,
-            workerDisplayName: session.displayName,
-            workerRole: session.role
-        )
-        phase = .ready
+        guard !isPreparingProductionWorkspace else { return }
+        isPreparingProductionWorkspace = true
+        let workerID = session.workerID
+        Task {
+            // SQLite opens, legacy schema validation, and directory creation
+            // can take long enough to stall the first screen transition.
+            let storage = await Task.detached(priority: .userInitiated) {
+                ProductionStorage(workerID: workerID)
+            }.value
+            guard phase == .authentication || phase == .launching else { return }
+            productionSession = session
+            productionWorkspace = FacilityDemoViewModel(
+                isDemoMode: false,
+                offlineWorkStore: OfflineWorkStore(
+                    repository: storage.offlineWorkRepository,
+                    workerID: workerID
+                ),
+                sapDataStore: productionSAPDataStore(
+                    for: session,
+                    cacheRepository: storage.cacheRepository,
+                    offlineWorkRepository: storage.offlineWorkRepository,
+                    photoAttachmentStore: storage.photoAttachmentStore
+                ),
+                meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+                photoAttachmentStore: storage.photoAttachmentStore,
+                workerDisplayName: session.displayName,
+                workerRole: session.role
+            )
+            isPreparingProductionWorkspace = false
+            phase = .ready
+        }
     }
 
     private func exitDemo() {
@@ -191,9 +213,13 @@ struct AppRootView: View {
         )
     }
 
-    private func productionSAPDataStore(for session: FacilityUserSession) -> SAPDataStore {
-        do {
-            let repository = try SQLiteSAPDataCacheRepository.production(workerID: session.workerID)
+    private func productionSAPDataStore(
+        for session: FacilityUserSession,
+        cacheRepository: SQLiteSAPDataCacheRepository?,
+        offlineWorkRepository: any OfflineWorkRepository,
+        photoAttachmentStore: any PhotoAttachmentStore
+    ) -> SAPDataStore {
+        if let repository = cacheRepository {
             let tokenStore = KeychainSAPSyncTokenStore()
             guard let connection = onboarding.readConnection else {
                 return SAPDataStore(
@@ -219,10 +245,10 @@ struct AppRootView: View {
                 notificationOutgoingCoordinator: SAPNotificationReviewOutgoingCoordinator(
                     workerID: session.workerID,
                     syncUserID: synchronizationUserID,
-                    offlineRepository: productionOfflineWorkRepository,
+                    offlineRepository: offlineWorkRepository,
                     cacheRepository: repository,
                     outgoingStore: repository,
-                    photoStore: productionPhotoAttachmentStore
+                    photoStore: photoAttachmentStore
                 )
             )
             return SAPDataStore(
@@ -233,13 +259,35 @@ struct AppRootView: View {
                 synchronizationUserID: synchronizationUserID,
                 tokenStoreAccountID: tokenStoreAccountID
             )
-        } catch {
+        } else {
             return SAPDataStore(
                 repository: UnavailableSAPDataCacheRepository(),
                 refreshService: nil,
                 localWorkerID: session.workerID
             )
         }
+    }
+}
+
+/// Storage is built away from the main actor after authentication. Demo never
+/// constructs any of these production repositories.
+private struct ProductionStorage: Sendable {
+    let offlineWorkRepository: any OfflineWorkRepository
+    let photoAttachmentStore: any PhotoAttachmentStore
+    let cacheRepository: SQLiteSAPDataCacheRepository?
+
+    init(workerID: String) {
+        if let repository = try? SQLiteOfflineWorkRepository() {
+            offlineWorkRepository = repository
+        } else {
+            offlineWorkRepository = UnavailableOfflineWorkRepository()
+        }
+        if let store = try? FilePhotoAttachmentStore() {
+            photoAttachmentStore = store
+        } else {
+            photoAttachmentStore = UnavailablePhotoAttachmentStore()
+        }
+        cacheRepository = try? SQLiteSAPDataCacheRepository.production(workerID: workerID)
     }
 }
 
