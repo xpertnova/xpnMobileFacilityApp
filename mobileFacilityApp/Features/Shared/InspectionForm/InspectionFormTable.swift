@@ -68,8 +68,8 @@ struct InspectionFormItemState: Equatable, Sendable {
     var isMaterialSelected: Bool
     var comment: String
     var photoCount: Int
-    /// Set by the caller after a failed close attempt so the row shows the
-    /// legacy red exception marker.
+    /// Additional live validation supplied by a workflow when it has rules
+    /// beyond the shared inspection constraints.
     var isFlagged: Bool
 
     init(
@@ -86,6 +86,24 @@ struct InspectionFormItemState: Equatable, Sendable {
         self.comment = comment
         self.photoCount = photoCount
         self.isFlagged = isFlagged
+    }
+}
+
+/// The status column reports missing or invalid input, not the defect itself.
+/// Defects remain visible in the result field and in the I2 workflow.
+enum InspectionFormRowStatus: Equatable {
+    case exception
+    case valid
+    case none
+
+    static func resolve(
+        issues: [InspectionFormRules.Issue],
+        isFlagged: Bool,
+        hasResult: Bool
+    ) -> Self {
+        if isFlagged || !issues.isEmpty { return .exception }
+        if hasResult { return .valid }
+        return .none
     }
 }
 
@@ -134,6 +152,7 @@ struct InspectionFormTable: View {
     let items: [InspectionFormItem]
     let state: (InspectionFormItem) -> InspectionFormItemState
     let isEditable: Bool
+    let isPhotoLimitReached: Bool
     var emptyState: InspectionFormEmptyState?
     /// Execution date shown in the toolbar band, for the forms whose variant
     /// asks for it.
@@ -215,6 +234,7 @@ struct InspectionFormTable: View {
                 state: state(item),
                 variant: variant,
                 isEditable: isEditable,
+                isPhotoLimitReached: isPhotoLimitReached,
                 existingI2Notifications: existingI2Notifications(for: item),
                 actions: actions
             )
@@ -363,6 +383,7 @@ struct InspectionFormRow: View {
     let state: InspectionFormItemState
     let variant: InspectionFormVariant
     let isEditable: Bool
+    let isPhotoLimitReached: Bool
     var existingI2Notifications: [SAPI2NotificationSummary] = []
     let actions: InspectionFormActions
 
@@ -374,14 +395,6 @@ struct InspectionFormRow: View {
 
     private var selectedAction: InspectionFormOption? {
         item.actionOptions.first { $0.id == state.actionID }
-    }
-
-    private var isDefective: Bool {
-        InspectionFormRules.isDefective(
-            resultCode: selectedResult?.code,
-            actionCode: selectedAction?.code,
-            style: variant.resultStyle
-        )
     }
 
     private var issues: [InspectionFormRules.Issue] {
@@ -465,7 +478,7 @@ struct InspectionFormRow: View {
                     .frame(width: InspectionFormMetrics.materialColumn, alignment: .center)
             }
 
-            NotificationPhotoButton(count: state.photoCount) {
+            NotificationPhotoButton(count: state.photoCount, isLimitReached: isPhotoLimitReached) {
                 actions.openPhotos(item)
             }
             .frame(width: InspectionFormMetrics.photoColumn)
@@ -486,27 +499,27 @@ struct InspectionFormRow: View {
         .zIndex(expandedField == nil ? 0 : 1)
     }
 
-    /// The legacy exception marker. It is red while the position fails a
-    /// constraint or records a defect, and shows the in-order check once the
-    /// position is answered cleanly.
+    /// Show a green check for any answered row whose current input is valid,
+    /// including documented defects. Defect classification remains separate
+    /// for I2 handling.
     @ViewBuilder
     private var statusIcon: some View {
-        if state.isFlagged || !issues.isEmpty {
+        switch InspectionFormRowStatus.resolve(
+            issues: issues,
+            isFlagged: state.isFlagged,
+            hasResult: state.resultID != nil
+        ) {
+        case .exception:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(FacilityTheme.red)
                 .accessibilityLabel(Text("notifications.detail.validation.incompleteItem"))
-        } else if isDefective {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(FacilityTheme.red)
-                .accessibilityLabel(Text("elevator.status.defect"))
-        } else if state.resultID != nil {
+        case .valid:
             Image(systemName: "checkmark.circle.fill")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(FacilityTheme.accent)
-                .accessibilityLabel(Text("elevator.status.inOrder"))
-        } else {
+                .accessibilityLabel(Text("inspection.status.valid"))
+        case .none:
             Color.clear
         }
     }

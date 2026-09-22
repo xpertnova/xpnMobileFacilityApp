@@ -320,6 +320,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
             titleKey: "mobileLadder.field.disassembled",
             isActive: model.draft.isDisassembled,
             photoCount: model.photoCount(for: MobileLadderDraftPayload.disassembledStatusRowID),
+            isPhotoLimitReached: model.totalPhotoCount >= 20,
             hasComment: !(model.draft.disassembledComment ?? "").isEmpty,
             isEnabled: !model.isSaving,
             requestStatusChange: {
@@ -483,6 +484,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 return state
             },
             isEditable: isEditable,
+            isPhotoLimitReached: model.totalPhotoCount >= 20,
             emptyState: InspectionFormEmptyState(
                 titleKey: "mobileLadder.address.notSelected",
                 messageKey: "mobileLadder.address.subtitle"

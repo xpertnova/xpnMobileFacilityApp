@@ -313,6 +313,7 @@ struct SubdistributionCreationView: View {
             titleKey: "subdistribution.outOfOperation",
             isActive: isOutOfOperation,
             photoCount: statusPhotoCount,
+            isPhotoLimitReached: model.totalPhotoCount >= 20,
             hasComment: !(model.draft.outOfOperationComment ?? "").isEmpty,
             isCommentMissing: isOutOfOperation
                 && !InspectionFormRules.outOfServiceIssues(
@@ -382,6 +383,7 @@ struct SubdistributionCreationView: View {
                 return state
             },
             isEditable: isEditable,
+            isPhotoLimitReached: model.totalPhotoCount >= 20,
             emptyState: InspectionFormEmptyState(
                 titleKey: "subdistribution.context.notSelected",
                 messageKey: "subdistribution.context.subtitle"

@@ -2,6 +2,17 @@ import SwiftUI
 import UIKit
 import PencilKit
 
+private struct BriefingEditorKeyboardVisibleKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var briefingEditorKeyboardVisible: Bool {
+        get { self[BriefingEditorKeyboardVisibleKey.self] }
+        set { self[BriefingEditorKeyboardVisibleKey.self] = newValue }
+    }
+}
+
 struct BriefingPartnerSelectionFrame<Content: View>: View {
     let title: LocalizedStringKey
     let confirmationTitle: LocalizedStringKey
@@ -9,6 +20,7 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
     let onCancel: () -> Void
     let onConfirm: () -> Void
     @ViewBuilder let content: Content
+    @Environment(\.briefingEditorKeyboardVisible) private var keyboardVisible
 
     init(
         title: LocalizedStringKey = "safetyInstrucForm.addPartnerCompany.dialog.title",
@@ -29,22 +41,36 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 14) {
-                Image(systemName: "building.2.crop.circle.fill")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(FacilityTheme.accent)
-                    .frame(width: 48, height: 48)
-                    .background(FacilityTheme.accentSoft, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                if !keyboardVisible {
+                    Image(systemName: "building.2.crop.circle.fill")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(FacilityTheme.accent)
+                        .frame(width: 48, height: 48)
+                        .background(FacilityTheme.accentSoft, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.title2.weight(.bold))
+                        .font(keyboardVisible ? .headline.weight(.bold) : .title2.weight(.bold))
                         .foregroundStyle(FacilityTheme.ink)
-                    Text("briefing.partnerPicker.subtitle")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if !keyboardVisible {
+                        Text("briefing.partnerPicker.subtitle")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer(minLength: 16)
+
+                if keyboardVisible {
+                    Button("briefing.partnerPicker.keyboard.done") {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    }
+                    .buttonStyle(.plain)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(FacilityTheme.accent)
+                    .frame(minWidth: 56, minHeight: 44)
+                }
 
                 Button(action: onCancel) {
                     Image(systemName: "xmark")
@@ -56,8 +82,8 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("safetyInstrucForm.addPartnerCompany.dialog.title.cancel"))
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 20)
+            .padding(.horizontal, keyboardVisible ? 16 : 28)
+            .padding(.vertical, keyboardVisible ? 6 : 20)
             .background {
                 LinearGradient(colors: [FacilityTheme.surface, FacilityTheme.accentSoft.opacity(0.6)], startPoint: .leading, endPoint: .trailing)
             }
@@ -69,32 +95,34 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(FacilityTheme.canvas)
 
-            HStack(spacing: 12) {
-                Spacer()
+            if !keyboardVisible {
+                HStack(spacing: 12) {
+                    Spacer()
 
-                Button(action: onCancel) {
-                    Text("safetyInstrucForm.addPartnerCompany.dialog.title.cancel")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minWidth: 88, minHeight: 44)
-                }
+                    Button(action: onCancel) {
+                        Text("safetyInstrucForm.addPartnerCompany.dialog.title.cancel")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minWidth: 88, minHeight: 44)
+                    }
                     .buttonStyle(.bordered)
                     .buttonBorderShape(.roundedRectangle(radius: 12))
                     .tint(FacilityTheme.ink)
 
-                Button(action: onConfirm) {
-                    Label(confirmationTitle, systemImage: "checkmark")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(minWidth: 108, minHeight: 44)
-                }
+                    Button(action: onConfirm) {
+                        Label(confirmationTitle, systemImage: "checkmark")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minWidth: 108, minHeight: 44)
+                    }
                     .buttonStyle(.borderedProminent)
                     .buttonBorderShape(.roundedRectangle(radius: 12))
                     .tint(FacilityTheme.accent)
                     .disabled(isConfirmationDisabled)
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 18)
+                .background(FacilityTheme.surface)
+                .overlay(alignment: .top) { Divider().opacity(0.7) }
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 18)
-            .background(FacilityTheme.surface)
-            .overlay(alignment: .top) { Divider().opacity(0.7) }
         }
         .background(FacilityTheme.surface)
     }
@@ -105,6 +133,7 @@ struct BriefingPartnerSelectionFrame<Content: View>: View {
 struct LegacyBriefingPartnerEditorOverlay<Content: View>: View {
     let isPresented: Bool
     @ViewBuilder let content: Content
+    @State private var keyboardOverlap: CGFloat = 0
 
     init(
         isPresented: Bool,
@@ -117,20 +146,32 @@ struct LegacyBriefingPartnerEditorOverlay<Content: View>: View {
     var body: some View {
         if isPresented {
             GeometryReader { geometry in
-                ZStack {
-                    Color.black.opacity(0.28)
-                        .ignoresSafeArea()
-
+                let visibleHeight = max(0, geometry.size.height - keyboardOverlap)
+                ScrollView(.vertical, showsIndicators: false) {
                     content
+                        .environment(\.briefingEditorKeyboardVisible, keyboardOverlap > 0)
                         .frame(
-                            width: min(max(geometry.size.width - 92, 0), 1_180),
-                            height: min(max(geometry.size.height - 32, 0), 840)
+                            width: min(max(geometry.size.width - 32, 0), 1_180),
+                            height: min(max(visibleHeight - 24, 0), 840)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .shadow(color: .black.opacity(0.20), radius: 28, y: 12)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, minHeight: visibleHeight)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: visibleHeight)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .scrollBounceBehavior(.basedOnSize)
+                .background(Color.black.opacity(0.28).ignoresSafeArea())
             }
+            .background {
+                KeyboardOverlapReader { overlap, duration in
+                    withAnimation(duration > 0 ? .easeOut(duration: duration) : nil) {
+                        keyboardOverlap = overlap
+                    }
+                }
+            }
+            .ignoresSafeArea(.keyboard)
             .transition(.opacity.combined(with: .scale(scale: 0.98)))
             .zIndex(10)
         }

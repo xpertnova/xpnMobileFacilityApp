@@ -223,15 +223,13 @@ struct EquipmentInspectionView: View {
             isLoading: model.isLoading,
             isSaving: model.isSaving,
             isReadOnly: isReadOnly || (!isOutOfServiceRow && model.isOutOfService),
-            maxAttachments: EquipmentInspectionViewModel.maximumPhotoCount,
+            maxAttachments: EquipmentInspectionViewModel.maximumPhotoCount - (model.photoAttachments.count - attachments.count),
             close: { photoWorkspaceItemID = nil },
             addPhoto: { data in
-                Task {
-                    if isOutOfServiceRow {
-                        await model.addOutOfServicePhoto(jpegData: data)
-                    } else if let item {
-                        await model.addPhoto(jpegData: data, to: item)
-                    }
+                if isOutOfServiceRow {
+                    await model.addOutOfServicePhoto(jpegData: data)
+                } else if let item {
+                    await model.addPhoto(jpegData: data, to: item)
                 }
             },
             removePhoto: { id in
@@ -281,6 +279,7 @@ struct EquipmentInspectionView: View {
             titleKey: titleKey,
             isActive: model.isOutOfService,
             photoCount: model.attachments(for: model.outOfServiceRowID).count,
+            isPhotoLimitReached: model.photoAttachments.count >= EquipmentInspectionViewModel.maximumPhotoCount,
             hasComment: !model.outOfServiceComment.isEmpty,
             isCommentMissing: model.isOutOfServiceCommentMissing,
             isEnabled: !isEditingDisabled && !model.isSaving,
@@ -378,11 +377,11 @@ struct EquipmentInspectionView: View {
                     actionID: model.actions[item.id],
                     isMaterialSelected: model.materials[item.id] ?? false,
                     comment: model.comments[item.id, default: ""],
-                    photoCount: model.attachments(for: item.id).count,
-                    isFlagged: model.validationErrors.contains(item.id)
+                    photoCount: model.attachments(for: item.id).count
                 )
             },
             isEditable: model.arePositionsEditable,
+            isPhotoLimitReached: model.photoAttachments.count >= EquipmentInspectionViewModel.maximumPhotoCount,
             emptyState: InspectionFormEmptyState(
                 titleKey: model.form.checklistUnavailableTitleKey,
                 messageKey: "elevator.unavailable.message",
@@ -412,10 +411,12 @@ struct EquipmentInspectionView: View {
                 selectAction: { item, option in
                     guard model.arePositionsEditable else { return }
                     model.actions[item.id] = option.code
+                    model.validationErrors.remove(item.id)
                 },
                 toggleMaterial: { item in
                     guard model.arePositionsEditable else { return }
                     model.materials[item.id] = !(model.materials[item.id] ?? false)
+                    model.validationErrors.remove(item.id)
                 },
                 openPhotos: { photoWorkspaceItemID = $0.id },
                 editComment: { item in
@@ -445,6 +446,7 @@ struct EquipmentInspectionView: View {
                 } else {
                     model.comments[itemID] = newValue
                 }
+                model.validationErrors.remove(itemID)
             }
         )
     }
