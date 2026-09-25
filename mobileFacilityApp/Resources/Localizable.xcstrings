@@ -16470,23 +16470,6 @@
         }
       }
     },
-    "sap.refresh.continueLater" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Später fortsetzen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Continue later"
-          }
-        }
-      }
-    },
     "sap.refresh.details.forbiddenExplanation" : {
       "extractionState" : "manual",
       "localizations" : {

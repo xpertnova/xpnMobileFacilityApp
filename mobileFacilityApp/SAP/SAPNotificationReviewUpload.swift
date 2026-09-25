@@ -55,6 +55,8 @@ struct SAPNotificationOutgoingBatch: Sendable {
 /// Turns closed local work into `TO_*` rows before a TO request and settles
 /// that work once SAP answered for it.
 protocol SAPOutgoingWorkCoordinating: Sendable {
+    /// Whether `prepare()` would find closed work to send. Changes nothing.
+    func hasPendingWork() async throws -> Bool
     func prepare() async throws -> SAPNotificationOutgoingBatch
     /// SAP confirmed the TO request: the work is removed from the device.
     func complete(_ batch: SAPOutgoingBatchManifest) async throws
@@ -332,27 +334,13 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
     let outgoingStore: any SAPNotificationOutgoingStore
     let photoStore: any PhotoAttachmentStore
 
+    func hasPendingWork() async throws -> Bool {
+        try await offlineRepository.loadWork(for: workerID).contains(where: Self.isSendable)
+    }
+
     func prepare() async throws -> SAPNotificationOutgoingBatch {
         let allWork = try await offlineRepository.loadWork(for: workerID)
-        let pending = allWork.filter { item in
-            guard [.pendingSynchronization, .failed, .synchronizing].contains(item.status) else {
-                return false
-            }
-            if let review = item.payload.notificationReview { return review.isClosedLocally }
-            if let inspection = item.payload.elevatorInspection { return inspection.isClosedLocally }
-            if let ladder = item.payload.mobileLadder { return ladder.isClosedLocally == true }
-            if let subdistribution = item.payload.subdistribution { return subdistribution.isClosedLocally }
-            if let briefing = item.payload.briefing { return briefing.completedAt != nil }
-            if let qualification = item.payload.proofOfQualification { return qualification.completedAt != nil }
-            if let electricalSafety = item.payload.electricalSafety { return electricalSafety.completedAt != nil }
-            if item.payload.firePermit != nil { return true }
-            // A defect is saved as pending only when it is reported.
-            if item.payload.defect != nil { return true }
-            // `MeasurePoints.onPressSave` writes `TO_T0286` straight away;
-            // a reading is sent with the next synchronization.
-            if item.payload.meterReading != nil { return true }
-            return false
-        }
+        let pending = allWork.filter(Self.isSendable)
         guard !pending.isEmpty else { return .empty }
         let pendingIDs = Set(pending.map(\.id))
 
@@ -595,9 +583,33 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
     func fail(_ batch: SAPOutgoingBatchManifest, error: Error) async {
         guard !batch.workItemIDs.isEmpty else { return }
         let work = (try? await offlineRepository.loadWork(for: workerID)) ?? []
+        // A cancelled synchronization is not a failure of the work itself.
+        let isCancelled = error is CancellationError
         for item in work where batch.workItemIDs.contains(item.id) {
-            try? await offlineRepository.save(copy(item, status: .failed, error: error.localizedDescription))
+            try? await offlineRepository.save(isCancelled
+                ? copy(item, status: .pendingSynchronization, error: nil)
+                : copy(item, status: .failed, error: error.localizedDescription))
         }
+    }
+
+    private static func isSendable(_ item: OfflineWorkItem) -> Bool {
+        guard [.pendingSynchronization, .failed, .synchronizing].contains(item.status) else {
+            return false
+        }
+        if let review = item.payload.notificationReview { return review.isClosedLocally }
+        if let inspection = item.payload.elevatorInspection { return inspection.isClosedLocally }
+        if let ladder = item.payload.mobileLadder { return ladder.isClosedLocally == true }
+        if let subdistribution = item.payload.subdistribution { return subdistribution.isClosedLocally }
+        if let briefing = item.payload.briefing { return briefing.completedAt != nil }
+        if let qualification = item.payload.proofOfQualification { return qualification.completedAt != nil }
+        if let electricalSafety = item.payload.electricalSafety { return electricalSafety.completedAt != nil }
+        if item.payload.firePermit != nil { return true }
+        // A defect is saved as pending only when it is reported.
+        if item.payload.defect != nil { return true }
+        // `MeasurePoints.onPressSave` writes `TO_T0286` straight away;
+        // a reading is sent with the next synchronization.
+        if item.payload.meterReading != nil { return true }
+        return false
     }
 
     private func copy(_ item: OfflineWorkItem, status: OfflineWorkStatus, error: String?) -> OfflineWorkItem {

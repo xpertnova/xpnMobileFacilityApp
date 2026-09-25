@@ -52,6 +52,8 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     private var activeRefreshID: UUID?
     private var preparedTokenRefreshID: UUID?
     @ObservationIgnored private var runningRefresh: Task<SAPCachedData, Error>?
+    /// Set when the technician cancels before the SAP task has started.
+    @ObservationIgnored private var isCancellationRequested = false
 
     init(
         repository: any SAPDataCacheRepository,
@@ -426,9 +428,12 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         }
     }
 
-    /// Stops waiting for SAP. The synchronization request stays recorded, so
-    /// the next synchronization continues where this one stopped.
-    func continueRefreshLater() {
+    /// Stops the running synchronization. A request SAP may already hold
+    /// stays recorded, so the next synchronization settles it first and
+    /// nothing is sent twice.
+    func cancelRefresh() {
+        guard isRefreshing else { return }
+        isCancellationRequested = true
         runningRefresh?.cancel()
     }
 
@@ -467,6 +472,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     private func runRefresh(
         _ operation: @escaping @Sendable () async throws -> SAPCachedData
     ) async throws -> SAPCachedData {
+        if isCancellationRequested { throw CancellationError() }
         let task = Task { try await operation() }
         runningRefresh = task
         defer { runningRefresh = nil }
@@ -477,6 +483,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         guard activeRefreshID == nil else { return nil }
         let refreshID = UUID()
         activeRefreshID = refreshID
+        isCancellationRequested = false
         state = .refreshing
         refreshError = nil
         refreshStage = .authenticating

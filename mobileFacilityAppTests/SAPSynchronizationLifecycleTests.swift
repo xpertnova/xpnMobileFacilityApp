@@ -235,6 +235,45 @@ final class SAPSynchronizationLifecycleTests: XCTestCase {
         XCTAssertNil(pending)
     }
 
+    /// "Continue later" while SAP prepares the FROM package, then a form is
+    /// closed: the next synchronization reads the old package and sends the
+    /// new work in the same run.
+    func testWorkClosedWhileThePreparationWaitedIsSentInTheSameRun() async throws {
+        let store = try makeStore()
+        let firstClient = ScriptedDataExchangeClient()
+        firstClient.incomingPreparationStatuses = Array(repeating: .failure(SAPReadError.networkUnavailable), count: 3)
+
+        await XCTAssertThrowsErrorAsync(
+            try await lifecycle("A", client: firstClient, store: store, work: RecordingOutgoingWork(batch: .empty))
+                .run(progress: { _ in })
+        )
+        let interrupted = try await store.pendingSynchronization()
+        XCTAssertEqual(interrupted?.step, .incomingRequested)
+
+        try await queueNotificationHeader(in: store)
+        let secondClient = ScriptedDataExchangeClient()
+        let secondWork = RecordingOutgoingWork(batch: Self.batch)
+        _ = try await lifecycle("B", client: secondClient, store: store, work: secondWork).run(progress: { _ in })
+
+        XCTAssertEqual(secondClient.calls, [
+            "MMTFM003 MTFMSYNCFROM-A",
+            "M0002003 MTFMSYNCFROM-A",
+            "M0002001 MTFMSYNCTO-B",
+            "M0002031 I1 MTFMSYNCTO-B",
+            "M0002021 MTFMSYNCTO-B",
+            "MMTFM002 MTFMSYNCTO-B",
+            "MMTFM008 MTFMSYNCTO-B",
+            "MMTFM004 MTFMSYNCFROM-B",
+            "MMTFM003 MTFMSYNCFROM-B",
+            "M0002003 MTFMSYNCFROM-B"
+        ])
+        XCTAssertEqual(secondWork.completed, [Self.batch.manifest])
+        let pending = try await store.pendingSynchronization()
+        XCTAssertNil(pending)
+        let queuedHeaders = try await store.legacyRowCount(in: "TO_T0281")
+        XCTAssertEqual(queuedHeaders, 0)
+    }
+
     func testBrokenOffDownloadIsDiscardedInSAPAndStartedAgain() async throws {
         let store = try makeStore()
         let firstClient = ScriptedDataExchangeClient()
@@ -440,6 +479,8 @@ private final class RecordingOutgoingWork: SAPOutgoingWorkCoordinating, @uncheck
 
     var completed: [SAPOutgoingBatchManifest] { lock.withLock { completedBatches } }
     var failed: [SAPOutgoingBatchManifest] { lock.withLock { failedBatches } }
+
+    func hasPendingWork() async throws -> Bool { !batch.workItemIDs.isEmpty }
 
     func prepare() async throws -> SAPNotificationOutgoingBatch { batch }
 

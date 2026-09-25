@@ -208,7 +208,7 @@ struct FacilityShellView: View {
                     failureContext: demo.sapDataStore.refreshFailureContext,
                     refresh: refreshSAPData,
                     cancel: dismissSAPRefresh,
-                    continueLater: demo.continueSAPRefreshLater
+                    cancelRefresh: demo.cancelSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
@@ -629,7 +629,7 @@ struct FacilityShellView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 Spacer()
-                if let latest = demo.offlineWorkStore.items.first?.updatedAt {
+                if let latest = demo.sapDataStore.lastSuccessfulRefreshAt {
                     Text(latest, format: .dateTime.day().month().hour().minute())
                         .fontWeight(.bold)
                         .multilineTextAlignment(.trailing)
