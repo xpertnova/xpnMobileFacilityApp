@@ -8,7 +8,8 @@ struct FacilityShellView: View {
     @Environment(\.facilityLayout) private var layout
     @State private var sapPassword = ""
     @State private var notificationFilterPresentation: NotificationStructuralFilterPresentationState
-    @State private var networkReachability = NetworkReachabilityMonitor()
+    @State private var networkReachability = NetworkReachabilityMonitor(startMonitoring: false)
+    @State private var hasStartedNetworkMonitoring = false
     @State private var isShowingUserMenu = false
 
     private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
@@ -236,15 +237,27 @@ struct FacilityShellView: View {
             demo.rememberDashboardMetrics()
         }
         .task(id: scenePhase) {
-            print("[SAP Connection] 📱 App scenePhase changed to: \(scenePhase)")
-            guard scenePhase == .active else { return }
-            networkReachability.refresh()
-        }
-        .onAppear {
-            networkReachability.start()
+            // The login backdrop has no refresh service. Its connectivity
+            // status is never shown, so it must not run SAP reachability checks
+            // while the user is opening the keyboard and entering credentials.
+            guard !demo.isDemoMode,
+                  demo.sapDataStore.isRefreshAvailable,
+                  scenePhase == .active else { return }
+            if hasStartedNetworkMonitoring {
+                networkReachability.refresh()
+            } else {
+                // Connectivity checks call SAP and system APIs synchronously.
+                // Let the initial shell transition finish before starting them.
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                networkReachability.start()
+                hasStartedNetworkMonitoring = true
+            }
         }
         .onDisappear {
+            guard hasStartedNetworkMonitoring else { return }
             networkReachability.stop()
+            hasStartedNetworkMonitoring = false
         }
         .onChange(of: layout.tier, initial: true) { _, tier in
             // A compact window starts with the icon rail so the screen keeps

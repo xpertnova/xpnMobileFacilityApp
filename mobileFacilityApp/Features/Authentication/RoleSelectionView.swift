@@ -50,7 +50,8 @@ struct RoleSelectionView: View {
 
     /// Height of this screen the docked keyboard covers.
     @State private var keyboardOverlap: CGFloat = 0
-    /// Height of the whole card, measured while its introduction is shown.
+    /// Measured while the full card is visible, so compact keyboard
+    /// layout can be chosen without measuring a changing set of views.
     @State private var fullCardHeight: CGFloat = 0
 
     private static let cardOuterPadding: CGFloat = 16
@@ -60,79 +61,91 @@ struct RoleSelectionView: View {
         GeometryReader { proxy in
             // The screen ignores the keyboard's safe area, so its size, and
             // the card metrics with it, stay the same while typing. The
-            // keyboard is handled below from its reported frame instead.
+            // keyboard changes the scroll viewport without rebuilding the card.
             let metrics = LoginCardMetrics.metrics(for: proxy.size)
             let visibleHeight = max(0, proxy.size.height - keyboardOverlap)
-            // With the keyboard up, the logo, title and roles make way for
-            // the sign-in fields when the whole card would not fit above it.
             let showsIntroduction = keyboardOverlap == 0
-                || fullCardHeight + Self.cardOuterPadding * 2 <= visibleHeight
+                || (fullCardHeight > 0 && fullCardHeight + Self.cardOuterPadding * 2 <= visibleHeight)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    if showsIntroduction {
-                        introduction(metrics: metrics)
-                    }
-
+            ScrollViewReader { scrollProxy in
+                ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 0) {
-                        authenticationSectionPicker
-                            .padding(.top, metrics.pickerTopPadding)
+                        introduction(metrics: metrics)
+                            .frame(height: showsIntroduction ? nil : 0, alignment: .top)
+                            .clipped()
+                            .opacity(showsIntroduction ? 1 : 0)
+                            .allowsHitTesting(showsIntroduction)
+                            .accessibilityHidden(!showsIntroduction)
 
-                        credentials(metrics: metrics)
+                        VStack(spacing: 0) {
+                            authenticationSectionPicker
+                                .padding(.top, metrics.pickerTopPadding)
 
-                        Button {
-                            focusedField = nil
-                            submit()
-                        } label: {
-                            Text(authenticationSection.actionKey)
-                                .font(.headline.weight(.semibold))
-                                .frame(maxWidth: .infinity, minHeight: metrics.buttonMinHeight)
+                            credentials(metrics: metrics)
+
+                            Button {
+                                focusedField = nil
+                                submit()
+                            } label: {
+                                Text(authenticationSection.actionKey)
+                                    .font(.headline.weight(.semibold))
+                                    .frame(maxWidth: .infinity, minHeight: metrics.buttonMinHeight)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(FacilityTheme.accent)
+                            .padding(.top, metrics.buttonTopPadding)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(FacilityTheme.accent)
-                        .padding(.top, metrics.buttonTopPadding)
-                    }
 
-                    if showsIntroduction {
                         Text("role.selection.footer")
                             .font(metrics.footerFont)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.top, metrics.footerTopPadding)
+                            .frame(height: showsIntroduction ? nil : 0, alignment: .top)
+                            .clipped()
+                            .opacity(showsIntroduction ? 1 : 0)
+                            .accessibilityHidden(!showsIntroduction)
+                    }
+                    .padding(.horizontal, metrics.cardHorizontalPadding)
+                    .padding(.vertical, showsIntroduction ? metrics.cardVerticalPadding : min(metrics.cardVerticalPadding, 16))
+                    .frame(width: metrics.cardWidth)
+                    .background(.white, in: RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        if showsIntroduction && keyboardOverlap == 0 {
+                            fullCardHeight = height
+                        }
+                    }
+                    .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
+                    .padding(.vertical, showsIntroduction ? Self.cardOuterPadding : Self.keyboardCardOuterPadding)
+                    .padding(.horizontal, Self.cardOuterPadding)
+                    .frame(maxWidth: .infinity, minHeight: visibleHeight, alignment: .center)
+                    .background {
+                        // Tapping the dimmed area around the card dismisses
+                        // the keyboard without stealing taps from the fields.
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { focusedField = nil }
                     }
                 }
-                .padding(.horizontal, metrics.cardHorizontalPadding)
-                .padding(
-                    .vertical,
-                    showsIntroduction ? metrics.cardVerticalPadding : min(metrics.cardVerticalPadding, 16)
-                )
-                .frame(width: metrics.cardWidth)
-                .background(.white, in: RoundedRectangle(cornerRadius: metrics.cardCornerRadius, style: .continuous))
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                    if showsIntroduction {
-                        fullCardHeight = height
+                .frame(height: visibleHeight)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { _ in
+                    guard keyboardOverlap > 0, let focusedField else { return }
+                    // Scroll after the keyboard-sized viewport has been laid
+                    // out; scrolling on the notification can use its old size.
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        scrollProxy.scrollTo(focusedField, anchor: .center)
                     }
                 }
-                .shadow(color: .black.opacity(0.22), radius: 24, y: 10)
-                .padding(
-                    .vertical,
-                    showsIntroduction ? Self.cardOuterPadding : Self.keyboardCardOuterPadding
-                )
-                .padding(.horizontal, Self.cardOuterPadding)
-                .frame(maxWidth: .infinity, minHeight: visibleHeight, alignment: .center)
-                .background {
-                    // Tapping the dimmed area around the card dismisses the
-                    // keyboard. A tap gesture over the whole screen also fired
-                    // for taps on the fields and could clear their focus again.
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { focusedField = nil }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedField) { _, field in
+                    guard let field else { return }
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        scrollProxy.scrollTo(field, anchor: .center)
+                    }
                 }
             }
-            .frame(height: visibleHeight)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollDismissesKeyboard(.interactively)
         }
         .background {
             KeyboardOverlapReader { overlap, animationDuration in
@@ -206,6 +219,7 @@ struct RoleSelectionView: View {
             .autocorrectionDisabled()
             .focused($focusedField, equals: .username)
             .credentialFieldStyle(height: metrics.fieldHeight)
+            .id(CredentialField.username)
             .submitLabel(.next)
             .onSubmit { focusedField = .password }
 
@@ -217,6 +231,7 @@ struct RoleSelectionView: View {
             .textContentType(.oneTimeCode)
             .focused($focusedField, equals: .password)
             .credentialFieldStyle(height: metrics.fieldHeight)
+            .id(CredentialField.password)
             .submitLabel(authenticationSection == .signIn ? .go : .next)
             .onSubmit {
                 if authenticationSection == .signIn {
@@ -236,6 +251,7 @@ struct RoleSelectionView: View {
                 .textContentType(.oneTimeCode)
                 .focused($focusedField, equals: .confirmation)
                 .credentialFieldStyle(height: metrics.fieldHeight)
+                .id(CredentialField.confirmation)
                 .submitLabel(.go)
                 .onSubmit {
                     focusedField = nil
@@ -328,7 +344,7 @@ private enum AuthenticationSection: CaseIterable, Identifiable {
     }
 }
 
-private enum CredentialField {
+private enum CredentialField: Hashable {
     case username
     case password
     case confirmation
