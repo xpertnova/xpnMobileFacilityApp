@@ -17,6 +17,8 @@ final class NotificationReviewViewModel {
         case cameraPermissionDenied
         /// The chosen I2 notifications were stored with the closed review.
         case i2NotificationsQueued
+        case meterReadingsSaved
+        case meterReadingsFailed
 
         var id: String { String(describing: self) }
     }
@@ -46,6 +48,9 @@ final class NotificationReviewViewModel {
     private var canCreateI2 = false
     /// Reporter shown in the report built when the review is closed.
     private var userProfile: SAPUserProfile?
+    /// Measuring points of the notification's place; `nil` until loaded or
+    /// when they could not be read.
+    private(set) var measuringPoints: [SAPMeasuringPoint]?
 
     init(
         detail: SAPNotificationDetail,
@@ -59,13 +64,31 @@ final class NotificationReviewViewModel {
         self.sapDataStore = sapDataStore
     }
 
+    /// The positions that take a Befund. A `MEASURE` row has no Befund
+    /// element, so `validateFormValues` never finds it open.
+    var resultItems: [SAPNotificationDetail.InspectionItem] {
+        detail.inspectionItems.filter { !$0.isMeasuringPointEntry }
+    }
+
     var canClose: Bool {
-        guard !detail.inspectionItems.isEmpty else { return false }
-        guard detail.inspectionItems.allSatisfy({ results[$0.id] != nil }) else { return false }
+        guard !resultItems.isEmpty else { return false }
+        guard resultItems.allSatisfy({ results[$0.id] != nil }) else { return false }
         // `Rundgang.controller.js` refuses a defect without a comment in
         // `checkInputConstraints`, exactly as TFM1 does. The two forms share
         // the rule, so they share `InspectionFormRules`.
-        return detail.inspectionItems.allSatisfy { !isCommentMissing(for: $0.id) }
+        return resultItems.allSatisfy { !isCommentMissing(for: $0.id) }
+    }
+
+    /// Whether the measuring-point screen can be opened: SAP delivered at
+    /// least one point for this place.
+    var hasMeasuringPoints: Bool {
+        !(measuringPoints ?? []).isEmpty
+    }
+
+    func markEverythingOkay() {
+        for item in resultItems {
+            results[item.id] = .no
+        }
     }
 
     /// Whether this position records a defect but no comment.
@@ -89,12 +112,18 @@ final class NotificationReviewViewModel {
             userProfile = await sapDataStore.loadUserProfile()
             canCreateI2 = userProfile?.canCreateI2 ?? false
             existingI2Notifications = await sapDataStore.loadI2Notifications(for: detail)
+            if detail.inspectionItems.contains(where: \.isMeasuringPointEntry) {
+                measuringPoints = await sapDataStore.loadMeasuringPoints(for: detail)
+            }
         }
         guard let draft = offlineWorkStore.notificationReview(notificationID: detail.summary.id) else { return }
 
         persistedDraft = draft
         performedOn = draft.performedOn
-        results = draft.results
+        // A draft saved before `MEASURE` rows were recognised may carry a
+        // yes/no for them; it has no element to go to.
+        let measuringEntryIDs = Set(detail.inspectionItems.filter(\.isMeasuringPointEntry).map(\.id))
+        results = draft.results.filter { !measuringEntryIDs.contains($0.key) }
         comments = draft.comments
         photoAttachments = draft.photoAttachments
         originalAttachmentIDs = Set(draft.photoAttachments.map(\.localAttachmentID))
@@ -220,12 +249,6 @@ final class NotificationReviewViewModel {
             persistedDraft = draft
             // `Rundgang._afterSetMeldung` offers the deficient positions for
             // I2 notifications instead of finishing the form.
-            if closed {
-                SAPSynchronizationDiagnostics.logI2(
-                    "form closed: user may create I2 \(canCreateI2), " +
-                        "\(I2NotificationRules.segmentedCandidates(detail: detail, results: results, comments: comments).count) defective position(s) offered"
-                )
-            }
             let offersI2 = closed && canCreateI2 && i2Selection.present(
                 I2NotificationRules.segmentedCandidates(detail: detail, results: results, comments: comments)
             )
@@ -248,7 +271,7 @@ final class NotificationReviewViewModel {
                 formCode: detail.formCode,
                 notificationID: detail.summary.id,
                 fields: NotificationReportFields(rawPayloadJSON: detail.summary.rawPayloadJSON),
-                items: detail.inspectionItems,
+                items: resultItems,
                 results: results,
                 comments: comments,
                 performedOn: performedOn,
@@ -262,17 +285,12 @@ final class NotificationReviewViewModel {
     /// left straight away as `onDefectPosItemAccept` does.
     func acceptI2Selection() async -> Bool {
         let requests = i2Selection.accept()
-        SAPSynchronizationDiagnostics.logI2(
-            "dialog accepted with \(requests.count) request(s), closed draft present: " +
-                "\(persistedDraft?.isClosedLocally == true)"
-        )
         guard !requests.isEmpty, var draft = persistedDraft, draft.isClosedLocally else { return false }
         isSaving = true
         defer { isSaving = false }
         draft.i2Requests = requests
         do {
             _ = try await offlineWorkStore.saveNotificationReview(draft)
-            SAPSynchronizationDiagnostics.logI2("stored \(requests.count) request(s) with the closed form")
             persistedDraft = draft
             feedback = .i2NotificationsQueued
         } catch {
@@ -283,6 +301,60 @@ final class NotificationReviewViewModel {
 
     func cancelI2Selection() {
         i2Selection.cancel()
+    }
+
+    /// The technical place the measuring points belong to (`T0281.STRNO`).
+    var measuringPointLocationID: String {
+        let payload = detail.summary.rawPayloadJSON.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        return (payload["STRNO"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? detail.summary.functionalLocationID
+    }
+
+    /// Readings of this place's points not yet sent to SAP. They are work of
+    /// their own, not part of the form: the legacy screen writes `TO_T0286`
+    /// when it is saved, and it goes with the next synchronization whether or
+    /// not the Rundgang is closed.
+    var meterReadings: [MeasuringPointReadingEntry] {
+        guard let points = measuringPoints, !points.isEmpty else { return [] }
+        return offlineWorkStore.measuringPointReadings(
+            at: measuringPointLocationID,
+            pointIDs: Set(points.map(\.pointID))
+        )
+    }
+
+    /// `MeasurePoints.onPressSave`: queues the readings straight away,
+    /// without committing the unsaved answers of the form.
+    @discardableResult
+    func saveMeterReadings(_ readings: [MeasuringPointReadingEntry]) async -> Bool {
+        guard !isEditingDisabled, !isSaving, let points = measuringPoints else { return false }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await offlineWorkStore.replaceMeasuringPointReadings(
+                at: measuringPointLocationID,
+                points: points,
+                with: readings
+            )
+            feedback = .meterReadingsSaved
+            return true
+        } catch {
+            feedback = .meterReadingsFailed
+            return false
+        }
+    }
+
+    private func emptyDraft() -> NotificationReviewDraftPayload {
+        NotificationReviewDraftPayload(
+            notificationID: detail.summary.id,
+            performedOn: performedOn,
+            results: [:],
+            comments: [:],
+            photoAttachments: [],
+            isClosedLocally: false,
+            notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
+            outgoingProcessID: nil
+        )
     }
 
     private func discardStagedPhotos() async {
@@ -296,16 +368,7 @@ final class NotificationReviewViewModel {
     /// comments, and date are retained so taking a photo does not accidentally
     /// commit unrelated edits still in the review UI.
     private func persistPhotoChanges(_ attachments: [NotificationPhotoAttachment]) async throws {
-        var draft = persistedDraft ?? NotificationReviewDraftPayload(
-            notificationID: detail.summary.id,
-            performedOn: performedOn,
-            results: [:],
-            comments: [:],
-            photoAttachments: [],
-            isClosedLocally: false,
-            notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
-            outgoingProcessID: nil
-        )
+        var draft = persistedDraft ?? emptyDraft()
         draft.photoAttachments = attachments
         _ = try await offlineWorkStore.saveNotificationReview(draft)
         persistedDraft = draft

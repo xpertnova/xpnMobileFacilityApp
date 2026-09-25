@@ -17,6 +17,8 @@ private enum DisassembledTransition: Hashable, Identifiable {
 
     let demo: FacilityDemoViewModel
     let itemID: UUID?
+    /// The technical place a new form was opened from.
+    let anchor: TechnicalPlaceCreationAnchor?
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: MobileLadderCreationViewModel
@@ -31,9 +33,15 @@ private enum DisassembledTransition: Hashable, Identifiable {
     @State private var isTradePickerPresented = false
     @State private var presentedCatalogField: MobileLadderCatalogField?
 
-    init(demo: FacilityDemoViewModel, itemID: UUID?, close: @escaping () -> Void) {
+    init(
+        demo: FacilityDemoViewModel,
+        itemID: UUID?,
+        anchor: TechnicalPlaceCreationAnchor? = nil,
+        close: @escaping () -> Void
+    ) {
         self.demo = demo
         self.itemID = itemID
+        self.anchor = anchor
         self.close = close
         _model = State(initialValue: MobileLadderCreationViewModel(
             provider: demo.mobileLadderCreationProvider,
@@ -105,7 +113,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
             }
         }
         .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityEditor)
-        .task { await model.load() }
+        .task { await model.load(preselecting: anchor) }
         .alert(item: $model.feedback) { feedback in
             Alert(
                 title: Text(feedback.titleKey),

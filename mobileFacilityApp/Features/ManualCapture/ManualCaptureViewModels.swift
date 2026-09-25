@@ -12,6 +12,16 @@ struct DefectObjectOption: Identifiable, Equatable, Sendable {
     let name: String
     let dinGroup: String?
 
+    init(reference: TechnicalObjectReference, name: String, dinGroup: String?) {
+        self.reference = reference
+        self.name = name
+        self.dinGroup = dinGroup
+    }
+
+    init(node: TechnicalObjectNode) {
+        self.init(reference: node.reference, name: node.displayName, dinGroup: node.dinGroup)
+    }
+
     var id: String { reference.id }
     var label: String { "\(reference.objectID) · \(name)" }
 }
@@ -31,13 +41,18 @@ final class DefectCaptureViewModel {
     private(set) var isExistingDraft = false
     private(set) var itemStatus: OfflineWorkStatus?
     private(set) var objects: [DefectObjectOption] = []
+    /// The open I1s a defect can be reported under, for every object.
+    private(set) var parentNotifications: [DefectParentNotification] = []
     private(set) var isSaving = false
     private(set) var photoData: [String: Data] = [:]
     var selectedObjectID: String?
     var priority: DefectPriority = .medium
+    var category: I2NotificationCategory?
+    var selectedParentID: String?
     var shortText = ""
     var longText = ""
     var attachmentIDs: [String] = []
+    private(set) var syncError: String?
     var saveFailed = false
     var photoFailed = false
 
@@ -51,16 +66,50 @@ final class DefectCaptureViewModel {
         objects.first { $0.id == selectedObjectID }
     }
 
+    /// The I1s of the selected object.
+    var parentOptions: [DefectParentNotification] {
+        guard let selectedObject else { return [] }
+        return parentOptions(for: selectedObject)
+    }
+
+    var selectedParent: DefectParentNotification? {
+        parentOptions.first { $0.id == selectedParentID }
+    }
+
+    func parentOptions(for object: DefectObjectOption) -> [DefectParentNotification] {
+        parentNotifications.filter { $0.belongs(to: object.reference) }
+    }
+
+    /// SAP creates an I2 only under an I1, so an object without one cannot
+    /// take a defect.
+    func canReportDefect(on object: DefectObjectOption) -> Bool {
+        !parentOptions(for: object).isEmpty
+    }
+
+    /// Picks the object and, when it has exactly one I1, that I1.
+    func selectObject(_ id: String?) {
+        selectedObjectID = id
+        let options = parentOptions
+        if !options.contains(where: { $0.id == selectedParentID }) {
+            selectedParentID = options.count == 1 ? options[0].id : nil
+        }
+    }
+
+    /// A defect SAP did not take can be corrected and sent again.
     var isReadOnly: Bool {
         guard let itemStatus else { return false }
-        return itemStatus != .draft
+        return itemStatus != .draft && itemStatus != .failed
     }
 
     var canSave: Bool {
-        !isReadOnly && !isSaving && selectedObject != nil && !shortText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isReadOnly && !isSaving && selectedObject != nil && selectedParent != nil && category != nil
+            && !shortText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func load(itemID: UUID?) async {
+    /// `preselected` is the technical object the technician came from — a
+    /// technical place detail — and is only applied to a new draft, never over
+    /// the object an existing draft was saved against.
+    func load(itemID: UUID?, preselecting preselected: DefectObjectOption? = nil) async {
         await discardStagedPhotos()
         resetFields()
         isExistingDraft = itemID != nil
@@ -73,12 +122,11 @@ final class DefectCaptureViewModel {
         let existingItem = offlineWorkStore.item(id: itemID)
         let existingPayload = existingItem?.payload.defect
         itemStatus = existingItem?.status
+        syncError = existingItem?.status == .failed ? existingItem?.syncError : nil
         if objects.isEmpty {
             do {
                 let nodes = try await sapDataStore.searchTechnicalObjects("", dinGroup: nil, limit: 500)
-                objects = nodes.filter { !$0.isSynthetic }.map {
-                    DefectObjectOption(reference: $0.reference, name: $0.displayName, dinGroup: $0.dinGroup)
-                }
+                objects = nodes.filter { !$0.isSynthetic }.map(DefectObjectOption.init(node:))
             } catch {
                 if let existingPayload {
                     objects = [DefectObjectOption(
@@ -98,11 +146,39 @@ final class DefectCaptureViewModel {
             ))
         }
 
+        parentNotifications = await sapDataStore.loadDefectParentNotifications()
+        // A saved defect keeps showing its I1 even when the cache no longer
+        // holds it open; sending it then fails with the reason.
+        if let existingPayload, let parentID = existingPayload.parentNotificationID,
+           !parentNotifications.contains(where: { $0.id == parentID }) {
+            parentNotifications.append(DefectParentNotification(
+                id: parentID,
+                title: existingPayload.parentNotificationTitle ?? "",
+                functionalLocationID: existingPayload.technicalObject.kind == .functionalLocation
+                    ? existingPayload.technicalObject.objectID : "",
+                equipmentID: existingPayload.technicalObject.kind == .equipment
+                    ? existingPayload.technicalObject.objectID : "",
+                startDate: ""
+            ))
+        }
+
+        // The object list is capped, so the place the technician came from is
+        // not necessarily in it.
+        if let preselected, !objects.contains(where: { $0.reference == preselected.reference }) {
+            objects.append(preselected)
+        }
+
         state = objects.isEmpty ? .failed : .loaded
+
+        if existingPayload == nil, let preselected {
+            selectObject(preselected.id)
+        }
 
         if let payload = existingPayload {
             selectedObjectID = payload.technicalObject.id
             priority = payload.priority
+            category = payload.category
+            selectedParentID = payload.parentNotificationID
             shortText = payload.shortText
             longText = payload.longText
             attachmentIDs = payload.attachmentIDs
@@ -153,7 +229,10 @@ final class DefectCaptureViewModel {
                     priority: priority,
                     shortText: shortText.trimmingCharacters(in: .whitespacesAndNewlines),
                     longText: longText.trimmingCharacters(in: .whitespacesAndNewlines),
-                    attachmentIDs: attachmentIDs
+                    attachmentIDs: attachmentIDs,
+                    category: category,
+                    parentNotificationID: selectedParent?.id,
+                    parentNotificationTitle: selectedParent?.title
                 ),
                 status: status
             )
@@ -162,6 +241,7 @@ final class DefectCaptureViewModel {
             }
             editingID = item.id
             itemStatus = item.status
+            syncError = nil
             originalAttachmentIDs = Set(attachmentIDs)
             return true
         } catch {
@@ -190,6 +270,9 @@ final class DefectCaptureViewModel {
         itemStatus = nil
         selectedObjectID = nil
         priority = .medium
+        category = nil
+        selectedParentID = nil
+        syncError = nil
         shortText = ""
         longText = ""
         attachmentIDs = []
@@ -258,8 +341,22 @@ final class MeterReadingViewModel {
         return parsedValue < selectedReference.previousValue
     }
 
+    /// `DECIM` of a SAP measuring point caps the fraction digits.
+    var hasTooManyDecimals: Bool {
+        guard let decimals = selectedReference?.decimals, let parsedValue else { return false }
+        return parsedValue.fractionDigitCount > max(decimals, 0)
+    }
+
+    /// A SAP counter reading below the last one is refused: the legacy edit
+    /// dialog enables Save only for `fValue >= history.RECDV`. Demo meters
+    /// keep accepting any value.
+    var isRejectedBelowPreviousValue: Bool {
+        isBelowPreviousValue && selectedReference?.client != nil
+    }
+
     var canSave: Bool {
         !isReadOnly && !isSaving && selectedReference != nil && parsedValue != nil
+            && !isRejectedBelowPreviousValue && !hasTooManyDecimals
     }
 
     func load(itemID: UUID?) async {
@@ -299,7 +396,11 @@ final class MeterReadingViewModel {
                 payload: MeterReadingDraftPayload(
                     meter: meter,
                     value: value,
-                    note: note.trimmingCharacters(in: .whitespacesAndNewlines)
+                    note: String(
+                        note.trimmingCharacters(in: .whitespacesAndNewlines)
+                            .prefix(MeasuringPointReadingEntry.maximumTextLength)
+                    ),
+                    recordedAt: .now
                 ),
                 status: status
             )
@@ -312,7 +413,7 @@ final class MeterReadingViewModel {
         }
     }
 
-    static func sanitizeInput(_ input: String) -> String {
+    nonisolated static func sanitizeInput(_ input: String) -> String {
         let normalized = input.replacingOccurrences(of: ".", with: ",")
         var filtered = ""
         var hasComma = false
@@ -327,7 +428,7 @@ final class MeterReadingViewModel {
         return filtered
     }
 
-    static func parseDecimal(_ text: String, locale: Locale = .current) -> Decimal? {
+    nonisolated static func parseDecimal(_ text: String, locale: Locale = .current) -> Decimal? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed != ",", trimmed != "." else { return nil }
         let formatter = NumberFormatter()
@@ -341,7 +442,7 @@ final class MeterReadingViewModel {
         return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
     }
 
-    static func displayString(_ value: Decimal, locale: Locale = Locale(identifier: "de_DE")) -> String {
+    nonisolated static func displayString(_ value: Decimal, locale: Locale = Locale(identifier: "de_DE")) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.locale = locale

@@ -22,7 +22,7 @@ extension OfflineWorkType {
     /// takes it.
     var staysLocal: Bool {
         switch self {
-        case .manualCapture, .defect, .meterReading, .technicalObjectEdit: true
+        case .manualCapture, .technicalObjectEdit: true
         default: false
         }
     }
@@ -158,9 +158,26 @@ enum DefectPriority: String, Codable, CaseIterable, Identifiable, Sendable {
     var titleKey: String {
         "manual.defect.priority.\(rawValue)"
     }
+
+    /// `PRIOK` of the I2 notification. The mapping was set by the product
+    /// owner (2026-09-24); the form I2s of `insertI2Meldung` always post `3`.
+    var sapPriority: String {
+        switch self {
+        case .low: "3"
+        case .medium: "2"
+        case .high: "1"
+        }
+    }
 }
 
+/// A defect reported from its own form instead of from a checklist. SAP
+/// creates an I2 only with the I1 it belongs to (`CREATE_TFM4I2` rejects an
+/// empty `REFNUM`), so the technician picks one of the object's I1s, without
+/// opening its form.
 struct DefectDraftPayload: Codable, Equatable, Sendable {
+    /// `QMTXT` is 40 characters in SAP.
+    static let maximumShortTextLength = 40
+
     var technicalObject: TechnicalObjectReference
     var technicalObjectName: String
     var dinGroup: String?
@@ -168,12 +185,43 @@ struct DefectDraftPayload: Codable, Equatable, Sendable {
     var shortText: String
     var longText: String
     var attachmentIDs: [String]
+    /// `QMCOD`. Missing on defects saved before they were sent to SAP.
+    var category: I2NotificationCategory? = nil
+    /// `QMNUM` of the I1 the defect belongs to; sent as `REFNUM`.
+    var parentNotificationID: String? = nil
+    /// `QMTXT` of that I1, to show it without the cache.
+    var parentNotificationTitle: String? = nil
+}
+
+/// An open I1 a defect can be reported under: same object, as the I2 takes
+/// the I1's place and equipment.
+struct DefectParentNotification: Identifiable, Equatable, Sendable {
+    /// `QMNUM`
+    let id: String
+    /// `QMTXT`
+    let title: String
+    /// `STRNO`
+    let functionalLocationID: String
+    /// `EQUNR`
+    let equipmentID: String
+    /// `STRMN`
+    let startDate: String
+
+    /// A place takes the I1s on the place itself, equipment its own.
+    func belongs(to reference: TechnicalObjectReference) -> Bool {
+        switch reference.kind {
+        case .equipment: equipmentID == reference.objectID
+        case .functionalLocation: equipmentID.isEmpty && functionalLocationID == reference.objectID
+        }
+    }
 }
 
 enum MeterKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case electricity
     case gas
     case water
+    /// `PSORT = WÄRME` points (unit `MWH`) in `FROM_T0274`.
+    case heat
 
     var id: String { rawValue }
 
@@ -186,6 +234,28 @@ enum MeterKind: String, Codable, CaseIterable, Identifiable, Sendable {
         case .electricity: "bolt.fill"
         case .gas: "flame.fill"
         case .water: "drop.fill"
+        case .heat: "thermometer.medium"
+        }
+    }
+
+    /// The kind of a SAP measuring point, from its sort field (`PSORT`,
+    /// `STROM1`, `WASSER`, `GAS`, `WÄRME`), else from its unit.
+    init?(position: String, unit: String) {
+        let sortField = position.uppercased()
+        if sortField.hasPrefix("STROM") {
+            self = .electricity
+        } else if sortField.hasPrefix("GAS") {
+            self = .gas
+        } else if sortField.hasPrefix("WASSER") {
+            self = .water
+        } else if sortField.hasPrefix("WÄRME") || sortField.hasPrefix("WAERME") {
+            self = .heat
+        } else {
+            switch unit.uppercased() {
+            case "KWH": self = .electricity
+            case "MWH": self = .heat
+            default: return nil
+            }
         }
     }
 }
@@ -196,14 +266,24 @@ struct MeterReference: Codable, Equatable, Identifiable, Sendable {
     let technicalPlaceID: String
     let technicalPlaceName: String
     let unit: String
+    /// The last reading SAP holds, or `0` without a history, which is what
+    /// the legacy edit dialog compares a new value with.
     let previousValue: Decimal
-    let previousReadingAt: Date
+    let previousReadingAt: Date?
+    /// `MANDT` of the SAP measuring point; `nil` for preview data.
+    var client: String? = nil
+    /// `DECIM` of the SAP measuring point.
+    var decimals: Int? = nil
 }
 
 struct MeterReadingDraftPayload: Codable, Equatable, Sendable {
     var meter: MeterReference
     var value: Decimal
+    /// `PARAMETER5`; the legacy text area takes 40 characters.
     var note: String
+    /// When the reading was taken (`PARAMETER3` / `PARAMETER4`). Older
+    /// drafts fall back to the work item's update time.
+    var recordedAt: Date? = nil
 }
 
 /// A local proposal for editable equipment master data. SAP identifiers are
@@ -264,6 +344,10 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
         /// Optional so a draft written before checklist group bands existed
         /// still decodes; a missing key simply means "no group".
         let groupTitle: String?
+        /// `SAPNotificationDetail.InspectionItem.measuringPointButtonTitle`.
+        /// A snapshot written before measuring points existed has none, so
+        /// its `MEASURE` row reopens as a result position.
+        let measuringPointButtonTitle: String?
 
         init(
             id: String,
@@ -271,7 +355,8 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
             information: String,
             resultElementID: String? = nil,
             commentElementID: String? = nil,
-            groupTitle: String? = nil
+            groupTitle: String? = nil,
+            measuringPointButtonTitle: String? = nil
         ) {
             self.id = id
             self.title = title
@@ -279,6 +364,7 @@ struct OfflineNotificationSnapshot: Codable, Equatable, Sendable {
             self.resultElementID = resultElementID
             self.commentElementID = commentElementID
             self.groupTitle = groupTitle
+            self.measuringPointButtonTitle = measuringPointButtonTitle
         }
     }
 

@@ -50,6 +50,12 @@ final class FacilityDemoViewModel {
     }
     private var offlineNotificationReturnDestination: AppDestination?
     private var manualDefectReturnDestination: AppDestination?
+    /// Not observable: it is read once by the defect form's load task and
+    /// cleared there, so it must not invalidate any view.
+    @ObservationIgnored private var pendingDefectObject: DefectObjectOption?
+    /// The building a creation form should open on, set when it is started
+    /// from a technical place. Read once by that form's load task, like
+    /// `pendingDefectObject`.
     var shouldPresentSAPRefresh = false
     var shouldPresentDraftWarningBeforeSync = false
     var notifications = MockFacilityData.notifications {
@@ -417,12 +423,21 @@ final class FacilityDemoViewModel {
         selection = returnDestination
     }
 
-    func openManualDefect(_ itemID: UUID? = nil) {
+    func openManualDefect(_ itemID: UUID? = nil, preselecting object: DefectObjectOption? = nil) {
         if selection != .manualCapture {
             manualDefectReturnDestination = selection
         }
+        pendingDefectObject = object
         manualCaptureRoute = .defect(itemID)
         selection = .manualCapture
+    }
+
+    /// Handed to the defect form once, when it loads. The technical object a
+    /// new fault notification starts on comes from the screen the technician
+    /// left (a technical place detail), not from the form itself.
+    func consumePendingDefectObject() -> DefectObjectOption? {
+        defer { pendingDefectObject = nil }
+        return pendingDefectObject
     }
 
     func closeManualDefect() {
@@ -444,8 +459,12 @@ final class FacilityDemoViewModel {
         selection = .manualCapture
     }
 
-    func openMobileLadder(_ itemID: UUID? = nil) {
-        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.mobileLadderDraft) ?? .createMobileLadder
+    func openMobileLadder(
+        _ itemID: UUID? = nil,
+        preselecting anchor: TechnicalPlaceCreationAnchor? = nil
+    ) {
+        // An existing draft carries its own context; only a new one is placed.
+        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.mobileLadderDraft) ?? .createMobileLadder(anchor)
         selection = .technicalPlaces
     }
 
@@ -453,9 +472,44 @@ final class FacilityDemoViewModel {
         technicalPlacesRoute = .hierarchy
     }
 
-    func openSubdistribution(_ itemID: UUID? = nil) {
-        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.subdistributionDraft) ?? .createSubdistribution
+    func openSubdistribution(
+        _ itemID: UUID? = nil,
+        preselecting anchor: TechnicalPlaceCreationAnchor? = nil
+    ) {
+        technicalPlacesRoute = itemID.map(TechnicalPlacesRoute.subdistributionDraft) ?? .createSubdistribution(anchor)
         selection = .technicalPlaces
+    }
+
+    /// SAP creates a defect (I2) only under an I1 of the same object.
+    func canReportDefect(on reference: TechnicalObjectReference) async -> Bool {
+        await sapDataStore.loadDefectParentNotifications().contains { $0.belongs(to: reference) }
+    }
+
+    /// What "Equipment einbauen" can offer at `place`, read from the same
+    /// creation data the two forms load, so the detail never offers a form
+    /// that would open with nothing to choose.
+    func equipmentInstallOptions(at place: TechnicalObjectNode) async -> TechnicalPlaceInstallOptions {
+        let anchor = TechnicalPlaceCreationAnchor(place)
+        let workerID = offlineWorkStore.workerID
+        async let ladder = try? mobileLadderCreationProvider.loadMobileLadderCreationData(for: workerID)
+        async let subdistribution = try? subdistributionCreationProvider.loadSubdistributionCreationData(for: workerID)
+        let ladderContexts = await ladder?.contexts ?? []
+        let subdistributionContexts = await subdistribution?.contexts ?? []
+        return TechnicalPlaceInstallOptions(
+            mobileLadder: TechnicalPlaceInstallOptions.availability(
+                at: anchor,
+                among: ladderContexts.map {
+                    ($0.legacyContext.country, $0.legacyContext.businessEntity, $0.legacyContext.building)
+                },
+                trade: ladderContexts.first?.legacyContext.trade ?? ""
+            ),
+            subdistribution: TechnicalPlaceInstallOptions.availability(
+                at: anchor,
+                among: subdistributionContexts.map {
+                    ($0.legacyContext.country, $0.legacyContext.businessEntity, $0.legacyContext.building)
+                }
+            )
+        )
     }
 
     func closeSubdistribution() {
@@ -513,6 +567,15 @@ final class FacilityDemoViewModel {
         selectedNotificationID = nil
         selectedOfflineNotificationDetail = SAPNotificationDetail(summary: notification)
         offlineNotificationReturnDestination = .scan
+    }
+
+    /// A notification opened from a linked-processes list returns to the
+    /// screen it was opened from, with that screen's own state intact.
+    func openLinkedNotification(_ notification: SAPNotificationSummary) {
+        let returnDestination = selection
+        selectedNotificationID = nil
+        selectedOfflineNotificationDetail = SAPNotificationDetail(summary: notification)
+        offlineNotificationReturnDestination = returnDestination
     }
 
     func openSavedElevatorInspection(_ inspection: ElevatorInspectionDraftPayload) async -> Bool {
@@ -627,6 +690,7 @@ final class FacilityDemoViewModel {
         notifications = MockFacilityData.notifications
         defects = MockFacilityData.defects
         manualCaptureRoute = .landing
+        pendingDefectObject = nil
         technicalPlacesRoute = .hierarchy
         selectedBriefingDraftID = nil
         selectedElectricalSafetyDraftID = nil

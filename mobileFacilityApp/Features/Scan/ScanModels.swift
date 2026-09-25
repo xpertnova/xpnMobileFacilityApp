@@ -57,8 +57,12 @@ enum LegacyQRCodeCodec {
         throw LegacyQRCodeCodecError.invalidPayload
     }
 
-    /// Used only by the isolated demo flow to exercise the production decoder.
-    static func encodeDemoMTFM(
+    /// The counterpart of `decode`, and the format the legacy app printed on
+    /// its labels: `QrPrintList.controller.js` base64-encodes
+    /// `{"STEUS":…,"STRNO":…,"EQUNR":…}` with `"%"` standing in for "no
+    /// equipment". A code produced here is therefore readable both by this
+    /// app's scanner and by the labels already in the field.
+    static func encodeMTFM(
         controlKey: String? = nil,
         functionalLocationID: String,
         equipmentID: String? = nil

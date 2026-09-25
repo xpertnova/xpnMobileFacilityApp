@@ -139,10 +139,10 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) \(step).")
     }
 
-    /// Follows the I2 notifications of a closed form from the defect dialog
-    /// to the TO request, so a missing I2 in SAP can be traced to its step.
+    /// Follows the I2 notifications of one synchronization from the TO
+    /// request to the FROM package, so it shows whether SAP created them.
     static func logI2(_ detail: String) {
-        print("\(prefix) I2: \(detail).")
+        print("\(prefix) I2: \(detail)")
     }
 
     static func logSynchronizationStage(_ stage: Int, _ detail: String) {

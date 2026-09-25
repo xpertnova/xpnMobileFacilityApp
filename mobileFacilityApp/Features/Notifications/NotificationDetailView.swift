@@ -10,6 +10,7 @@ struct NotificationDetailView: View {
     @State private var editingCommentID: String?
     @State private var isCloseConfirmationPresented = false
     @State private var photoWorkspaceItemID: String?
+    @State private var isMeasuringPointsPresented = false
 
     init(
         detail: SAPNotificationDetail,
@@ -62,6 +63,15 @@ struct NotificationDetailView: View {
                 NotificationCommentEditorOverlay(
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
+                )
+            } else if isMeasuringPointsPresented, let points = model.measuringPoints, !points.isEmpty {
+                MeasuringPointsView(
+                    functionalLocationID: model.measuringPointLocationID,
+                    points: points,
+                    readings: model.meterReadings,
+                    isReadOnly: isEditingDisabled,
+                    save: { await model.saveMeterReadings($0) },
+                    dismiss: { isMeasuringPointsPresented = false }
                 )
             }
         }
@@ -182,8 +192,12 @@ struct NotificationDetailView: View {
     }
 
     private var formItems: [InspectionFormItem] {
-        detail.inspectionItems.enumerated().map { index, item in
-            item.inspectionFormItem(number: index + 1)
+        let availability = InspectionFormMeasuringPointAvailability(
+            points: model.measuringPoints,
+            isLoading: model.isLoading
+        )
+        return detail.inspectionItems.enumerated().map { index, item in
+            item.inspectionFormItem(number: index + 1, measuringPoints: availability)
         }
     }
 
@@ -195,7 +209,9 @@ struct NotificationDetailView: View {
                 InspectionFormItemState(
                     resultID: model.results[item.id]?.optionID,
                     comment: model.comments[item.id, default: ""],
-                    photoCount: model.attachments(for: item.id).count
+                    photoCount: model.attachments(for: item.id).count,
+                    readingCount: item.measuringPoint == nil ? 0 : model.meterReadings.count,
+                    pointCount: model.measuringPoints?.count ?? 0
                 )
             },
             isEditable: !isEditingDisabled,
@@ -227,6 +243,10 @@ struct NotificationDetailView: View {
                 editComment: { item in
                     guard !isEditingDisabled else { return }
                     editingCommentID = item.id
+                },
+                openMeasuringPoints: { _ in
+                    guard model.hasMeasuringPoints else { return }
+                    isMeasuringPointsPresented = true
                 }
             )
         )
@@ -249,9 +269,7 @@ struct NotificationDetailView: View {
     private var actionBar: some View {
         FacilityInspectionActionBar(
             markEverythingOkay: {
-                for item in detail.inspectionItems {
-                    model.results[item.id] = .no
-                }
+                model.markEverythingOkay()
             },
             saveDraft: {
                 isSaveDraftConfirmationPresented = true
@@ -291,6 +309,8 @@ private extension NotificationReviewViewModel.Feedback {
         case .cameraUnavailable: "notifications.detail.photo.cameraUnavailable"
         case .cameraPermissionDenied: "notifications.detail.photo.cameraPermissionDenied"
         case .i2NotificationsQueued: "i2.selection.success"
+        case .meterReadingsSaved: "measuringPoints.saved"
+        case .meterReadingsFailed: "measuringPoints.saveFailed"
         }
     }
 }

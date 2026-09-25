@@ -100,7 +100,7 @@ enum I2NotificationRules {
     ) -> [I2DefectCandidate] {
         let rows = planRows(rawPayloadJSON: detail.summary.rawPayloadJSON)
         return detail.inspectionItems.enumerated().compactMap { index, item in
-            guard results[item.id] == .yes else { return nil }
+            guard !item.isMeasuringPointEntry, results[item.id] == .yes else { return nil }
             let header = headerText(
                 operation: operation(fromElementID: item.resultElementID),
                 planRows: rows,

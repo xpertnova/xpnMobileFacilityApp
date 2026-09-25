@@ -18,7 +18,7 @@ private actor LegacyIncomingSynchronizationRegistry {
 
 private let legacyIncomingSynchronizationRegistry = LegacyIncomingSynchronizationRegistry()
 
-actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, I2NotificationReading, I2NotificationTemplateProviding, I3NotificationContextProviding, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
+actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchronizationStore, SAPNotificationOutgoingStore, I2NotificationReading, I2NotificationTemplateProviding, I2NotificationDiagnosticsReading, DefectParentNotificationProviding, MeasuringPointProviding, I3NotificationContextProviding, MobileLadderCreationProviding, ElevatorAssetDataProviding, SubdistributionCreationProviding {
     private static let metadataCategory = "MOBILE_FACILITY_APP"
     private static let refreshParameter = "LAST_SUCCESSFUL_REFRESH_AT"
     private static let workerParameter = "SAP_WORKER_ID"
@@ -159,6 +159,48 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             .first
     }
 
+    /// `select.getMeasuringPoints`: the first `FROM_T0274` row of the place.
+    /// A place without points arrives as a row whose arrays are empty.
+    func loadMeasuringPoints(functionalLocationID: String) async throws -> [SAPMeasuringPoint] {
+        try validateWorker(localWorkerID ?? "")
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        guard !functionalLocationID.isEmpty else { return [] }
+        let schema = try Self.schema(named: "FROM_T0274")
+        let rows = try Self.query(
+            on: database,
+            "SELECT MEASURMENT_POINT, MEASURMENT_BELEG FROM \(schema.name) WHERE STRNO = ? LIMIT 1",
+            bindings: [functionalLocationID]
+        ) { statement in
+            (Self.string(at: 0, from: statement), Self.string(at: 1, from: statement))
+        }
+        guard let row = rows.first else { return [] }
+        return SAPMeasuringPoint.points(
+            fromPointObjects: SAPLegacyDataExchangeCodec.decodedFeldwertObjects(row.0),
+            historyObjects: SAPLegacyDataExchangeCodec.decodedFeldwertObjects(row.1)
+        )
+    }
+
+    func loadAllMeasuringPoints() async throws -> [String: [SAPMeasuringPoint]] {
+        try validateWorker(localWorkerID ?? "")
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let schema = try Self.schema(named: "FROM_T0274")
+        let rows = try Self.query(
+            on: database,
+            "SELECT STRNO, MEASURMENT_POINT, MEASURMENT_BELEG FROM \(schema.name) ORDER BY STRNO"
+        ) { statement in
+            (Self.string(at: 0, from: statement), Self.string(at: 1, from: statement), Self.string(at: 2, from: statement))
+        }
+        var result: [String: [SAPMeasuringPoint]] = [:]
+        for row in rows where !row.0.isEmpty && result[row.0] == nil {
+            let points = SAPMeasuringPoint.points(
+                fromPointObjects: SAPLegacyDataExchangeCodec.decodedFeldwertObjects(row.1),
+                historyObjects: SAPLegacyDataExchangeCodec.decodedFeldwertObjects(row.2)
+            )
+            if !points.isEmpty { result[row.0] = points }
+        }
+        return result
+    }
+
     func loadI2Notifications(
         for object: I2NotificationObjectReference
     ) async throws -> [SAPI2NotificationSummary] {
@@ -215,6 +257,45 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     /// The rows `getItemNewMeldung` reads for a new I3 notification.
+    func i2NotificationsForDiagnostics(
+        reporter: String
+    ) async throws -> (total: Int, withoutReference: Int, byReporter: [[String: String]]) {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let columns = ["QMNUM", "REFNUM", "QMCOD", "PRIOK", "QMTXT", "QMNAM", "STRNO", "TPLNR", "EQUNR", "STRMN", "STRUR", "STTXT"]
+        let rows = try Self.query(
+            on: database,
+            "SELECT \(columns.joined(separator: ", ")) FROM FROM_T0271 WHERE QMART = 'I2' ORDER BY STRMN DESC, STRUR DESC"
+        ) { statement in
+            Dictionary(uniqueKeysWithValues: columns.enumerated().map { ($1, Self.string(at: Int32($0), from: statement)) })
+        }
+        return (
+            rows.count,
+            rows.filter { ($0["REFNUM"] ?? "").isEmpty }.count,
+            rows.filter { ($0["QMNAM"] ?? "").caseInsensitiveCompare(reporter) == .orderedSame }
+        )
+    }
+
+    /// The open I1s of the package, as the notification list reads them
+    /// (`QMART = I1`, not `MMAB`), without decoding their plans.
+    func loadDefectParentNotifications(for localWorkerID: String) async throws -> [DefectParentNotification] {
+        try validateWorker(localWorkerID)
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        return try Self.query(
+            on: database,
+            "SELECT QMNUM, QMTXT, STRNO, EQUNR, STRMN FROM FROM_T0271 "
+                + "WHERE UPPER(QMART) = 'I1' AND UPPER(COALESCE(STTXT, '')) <> 'MMAB' AND COALESCE(QMNUM, '') <> '' "
+                + "ORDER BY STRMN DESC, QMNUM DESC"
+        ) { statement in
+            DefectParentNotification(
+                id: Self.string(at: 0, from: statement),
+                title: Self.string(at: 1, from: statement),
+                functionalLocationID: Self.string(at: 2, from: statement),
+                equipmentID: Self.string(at: 3, from: statement),
+                startDate: Self.string(at: 4, from: statement)
+            )
+        }
+    }
+
     func loadI3NotificationContext(
         functionalLocationID: String,
         planNumber: String,
@@ -771,11 +852,12 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             parent = parentObject.parent
         }
         guard let database else { throw SAPReadError.serviceUnavailable }
-        let notifications = try Self.notifications(on: database).filter {
-            reference.kind == .equipment
-                ? $0.equipmentID == reference.objectID
-                : $0.functionalLocationID == reference.objectID
-        }
+        let notifications = try await indexedNotifications(for: localWorkerID, of: reference, on: database)
+            ?? Self.notifications(on: database).filter {
+                reference.kind == .equipment
+                    ? $0.equipmentID == reference.objectID
+                    : $0.functionalLocationID == reference.objectID
+            }
         if reference.kind == .functionalLocation {
             return .functionalLocation(FunctionalLocationDetail(
                 object: object,
@@ -1077,23 +1159,6 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             )
             throw error
         }
-        // Diagnostics: the I2 notifications SAP returned, newest first, so an
-        // I2 sent in the TO request can be recognised by its `REFNUM`.
-        if let i2Rows = try? Self.query(
-            on: database,
-            "SELECT QMNUM, REFNUM, QMCOD, STTXT, QMNAM, STRMN, TPLNR FROM FROM_T0271 WHERE QMART = 'I2' "
-                + "ORDER BY STRMN DESC, QMNUM DESC LIMIT 10"
-        ) { statement in
-            (Int32(0)..<7).map { Self.string(at: $0, from: statement) }.joined(separator: " ")
-        } {
-            let total = (try? Self.query(on: database, "SELECT COUNT(*) FROM FROM_T0271 WHERE QMART = 'I2'") {
-                SQLiteC.columnInt($0, 0)
-            }.first) ?? 0
-            SAPSynchronizationDiagnostics.logI2(
-                "FROM package holds \(total) I2 notification(s); newest [QMNUM REFNUM QMCOD STTXT QMNAM STRMN TPLNR]: "
-                    + i2Rows.joined(separator: " | ")
-            )
-        }
         if let metadata = try? Self.metadata(on: database) {
             await rebuildNotificationListIndexIfNeeded(
                 for: localWorkerID ?? sapWorkerID,
@@ -1177,7 +1242,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         i2Notifications: [LegacySAPRow],
         i2Documents: [LegacySAPRow],
         i3Notifications: [LegacySAPRow],
-        i3Documents: [LegacySAPRow]
+        i3Documents: [LegacySAPRow],
+        meterReadings: [LegacySAPRow]
     ) async throws {
         guard let database else { throw SAPReadError.serviceUnavailable }
         let headerSchema = try Self.schema(named: "TO_T0281")
@@ -1190,6 +1256,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let i2DocumentSchema = try Self.schema(named: "TO_T0285")
         let i3NotificationSchema = try Self.schema(named: "TO_T0300")
         let i3DocumentSchema = try Self.schema(named: "TO_T0302")
+        let meterReadingSchema = try Self.schema(named: "TO_T0286")
         try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
         do {
             // `TO_T0284` has no process number. Its temporary `QMNUM` is kept
@@ -1246,6 +1313,15 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             for row in i2Documents { try Self.insert(row: row, into: i2DocumentSchema, on: database) }
             for row in i3Notifications { try Self.insert(row: row, into: i3NotificationSchema, on: database) }
             for row in i3Documents { try Self.insert(row: row, into: i3DocumentSchema, on: database) }
+            // `inserItemTO_T0286` replaces the place's pending readings.
+            for locationID in Set(meterReadings.compactMap { $0["STRNO"] ?? nil }) where !locationID.isEmpty {
+                try Self.execute(
+                    on: database,
+                    "DELETE FROM \(meterReadingSchema.name) WHERE STRNO = ?",
+                    bindings: [locationID]
+                )
+            }
+            for row in meterReadings { try Self.insert(row: row, into: meterReadingSchema, on: database) }
             try Self.execute(on: database, "COMMIT")
         } catch {
             try? Self.execute(on: database, "ROLLBACK")
@@ -1331,6 +1407,30 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             structuralFilter: structuralFilter,
             limit: limit,
             offset: offset
+        )
+    }
+
+    /// The notifications linked to one technical object, read from the list
+    /// projection. `nil` when the projection is not current, so the caller
+    /// falls back to decoding the legacy rows.
+    private func indexedNotifications(
+        for workerID: String,
+        of reference: TechnicalObjectReference,
+        on database: OpaquePointer
+    ) async -> [SAPNotificationSummary]? {
+        guard let metadata = try? Self.metadata(on: database),
+              let notificationListIndex,
+              (try? await notificationListIndex.isCurrent(
+                for: workerID,
+                sourceVersion: Self.notificationIndexSourceVersion(metadata)
+              )) == true
+        else {
+            return nil
+        }
+        return try? await notificationListIndex.loadNotifications(
+            for: workerID,
+            functionalLocationID: reference.kind == .equipment ? nil : reference.objectID,
+            equipmentID: reference.kind == .equipment ? reference.objectID : nil
         )
     }
 

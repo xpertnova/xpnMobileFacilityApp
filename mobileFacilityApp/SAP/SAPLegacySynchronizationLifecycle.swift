@@ -78,14 +78,16 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
     func run(progress: @escaping SAPReadRefreshProgressHandler) async throws -> SAPCachedData {
         if let pending = try await store.pendingSynchronization(),
            let fromRequestID = try await finishInterrupted(pending, progress: progress) {
-            return try await receiveIncoming(fromRequestID: fromRequestID, progress: progress)
+            let cachedData = try await receiveIncoming(fromRequestID: fromRequestID, progress: progress)
+            await logI2Arrival([])
+            return cachedData
         }
 
         // SAP prepares the FROM package only after the regular TO lifecycle,
         // including an otherwise-empty M0002001 payload.
         let toRequestID = makeRequestID("MTFMSYNCTO")
         let fromRequestID = makeRequestID("MTFMSYNCFROM")
-        try await upload(requestID: toRequestID, progress: progress)
+        let sentI2Notifications = try await upload(requestID: toRequestID, progress: progress)
 
         SAPSynchronizationDiagnostics.logSynchronizationStep("Checking app version")
         await progress(.checkingAppVersion)
@@ -104,7 +106,9 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
             await store.abortIncomingRequest(requestID: fromRequestID)
             throw message.map(SAPReadError.backendMessage) ?? .malformedPayload
         }
-        return try await receiveIncoming(fromRequestID: fromRequestID, progress: progress)
+        let cachedData = try await receiveIncoming(fromRequestID: fromRequestID, progress: progress)
+        await logI2Arrival(sentI2Notifications)
+        return cachedData
     }
 
     // MARK: - Interrupted synchronization
@@ -181,25 +185,30 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
 
     // MARK: - TO request
 
+    /// Returns the `TO_T0284` I2 notifications SAP confirmed.
     private func upload(
         requestID: String,
         progress: @escaping SAPReadRefreshProgressHandler
-    ) async throws {
+    ) async throws -> [LegacySAPRow] {
         SAPSynchronizationDiagnostics.logSynchronizationStage(1, "Uploading TO metadata")
         // Preparing the local outgoing queue can fail before any SAP request.
         // Report that work as the upload stage so the dialog never attributes
         // a local queue error to the already-completed password check.
         await progress(.uploadingOutgoingMetadata)
         let batch = try await outgoingWork?.prepare() ?? .empty
+        let sentI2Notifications: [LegacySAPRow]
         do {
             let payload = try await store.stageOutgoing(requestID: requestID, batch: batch.manifest)
-            SAPSynchronizationDiagnostics.logI2(
-                "TO request carries T_0281=\(payload.T_0281.count) T_0282=\(payload.T_0282.count) " +
-                    "T_0284=\(payload.T_0284.count) T_0285=\(payload.T_0285.count) " +
-                    "T_0300=\(payload.T_0300.count) T_0302=\(payload.T_0302.count); " +
-                    "batch built \(batch.i2Notifications.count) I2 row(s), " +
-                    "\(batch.i2Documents.count) I2 document(s)"
-            )
+            sentI2Notifications = payload.T_0284
+            for row in payload.T_0284 {
+                SAPSynchronizationDiagnostics.logI2("sending \(Self.i2Description(row))")
+            }
+            if !payload.T_0284.isEmpty || !payload.T_0285.isEmpty {
+                SAPSynchronizationDiagnostics.logI2(
+                    "TO request \(requestID) carries \(payload.T_0284.count) I2 notification(s) (T_0284) "
+                        + "and \(payload.T_0285.count) I2 photo row(s) (T_0285)"
+                )
+            }
             try await client.sendOutgoingMetadata(payload, requestID: requestID)
             try await store.recordSynchronizationStep(.outgoingMetadataSent, requestID: requestID)
             SAPSynchronizationDiagnostics.logSynchronizationStage(2, "TO rows staged with request ID")
@@ -221,6 +230,11 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
                     notificationType: entry.notificationType,
                     requestID: requestID
                 )
+                if entry.notificationType == "I2" {
+                    SAPSynchronizationDiagnostics.logI2(
+                        "photo \(entry.document.metadata["NAME"] ?? "") of \(entry.document.metadata["QMNUM"] ?? "") uploaded"
+                    )
+                }
             }
 
             SAPSynchronizationDiagnostics.logSynchronizationStage(3, "Triggering TO post")
@@ -247,13 +261,78 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
         )
         switch outcome {
         case .completed:
+            if !sentI2Notifications.isEmpty {
+                SAPSynchronizationDiagnostics.logI2("MMTFM002 confirmed TO request \(requestID)")
+            }
             try await settleConfirmedOutgoing(requestID: requestID, batch: batch.manifest)
+            return sentI2Notifications
         case let .notAccepted(message):
+            if !sentI2Notifications.isEmpty {
+                SAPSynchronizationDiagnostics.logI2(
+                    "MMTFM002 did NOT accept TO request \(requestID): \(message ?? "no message")"
+                )
+            }
             let error = message.map(SAPReadError.backendMessage) ?? .malformedPayload
             await store.abortOutgoing(requestID: requestID)
             await outgoingWork?.fail(batch.manifest, error: error)
             throw error
         }
+    }
+
+    /// Looks each sent I2 up in the FROM package just received. SAP answers
+    /// with its own `QMNUM`, so the notification is recognised by reporter,
+    /// short text and `REFNUM`, on whichever object SAP filed it; the date
+    /// tells an older twin apart.
+    private func logI2Arrival(_ sent: [LegacySAPRow]) async {
+        guard let reader = store as? any I2NotificationDiagnosticsReading else { return }
+        func value(_ key: String, in row: LegacySAPRow) -> String { (row[key] ?? nil) ?? "" }
+        let reporter = sent.first.map { value("QMNAM", in: $0) } ?? sapWorkerID.uppercased()
+        let package: (total: Int, withoutReference: Int, byReporter: [[String: String]])
+        do {
+            package = try await reader.i2NotificationsForDiagnostics(reporter: reporter)
+        } catch {
+            SAPSynchronizationDiagnostics.logI2("FROM package could not be read: \(error)")
+            return
+        }
+        let withoutReference = package.byReporter.filter { ($0["REFNUM"] ?? "").isEmpty }
+        SAPSynchronizationDiagnostics.logI2(
+            "FROM package holds \(package.total) I2 (\(package.withoutReference) without REFNUM), "
+                + "\(package.byReporter.count) by \(reporter) (\(withoutReference.count) without REFNUM)"
+        )
+        for row in sent {
+            // SAP keeps 40 characters of `QMTXT`.
+            let shortText = String(value("QMTXT", in: row).prefix(40))
+            let matches = package.byReporter.filter {
+                String(($0["QMTXT"] ?? "").prefix(40)) == shortText && ($0["REFNUM"] ?? "") == value("REFNUM", in: row)
+            }
+            if matches.isEmpty {
+                SAPSynchronizationDiagnostics.logI2("\(value("QMNUM", in: row)) NOT in the FROM package")
+            } else {
+                let found = matches.map { match in
+                    ["QMNUM", "STRNO", "TPLNR", "EQUNR", "QMCOD", "PRIOK", "STRMN", "STRUR", "STTXT"]
+                        .map { "\($0)=\(match[$0] ?? "")" }
+                        .joined(separator: " ")
+                }
+                SAPSynchronizationDiagnostics.logI2(
+                    "\(value("QMNUM", in: row)) arrived in SAP as " + found.joined(separator: " ; ")
+                )
+            }
+        }
+        // The newest ones without a parent, also after a synchronization that
+        // sent none, in case SAP creates them later.
+        for row in withoutReference.prefix(5) {
+            SAPSynchronizationDiagnostics.logI2(
+                "without REFNUM: " + ["QMNUM", "QMTXT", "STRNO", "TPLNR", "EQUNR", "STRMN", "STRUR", "STTXT"]
+                    .map { "\($0)=\(row[$0] ?? "")" }
+                    .joined(separator: " ")
+            )
+        }
+    }
+
+    private static func i2Description(_ row: LegacySAPRow) -> String {
+        ["QMNUM", "QMART", "REFNUM", "QMCOD", "PRIOK", "MANDT", "STRNO", "EQUNR", "QMNAM", "QMTXT"]
+            .map { "\($0)=\((row[$0] ?? nil) ?? "")" }
+            .joined(separator: " ")
     }
 
     /// `deleteAfterSuccessByPost`.

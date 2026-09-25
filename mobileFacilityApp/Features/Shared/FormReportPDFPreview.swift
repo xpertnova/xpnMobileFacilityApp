@@ -16,6 +16,15 @@ struct FormReportPDFArtifact: Identifiable, Equatable {
         self.fileName = "Bericht_\(NotificationReportFormat.withoutLeadingZeros(notificationID)).pdf"
         self.data = data
     }
+
+    /// For documents that are not a notification report — a QR label, for
+    /// instance — which reuse the same preview and share sheet.
+    init?(id: String, fileName: String, data: Data?) {
+        guard let data, !data.isEmpty else { return nil }
+        self.id = id
+        self.fileName = fileName
+        self.data = data
+    }
 }
 
 /// Paperclip next to a closed notification in the local-work and defect
@@ -53,6 +62,9 @@ struct FormReportPaperclipButton: View {
 
 struct FormReportPDFPreview: View {
     let report: FormReportPDFArtifact
+    /// Names the document in the preview's title bar. Defaults to the
+    /// notification report this view was written for.
+    var titleKey: LocalizedStringKey = "report.preview.title"
 
     @Environment(\.dismiss) private var dismiss
     @State private var shareURL: URL?
@@ -61,7 +73,7 @@ struct FormReportPDFPreview: View {
         NavigationStack {
             BriefingPDFDocumentView(data: report.data)
                 .ignoresSafeArea(edges: .bottom)
-                .navigationTitle("report.preview.title")
+                .navigationTitle(titleKey)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {

@@ -412,11 +412,14 @@ struct DemoMobileLadderCreationProvider: MobileLadderCreationProviding {
     }
 }
 
+/// A new form carries the place it was opened from in the route itself, so
+/// the form reads it on every load instead of taking a one-shot value that a
+/// restarted `.task` would already have consumed.
 enum TechnicalPlacesRoute: Equatable {
     case hierarchy
-    case createMobileLadder
+    case createMobileLadder(TechnicalPlaceCreationAnchor?)
     case mobileLadderDraft(UUID)
-    case createSubdistribution
+    case createSubdistribution(TechnicalPlaceCreationAnchor?)
     case subdistributionDraft(UUID)
 }
 

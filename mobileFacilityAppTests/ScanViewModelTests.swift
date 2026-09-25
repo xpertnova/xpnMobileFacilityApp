@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class ScanViewModelTests: XCTestCase {
-    private let code = LegacyQRCodeCodec.encodeDemoMTFM(functionalLocationID: "FL-1")
+    private let code = LegacyQRCodeCodec.encodeMTFM(functionalLocationID: "FL-1")
 
     func testCancellingARescanKeepsEarlierResults() async throws {
         var openedIDs: [String] = []

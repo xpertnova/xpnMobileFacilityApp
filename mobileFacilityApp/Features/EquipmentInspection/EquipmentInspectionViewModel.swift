@@ -776,12 +776,6 @@ final class EquipmentInspectionViewModel {
             persistedDraft = draft
             // `_afterSetMeldung` offers the deficient positions for I2
             // notifications instead of finishing the form.
-            if closed {
-                SAPSynchronizationDiagnostics.logI2(
-                    "form closed: user may create I2 \(canCreateI2Defects), " +
-                        "\(i2Candidates.count) defective position(s) offered"
-                )
-            }
             let offersI2 = closed && canCreateI2Defects && i2Selection.present(i2Candidates)
             if !offersI2 {
                 feedback = closed ? .closedLocally : .savedLocally
@@ -798,17 +792,12 @@ final class EquipmentInspectionViewModel {
     /// left straight away as `onDefectPosItemAccept` does.
     func acceptI2Selection() async -> Bool {
         let requests = i2Selection.accept()
-        SAPSynchronizationDiagnostics.logI2(
-            "dialog accepted with \(requests.count) request(s), closed draft present: " +
-                "\(persistedDraft?.isClosedLocally == true)"
-        )
         guard !requests.isEmpty, var draft = persistedDraft, draft.isClosedLocally else { return false }
         isSaving = true
         defer { isSaving = false }
         draft.i2Requests = requests
         do {
             _ = try await offlineWorkStore.saveElevatorInspection(draft)
-            SAPSynchronizationDiagnostics.logI2("stored \(requests.count) request(s) with the closed form")
             persistedDraft = draft
             feedback = .i2NotificationsQueued
         } catch {

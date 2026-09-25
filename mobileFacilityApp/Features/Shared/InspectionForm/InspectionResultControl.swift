@@ -115,6 +115,31 @@ struct InspectionControlPlaceholder: View {
     }
 }
 
+/// The legacy `getReadingButton`: an emphasized button labelled with the
+/// row's `DFVAL_TXT` that opens the measuring points of the place.
+struct InspectionMeasuringPointButton: View {
+    let title: String
+    let isEnabled: Bool
+    let open: () -> Void
+
+    var body: some View {
+        Button(action: open) {
+            Label {
+                Text(title.isEmpty ? String(localized: "measuringPoints.button.fallback") : title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            } icon: {
+                Image(systemName: "gauge.with.dots.needle.33percent")
+            }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.bordered)
+        .tint(FacilityTheme.blue)
+        .disabled(!isEnabled)
+    }
+}
+
 /// The material checkbox of the dropdown forms (legacy `T_PROPS` `CBOX`).
 struct InspectionMaterialCheckbox: View {
     let isSelected: Bool

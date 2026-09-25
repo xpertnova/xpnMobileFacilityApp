@@ -27,6 +27,9 @@ struct InspectionFormItem: Identifiable, Equatable, Sendable {
     /// TFM7 photo documentation is complete only when the linked comment is
     /// saved as well as a JPEG.
     let requiresPhotoAndComment: Bool
+    /// Set for a legacy `USR00 == "MEASURE"` row, which opens the measuring
+    /// points instead of taking a result.
+    let measuringPoint: InspectionFormMeasuringPoint?
 
     init(
         id: String,
@@ -39,7 +42,8 @@ struct InspectionFormItem: Identifiable, Equatable, Sendable {
         supportsMaterial: Bool = false,
         requiresResult: Bool = true,
         requiresPhoto: Bool = false,
-        requiresPhotoAndComment: Bool = false
+        requiresPhotoAndComment: Bool = false,
+        measuringPoint: InspectionFormMeasuringPoint? = nil
     ) {
         self.id = id
         self.number = number
@@ -52,7 +56,17 @@ struct InspectionFormItem: Identifiable, Equatable, Sendable {
         self.requiresResult = requiresResult
         self.requiresPhoto = requiresPhoto
         self.requiresPhotoAndComment = requiresPhotoAndComment
+        self.measuringPoint = measuringPoint
     }
+}
+
+/// The reading button of a `MEASURE` row (`Rundgang.getReadingButton`).
+struct InspectionFormMeasuringPoint: Equatable, Sendable {
+    /// `T_PROPS[0].DFVAL_TXT`, e.g. "Messpunkt".
+    let buttonTitle: String
+    /// Shown under the position, and the button disabled, when the screen
+    /// behind it would have nothing to show.
+    let unavailableReasonKey: String?
 }
 
 /// The technician-entered state of one inspection position.
@@ -71,6 +85,9 @@ struct InspectionFormItemState: Equatable, Sendable {
     /// Additional live validation supplied by a workflow when it has rules
     /// beyond the shared inspection constraints.
     var isFlagged: Bool
+    /// Readings entered for a `MEASURE` row, out of `pointCount`.
+    var readingCount: Int
+    var pointCount: Int
 
     init(
         resultID: String? = nil,
@@ -78,7 +95,9 @@ struct InspectionFormItemState: Equatable, Sendable {
         isMaterialSelected: Bool = false,
         comment: String = "",
         photoCount: Int = 0,
-        isFlagged: Bool = false
+        isFlagged: Bool = false,
+        readingCount: Int = 0,
+        pointCount: Int = 0
     ) {
         self.resultID = resultID
         self.actionID = actionID
@@ -86,6 +105,8 @@ struct InspectionFormItemState: Equatable, Sendable {
         self.comment = comment
         self.photoCount = photoCount
         self.isFlagged = isFlagged
+        self.readingCount = readingCount
+        self.pointCount = pointCount
     }
 }
 
@@ -115,19 +136,22 @@ struct InspectionFormActions {
     var toggleMaterial: (InspectionFormItem) -> Void
     var openPhotos: (InspectionFormItem) -> Void
     var editComment: (InspectionFormItem) -> Void
+    var openMeasuringPoints: (InspectionFormItem) -> Void
 
     init(
         selectResult: @escaping (InspectionFormItem, InspectionFormOption) -> Void,
         selectAction: @escaping (InspectionFormItem, InspectionFormOption) -> Void = { _, _ in },
         toggleMaterial: @escaping (InspectionFormItem) -> Void = { _ in },
         openPhotos: @escaping (InspectionFormItem) -> Void,
-        editComment: @escaping (InspectionFormItem) -> Void
+        editComment: @escaping (InspectionFormItem) -> Void,
+        openMeasuringPoints: @escaping (InspectionFormItem) -> Void = { _ in }
     ) {
         self.selectResult = selectResult
         self.selectAction = selectAction
         self.toggleMaterial = toggleMaterial
         self.openPhotos = openPhotos
         self.editComment = editComment
+        self.openMeasuringPoints = openMeasuringPoints
     }
 }
 
@@ -429,11 +453,17 @@ struct InspectionFormRow: View {
             HStack(spacing: 10) {
                 NotificationInfoButton(information: item.information)
 
-                Text(item.title)
-                    .font(.body)
-                    .foregroundStyle(FacilityTheme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.body)
+                        .foregroundStyle(FacilityTheme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let measuringPoint = item.measuringPoint {
+                        measuringPointCaption(measuringPoint)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 // The legacy wrench cell, kept inside the position column so
                 // the shared column geometry does not change.
@@ -451,7 +481,14 @@ struct InspectionFormRow: View {
                 alignment: .leading
             )
 
-            if item.requiresResult {
+            if let measuringPoint = item.measuringPoint {
+                InspectionMeasuringPointButton(
+                    title: measuringPoint.buttonTitle,
+                    isEnabled: measuringPoint.unavailableReasonKey == nil,
+                    open: { actions.openMeasuringPoints(item) }
+                )
+                .frame(width: InspectionFormMetrics.resultColumn)
+            } else if item.requiresResult {
                 resultControl
                     .frame(width: InspectionFormMetrics.resultColumn)
             } else {
@@ -507,7 +544,7 @@ struct InspectionFormRow: View {
         switch InspectionFormRowStatus.resolve(
             issues: issues,
             isFlagged: state.isFlagged,
-            hasResult: state.resultID != nil
+            hasResult: state.resultID != nil || state.readingCount > 0
         ) {
         case .exception:
             Image(systemName: "exclamationmark.triangle.fill")
@@ -521,6 +558,22 @@ struct InspectionFormRow: View {
                 .accessibilityLabel(Text("inspection.status.valid"))
         case .none:
             Color.clear
+        }
+    }
+
+    /// The legacy table says nothing here; the reason is shown before the
+    /// tap instead of on an empty screen, and the count shows what is saved.
+    @ViewBuilder
+    private func measuringPointCaption(_ measuringPoint: InspectionFormMeasuringPoint) -> some View {
+        if let reasonKey = measuringPoint.unavailableReasonKey {
+            Label(LocalizedStringKey(reasonKey), systemImage: "info.circle")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if state.readingCount > 0 {
+            Text("measuringPoints.row.recorded \(state.readingCount) \(state.pointCount)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -55,16 +55,6 @@
         }
       }
     },
-    "%@ (%@)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ (%2$@)"
-          }
-        }
-      }
-    },
     "%@. %@" : {
       "localizations" : {
         "en" : {
@@ -2902,6 +2892,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saved locally"
+          }
+        }
+      }
+    },
+    "dropdown.search.empty" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Treffer"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No matches"
           }
         }
       }
@@ -8163,6 +8169,23 @@
         }
       }
     },
+    "manual.defect.category" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategorie"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Category"
+          }
+        }
+      }
+    },
     "manual.defect.create" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -8277,6 +8300,73 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Notification object (technical place or equipment)"
+          }
+        }
+      }
+    },
+    "manual.defect.object.noParent" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine offene I1-Meldung – SAP legt eine Störungsmeldung nur zu einer I1-Meldung an."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No open I1 notification – SAP creates a defect report only under an I1 notification."
+          }
+        }
+      }
+    },
+    "manual.defect.parent" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I1-Meldung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I1 notification"
+          }
+        }
+      }
+    },
+    "manual.defect.parent.none" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Objekt hat keine offene I1-Meldung. SAP legt eine Störungsmeldung (I2) nur zu einer I1-Meldung an."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This object has no open I1 notification. SAP creates a defect report (I2) only under an I1 notification."
+          }
+        }
+      }
+    },
+    "manual.defect.parent.search" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I1-Meldung oder Text suchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search I1 notification or text"
           }
         }
       }
@@ -8573,13 +8663,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Messbeleg lokal buchen"
+            "value" : "Messbeleg buchen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Record locally"
+            "value" : "Record reading"
           }
         }
       }
@@ -8714,6 +8804,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gas"
+          }
+        }
+      }
+    },
+    "manual.meter.kind.heat" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wärme"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heat"
           }
         }
       }
@@ -9340,6 +9447,300 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Manual capture"
+          }
+        }
+      }
+    },
+    "measuringPoints.button.fallback" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messpunkt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Measuring point"
+          }
+        }
+      }
+    },
+    "measuringPoints.issue.belowLastReading %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Darf nicht unter dem letzten Stand liegen (%@)."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Must not be below the last reading (%@)."
+          }
+        }
+      }
+    },
+    "measuringPoints.issue.tooManyDecimals %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höchstens %lld Nachkommastellen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "At most %lld decimal places."
+          }
+        }
+      }
+    },
+    "measuringPoints.lastReading %@ %@ %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzter Stand: %1$@ %2$@ am %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last reading: %1$@ %2$@ on %3$@"
+          }
+        }
+      }
+    },
+    "measuringPoints.lastReading.none" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein bisheriger Zählerstand in SAP"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No previous reading in SAP"
+          }
+        }
+      }
+    },
+    "measuringPoints.point %@ %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messpunkt %1$@ · %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Point %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "measuringPoints.readOnly" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Meldung ist abgeschlossen. Zählerstände können nur angesehen werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The notification is closed. Readings can only be viewed."
+          }
+        }
+      }
+    },
+    "measuringPoints.row.loading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messpunkte werden geladen …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading measuring points …"
+          }
+        }
+      }
+    },
+    "measuringPoints.row.none" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Platz sind in SAP keine Messpunkte hinterlegt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP has no measuring points for this place."
+          }
+        }
+      }
+    },
+    "measuringPoints.row.recorded %@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "measuringPoints.row.recorded %1$@ %2$@"
+          }
+        }
+      }
+    },
+    "measuringPoints.row.recorded %lld %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld von %2$lld Zählerständen erfasst"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld of %2$lld readings recorded"
+          }
+        }
+      }
+    },
+    "measuringPoints.row.unreadable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messpunkte konnten nicht gelesen werden. Bitte synchronisieren und erneut versuchen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Measuring points could not be read. Synchronize and try again."
+          }
+        }
+      }
+    },
+    "measuringPoints.save" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zählerstände speichern"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save readings"
+          }
+        }
+      }
+    },
+    "measuringPoints.saved" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zählerstände werden mit der nächsten Synchronisierung an SAP übertragen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The meter readings will be sent to SAP with the next synchronization."
+          }
+        }
+      }
+    },
+    "measuringPoints.saveFailed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zählerstände konnten nicht gespeichert werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The meter readings could not be saved."
+          }
+        }
+      }
+    },
+    "measuringPoints.text.placeholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text (optional, max. 40 Zeichen)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text (optional, max. 40 characters)"
+          }
+        }
+      }
+    },
+    "measuringPoints.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zählerstände"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meter readings"
+          }
+        }
+      }
+    },
+    "measuringPoints.value.placeholder" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zählerstand"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reading"
           }
         }
       }
@@ -12841,6 +13242,107 @@
         }
       }
     },
+    "places.detail.action.childPlace" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untergeordneten TP anlegen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create subordinate functional location"
+          }
+        }
+      }
+    },
+    "places.detail.action.childPlace.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Anlegen untergeordneter Technischer Plätze (IL01) wird verfügbar, sobald der SAP-Schreibvertrag bestätigt ist."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Creating subordinate functional locations (IL01) will be available after the SAP write contract is confirmed."
+          }
+        }
+      }
+    },
+    "places.detail.action.defect" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Störungsmeldung anlegen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create fault notification"
+          }
+        }
+      }
+    },
+    "places.detail.action.defect.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Störungsmeldung nicht möglich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Defect report not possible"
+          }
+        }
+      }
+    },
+    "places.detail.action.installEquipment" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment einbauen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Install equipment"
+          }
+        }
+      }
+    },
+    "places.detail.actions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktionen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actions"
+          }
+        }
+      }
+    },
     "places.detail.back" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -13209,6 +13711,22 @@
         }
       }
     },
+    "places.detail.segments" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Identifikations-Segmente"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Identifier segments"
+          }
+        }
+      }
+    },
     "places.detail.serial" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -13395,6 +13913,227 @@
         }
       }
     },
+    "places.install.mobileLadder.noContext %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Platz gibt es in SAP kein Gewerk %@ (Leitern und Tritte)."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SAP has no trade %@ (ladders and steps) for this location."
+          }
+        }
+      }
+    },
+    "places.install.mobileLadder.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobile Leiter nicht möglich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mobile ladder not possible"
+          }
+        }
+      }
+    },
+    "places.install.noBusinessEntity" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Technische Platz gehört zu keiner Wirtschaftseinheit, daher kann hier kein Equipment eingebaut werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This functional location belongs to no business entity, so no equipment can be installed here."
+          }
+        }
+      }
+    },
+    "places.install.noData" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen Benutzer liegen keine SAP-Daten zum Anlegen vor."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No SAP creation data is available for this user."
+          }
+        }
+      }
+    },
+    "places.install.subdistribution.noContext" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An diesem Platz gibt es keine aktive Unterverteilung, unter der eingefügt werden kann."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This location has no active subdistribution to add under."
+          }
+        }
+      }
+    },
+    "places.install.subdistribution.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterverteilung nicht möglich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subdistribution not possible"
+          }
+        }
+      }
+    },
+    "places.install.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment einbauen nicht möglich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Equipment cannot be installed"
+          }
+        }
+      }
+    },
+    "places.level.area" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Area"
+          }
+        }
+      }
+    },
+    "places.level.company" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unternehmen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Company"
+          }
+        }
+      }
+    },
+    "places.level.costGroup" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kostengruppe"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cost group"
+          }
+        }
+      }
+    },
+    "places.level.object" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Objekt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Object"
+          }
+        }
+      }
+    },
+    "places.level.site" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Site"
+          }
+        }
+      }
+    },
+    "places.level.system" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System / Anlage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        }
+      }
+    },
     "places.loading" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -13429,8 +14168,57 @@
         }
       }
     },
-    "places.new" : {
+    "places.namingSchema" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namensschema"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naming scheme"
+          }
+        }
+      }
+    },
+    "places.namingSchema.example.label" : {
       "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Example: %@"
+          }
+        }
+      }
+    },
+    "places.namingSchema.structureIndicator" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strukturkennzeichen: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Structure indicator: %@"
+          }
+        }
+      }
+    },
+    "places.new" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13561,6 +14349,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "QR label"
+          }
+        }
+      }
+    },
+    "places.qr.code" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR-Code des Objekts"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Object QR code"
+          }
+        }
+      }
+    },
+    "places.qr.label.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR-Label"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR label"
+          }
+        }
+      }
+    },
+    "places.qr.show" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "QR-Code anzeigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show QR code"
           }
         }
       }
@@ -13733,8 +14571,24 @@
         }
       }
     },
-    "places.title" : {
+    "places.subtitle.counts" : {
       "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$d Technische Plätze · %2$d Equipments"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$d functional locations · %2$d equipment"
+          }
+        }
+      }
+    },
+    "places.title" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {

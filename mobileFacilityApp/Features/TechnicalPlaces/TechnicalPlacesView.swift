@@ -8,14 +8,14 @@ struct TechnicalPlacesView: View {
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
         ZStack {
-            if case .createMobileLadder = demo.technicalPlacesRoute {
-                MobileLadderCreationView(demo: demo, itemID: nil, close: demo.closeMobileLadder)
+            if case let .createMobileLadder(anchor) = demo.technicalPlacesRoute {
+                MobileLadderCreationView(demo: demo, itemID: nil, anchor: anchor, close: demo.closeMobileLadder)
                     .transition(PhotoWorkspaceMotion.destination)
             } else if case let .mobileLadderDraft(itemID) = demo.technicalPlacesRoute {
                 MobileLadderCreationView(demo: demo, itemID: itemID, close: demo.closeMobileLadder)
                     .transition(PhotoWorkspaceMotion.destination)
-            } else if case .createSubdistribution = demo.technicalPlacesRoute {
-                SubdistributionCreationView(demo: demo, itemID: nil, close: demo.closeSubdistribution)
+            } else if case let .createSubdistribution(anchor) = demo.technicalPlacesRoute {
+                SubdistributionCreationView(demo: demo, itemID: nil, anchor: anchor, close: demo.closeSubdistribution)
                     .transition(PhotoWorkspaceMotion.destination)
             } else if case let .subdistributionDraft(itemID) = demo.technicalPlacesRoute {
                 SubdistributionCreationView(demo: demo, itemID: itemID, close: demo.closeSubdistribution)
@@ -35,8 +35,26 @@ struct TechnicalPlacesView: View {
                         TechnicalObjectDetailView(
                             model: model,
                             detail: detail,
+                            offlineWorkStore: demo.offlineWorkStore,
                             photoCount: photoCount(for: detail),
-                            openPhotos: { photoWorkspaceScope = photoScope(for: detail) }
+                            openPhotos: { photoWorkspaceScope = photoScope(for: detail) },
+                            openNotification: demo.openLinkedNotification,
+                            openDefect: { demo.openManualDefect($0) },
+                            createDefect: {
+                                demo.openManualDefect(preselecting: DefectObjectOption(node: detail.object))
+                            },
+                            openMobileLadder: {
+                                demo.openMobileLadder(
+                                    preselecting: TechnicalPlaceCreationAnchor(detail.object)
+                                )
+                            },
+                            openSubdistribution: {
+                                demo.openSubdistribution(
+                                    preselecting: TechnicalPlaceCreationAnchor(detail.object)
+                                )
+                            },
+                            loadInstallOptions: { await demo.equipmentInstallOptions(at: detail.object) },
+                            loadCanReportDefect: { await demo.canReportDefect(on: detail.object.reference) }
                         )
                     } else {
                         hierarchy(model)
@@ -80,19 +98,16 @@ struct TechnicalPlacesView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 18) {
-                    PageHeader("places.title", subtitle: "places.subtitle")
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("places.title")
+                            .facilityPageTitleFont()
+                            .foregroundStyle(FacilityTheme.ink)
+                        Text(verbatim: subtitle(model))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
-                    Menu {
-                        Button { demo.openMobileLadder() } label: {
-                            Label("places.new.mobileLadder", systemImage: "figure.climbing")
-                        }
-                        Button { demo.openSubdistribution() } label: {
-                            Label("places.new.subdistribution", systemImage: "bolt.square")
-                        }
-                    } label: {
-                        Label("places.new", systemImage: "plus")
-                            .font(.subheadline.weight(.bold)).frame(minWidth: 88, minHeight: 48)
-                    }.buttonStyle(.bordered)
+                    newTechnicalPlaceMenu
                 }
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -109,23 +124,26 @@ struct TechnicalPlacesView: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.85)))
                     }
                 }
-                .padding(.horizontal, 14).frame(minHeight: 44)
-                .background(.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 16).frame(minHeight: 50)
+                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.18), value: model.query.isEmpty)
 
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        DINChip(title: String(localized: "places.filter.all"), count: model.totalCount, selected: model.selectedDINGroup == nil) {
-                            Task { await model.selectDIN(nil) }
-                        }
-                        ForEach(model.dinCounts) { item in
-                            DINChip(title: "KG \(item.code)", count: item.count, selected: model.selectedDINGroup == item.code) {
-                                Task { await model.selectDIN(item.code) }
-                            }
+                // The bar wraps instead of scrolling sideways so every cost
+                // group stays visible in a narrow window.
+                FacilityWrapLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+                    DINChip(title: String(localized: "places.filter.all"), selected: model.selectedDINGroup == nil) {
+                        Task { await model.selectDIN(nil) }
+                    }
+                    ForEach(model.dinCounts) { item in
+                        DINChip(
+                            title: TechnicalDIN276.chipLabel(for: item.code, count: item.count),
+                            selected: model.selectedDINGroup == item.code
+                        ) {
+                            Task { await model.selectDIN(item.code) }
                         }
                     }
-                    .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: model.selectedDINGroup)
-                }.scrollIndicators(.hidden)
+                }
+                .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: model.selectedDINGroup)
                 if let refreshedAt = demo.sapDataStore.lastSuccessfulRefreshAt,
                    Date().timeIntervalSince(refreshedAt) > 86_400 {
                     Label("places.stale", systemImage: "clock.arrow.circlepath")
@@ -143,6 +161,7 @@ struct TechnicalPlacesView: View {
                         model.state == .idle || model.state == .loading,
                         titleKey: "places.loading"
                     )
+                namingSchemaCard(model)
             }.facilityPageContent()
         }.scrollDismissesKeyboard(.interactively)
     }
@@ -168,34 +187,84 @@ struct TechnicalPlacesView: View {
             }.frame(maxWidth: .infinity, minHeight: 260)
             .transition(.opacity)
         case .loaded:
-            LazyVStack(spacing: 0) {
-                ForEach(model.visibleRows) { row in
-                    TechnicalObjectRow(
-                        row: row,
-                        displayName: model.displayName(for: row.node),
-                        pendingStatus: model.pendingEdit(for: row.node)?.status,
-                        isExpanded: model.expanded.contains(row.node.reference)
-                    ) {
-                        Task { await model.toggle(row.node) }
-                    } open: { Task { await model.open(row.node.reference) } }
-                    .transition(.opacity)
+            TechnicalObjectHierarchyList(model: model)
+                .transition(.opacity)
+        }
+    }
 
-                    if model.expanded.contains(row.node.reference), model.hasMoreChildren(of: row.node.reference) {
-                        Button("places.loadMore") { Task { await model.loadMoreChildren(of: row.node.reference) } }
-                            .font(.caption.weight(.semibold)).padding(.leading, CGFloat(row.depth + 1) * 22 + 54).frame(minHeight: 44)
-                            .transition(.opacity)
-                    }
-                    Divider().padding(.leading, CGFloat(row.depth) * 22 + 54)
+    /// Everything in the card comes from the cached SAP rows — an identifier
+    /// that exists in this landscape and the TPLKZ values those rows carry —
+    /// so the card is left out entirely rather than showing an example
+    /// identifier the customer does not use.
+    @ViewBuilder private func namingSchemaCard(_ model: TechnicalPlacesViewModel) -> some View {
+        if let hint = model.namingHint {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("places.namingSchema")
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(FacilityTheme.ink)
+                if !hint.structureIndicators.isEmpty {
+                    Text(verbatim: String(
+                        format: String(localized: "places.namingSchema.structureIndicator"),
+                        hint.structureIndicators.joined(separator: ", ")
+                    ))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-                if model.hasMoreRoots {
-                    Button("places.loadMore") { Task { await model.loadMoreRoots() } }
-                        .font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, minHeight: 48)
-                        .transition(.opacity)
-                }
+                Text(verbatim: String(
+                    format: String(localized: "places.namingSchema.example.label"),
+                    hint.exampleID
+                ))
+                .font(.footnote.monospaced())
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
             }
-            .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .facilityCard(padding: 16)
             .transition(.opacity)
         }
+    }
+
+    /// Styled like the other screens' primary add actions (accent-filled,
+    /// `borderedProminent`). `fixedSize` keeps "Neuer TP" on one line — the
+    /// label wrapped mid-phrase at the old fixed minimum width — and the
+    /// chevron marks it as a menu rather than a direct action.
+    private var newTechnicalPlaceMenu: some View {
+        Menu {
+            Button { demo.openMobileLadder() } label: {
+                Label("places.new.mobileLadder", systemImage: "figure.climbing")
+            }
+            Button { demo.openSubdistribution() } label: {
+                Label("places.new.subdistribution", systemImage: "bolt.square")
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                Text("places.new").lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.bold))
+                    .opacity(0.7)
+            }
+            .font(.subheadline.weight(.bold))
+            .padding(.horizontal, 6)
+            .frame(minHeight: 30)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(FacilityTheme.accent)
+        .controlSize(.large)
+        .menuOrder(.fixed)
+        .fixedSize()
+        .accessibilityLabel("places.new")
+    }
+
+    private func subtitle(_ model: TechnicalPlacesViewModel) -> String {
+        let base = String(localized: "places.subtitle")
+        guard model.hasLoadedTotalCount else { return base }
+        let counts = String(
+            format: String(localized: "places.subtitle.counts"),
+            model.counts.functionalLocations,
+            model.counts.equipment
+        )
+        return "\(base) · \(counts)"
     }
 
     private func unavailable(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey, _ symbol: String) -> some View {
@@ -204,12 +273,69 @@ struct TechnicalPlacesView: View {
     }
 }
 
+/// The tree itself, in its own view so that expanding a branch redraws the
+/// rows without invalidating the title, the search field and the cost-group
+/// chips above them.
+private struct TechnicalObjectHierarchyList: View {
+    let model: TechnicalPlacesViewModel
+
+    var body: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(model.visibleRows) { row in
+                TechnicalObjectRow(
+                    row: row,
+                    displayName: model.displayName(for: row.node),
+                    pendingStatus: model.pendingEdit(for: row.node)?.status,
+                    isExpanded: model.expanded.contains(row.node.reference),
+                    canOpenDetail: model.canOpenDetail(row.node)
+                ) {
+                    Task { await model.toggle(row.node) }
+                } open: { Task { await model.open(row.node.reference) } }
+                .transition(.opacity)
+
+                if model.expanded.contains(row.node.reference), model.hasMoreChildren(of: row.node.reference) {
+                    // The next page of a branch is pulled when its marker
+                    // scrolls into view, so the tree grows as the worker moves
+                    // through it instead of asking for a tap.
+                    TechnicalObjectPageMarker(indent: CGFloat(row.depth + 1) * 20 + 56)
+                        .task(id: model.nextChildOffset(of: row.node.reference)) {
+                            await model.loadMoreChildren(of: row.node.reference)
+                        }
+                }
+            }
+            if model.hasMoreRoots {
+                TechnicalObjectPageMarker(indent: 0)
+                    .task(id: model.nextRootOffset) { await model.loadMoreRoots() }
+            }
+        }
+        // The reference hierarchy separates rows by indentation and the
+        // level tiles alone, without rules between them.
+        .padding(.vertical, 10)
+        .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+/// The row that stands in for a page that has not been read yet. It pulls the
+/// page as soon as it appears, so it is only ever seen as a brief spinner —
+/// the same paging the notification list uses.
+private struct TechnicalObjectPageMarker: View {
+    let indent: CGFloat
+
+    var body: some View {
+        ProgressView()
+            .controlSize(.small)
+            .padding(.leading, indent)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: indent > 0 ? .leading : .center)
+            .accessibilityLabel("places.loading")
+    }
+}
+
 private struct DINChip: View {
-    let title: String; let count: Int; let selected: Bool; let action: () -> Void
+    let title: String; let selected: Bool; let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text("\(title) (\(count))").font(.subheadline.weight(.semibold))
-                .foregroundStyle(selected ? .white : .secondary).padding(.horizontal, 13).frame(minHeight: 36)
+            Text(verbatim: title).font(.subheadline.weight(.semibold))
+                .foregroundStyle(selected ? .white : .secondary).padding(.horizontal, 14).frame(minHeight: 38)
                 .background(selected ? FacilityTheme.accent : Color.white, in: Capsule())
                 .overlay(Capsule().stroke(selected ? .clear : Color.secondary.opacity(0.22)))
         }
@@ -219,12 +345,12 @@ private struct DINChip: View {
 }
 
 private struct TechnicalObjectRow: View {
-    let row: TechnicalObjectVisibleRow; let displayName: String; let pendingStatus: OfflineWorkStatus?; let isExpanded: Bool; let toggle: () -> Void; let open: () -> Void
+    let row: TechnicalObjectVisibleRow; let displayName: String; let pendingStatus: OfflineWorkStatus?; let isExpanded: Bool; let canOpenDetail: Bool; let toggle: () -> Void; let open: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
-            Color.clear.frame(width: CGFloat(row.depth) * 22)
+            Color.clear.frame(width: CGFloat(row.depth) * 20)
             if row.node.hasChildren {
                 Button(action: toggle) {
                     Image(systemName: "chevron.right")
@@ -237,15 +363,24 @@ private struct TechnicalObjectRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(isExpanded ? "places.collapse" : "places.expand")
             } else {
-                Color.clear.frame(width: 30, height: 44)
+                // A leaf keeps the twisty column, marked with the same dot the
+                // reference hierarchy uses.
+                Text(verbatim: "·")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 30, height: 44)
+                    .accessibilityHidden(true)
             }
-            Button(action: open) {
+            Button(action: canOpenDetail ? open : toggle) {
                 HStack(spacing: 10) {
-                    Image(systemName: rowIcon)
-                        .foregroundStyle(row.node.reference.kind == .equipment ? FacilityTheme.blue : FacilityTheme.accent).frame(width: 28)
+                    Text(verbatim: level.emoji)
+                        .font(.system(size: 15))
+                        .frame(width: 30, height: 30)
+                        .background(level.tile, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .accessibilityLabel(LocalizedStringKey(level.nameKey))
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Text(row.node.isUnassignedGroup ? String(localized: "places.unassigned") : displayName)
-                            .font(.subheadline.weight(row.node.hasChildren || row.node.isSynthetic ? .bold : .regular))
+                            .font(.subheadline.weight(level.nameWeight))
                             .foregroundStyle(FacilityTheme.ink)
                             .lineLimit(2)
                         if row.node.isCityGroup, !row.node.locationCode.isEmpty {
@@ -260,7 +395,7 @@ private struct TechnicalObjectRow: View {
                         }
                     }
                     Spacer(minLength: 10)
-                    if let din = row.node.dinGroup { ObjectBadge("KG \(din)", color: .indigo) }
+                    if let din = row.node.dinGroup { ObjectBadge("KG \(din)", color: FacilityTheme.purple) }
                     if row.node.isCityGroup { ObjectBadge(String(localized: "places.badge.city"), color: FacilityTheme.accent) }
                     if row.node.directEquipmentCount > 0 { ObjectBadge("\(row.node.directEquipmentCount) EQ", color: .gray) }
                     if pendingStatus == .conflict { ObjectBadge(String(localized: "places.badge.conflict"), color: .red) }
@@ -268,7 +403,7 @@ private struct TechnicalObjectRow: View {
                     if row.node.reference.kind == .equipment {
                         ObjectBadge(String(localized: "places.badge.equipment"), color: .blue)
                     }
-                    if !row.node.isSynthetic {
+                    if canOpenDetail {
                         Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
                     }
                 }
@@ -279,17 +414,79 @@ private struct TechnicalObjectRow: View {
             .buttonStyle(TechnicalObjectRowButtonStyle())
         }
         .padding(.horizontal, 14)
-        .frame(minHeight: 46)
+        .frame(minHeight: 48)
         .accessibilityElement(children: .combine)
     }
 
-    private var rowIcon: String {
-        if row.node.isCityGroup { return "mappin.and.ellipse" }
-        if row.node.isUnassignedGroup { return "tray.full.fill" }
-        if row.node.reference.kind == .equipment { return "shippingbox.fill" }
-        if row.node.dinGroup != nil && row.node.hasChildren { return "folder.fill" }
-        if row.node.dinGroup != nil { return "gearshape.fill" }
-        return row.depth < 2 ? "building.2.fill" : "building.fill"
+    /// Which level of the hierarchy this row is drawn as.
+    ///
+    /// SAP's own `LEVELID` is not dependable across landscapes (it is empty in
+    /// a lot of cached rows), so the level comes from the row's depth among the
+    /// real objects, with the kind and the cost group taking precedence — the
+    /// same rule the design reference applies to its own tree.
+    private var level: TechnicalPlaceLevel {
+        if row.node.reference.kind == .equipment { return .equipment }
+        if row.node.isUnassignedGroup { return .unassigned }
+        if row.node.isCityGroup { return .site }
+        if row.node.dinGroup != nil { return row.node.hasChildren ? .costGroup : .system }
+        switch row.structuralDepth {
+        case 0: return .company
+        case 1: return .site
+        case 2: return .object
+        default: return .area
+        }
+    }
+}
+
+/// The hierarchy levels of the design reference, with the emoji, tile fill and
+/// name weight it gives each one.
+private enum TechnicalPlaceLevel {
+    case company, site, object, area, costGroup, system, equipment, unassigned
+
+    var emoji: String {
+        switch self {
+        case .company: "🏢"
+        case .site: "📍"
+        case .object: "🏗️"
+        case .area: "🗺️"
+        case .costGroup: "📂"
+        case .system: "⚙️"
+        case .equipment: "🏷️"
+        case .unassigned: "🗂️"
+        }
+    }
+
+    var tile: Color {
+        switch self {
+        case .system: FacilityTheme.accentSoft
+        case .costGroup, .equipment: FacilityTheme.purpleSoft
+        case .company, .site, .object, .area, .unassigned: FacilityTheme.neutralSoft
+        }
+    }
+
+    /// The reference tree sets the structural levels in bold and leaves the
+    /// cost groups, systems and equipment at regular weight.
+    var nameWeight: Font.Weight {
+        switch self {
+        case .company, .site, .object: .bold
+        case .area, .unassigned: .semibold
+        case .costGroup, .system, .equipment: .regular
+        }
+    }
+
+    /// Spoken in place of the emoji, which VoiceOver would otherwise read out
+    /// by its Unicode name.
+    var nameKey: String {
+        switch self {
+        case .company: "places.level.company"
+        case .site: "places.level.site"
+        case .object: "places.level.object"
+        case .area: "places.level.area"
+        case .costGroup: "places.level.costGroup"
+        case .system: "places.level.system"
+        case .equipment: "places.badge.equipment"
+        case .unassigned: "places.unassigned"
+        }
     }
 }
 
@@ -313,9 +510,27 @@ private struct ObjectBadge: View {
 private struct TechnicalObjectDetailView: View {
     @Bindable var model: TechnicalPlacesViewModel
     let detail: TechnicalObjectDetail
+    let offlineWorkStore: OfflineWorkStore
     let photoCount: Int
     let openPhotos: () -> Void
+    let openNotification: (SAPNotificationSummary) -> Void
+    let openDefect: (UUID) -> Void
+    let createDefect: () -> Void
+    let openMobileLadder: () -> Void
+    let openSubdistribution: () -> Void
+    let loadInstallOptions: () async -> TechnicalPlaceInstallOptions
+    let loadCanReportDefect: () async -> Bool
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    /// Nil while the creation data is read; the install action waits for it
+    /// rather than offering a form that may have nothing to choose.
+    @State private var installOptions: TechnicalPlaceInstallOptions?
+    /// Nil while the place's I1s are read: SAP creates a defect (I2) only
+    /// under one of them.
+    @State private var canReportDefect: Bool?
+    /// Built when someone asks to see or print the code. Generating one is a
+    /// few milliseconds now that it no longer goes through CoreImage.
+    @State private var qrCode: UIImage?
+    @State private var label: FormReportPDFArtifact?
 
     var body: some View {
         ScrollView {
@@ -333,11 +548,92 @@ private struct TechnicalObjectDetailView: View {
                 // The equipment fields keep their focus when the side cards
                 // move under them as the window or sidebar changes width.
                 FacilitySideColumnLayout(sideWidth: 405, minimumMainWidth: 420, spacing: 16) {
-                    primaryCard
+                    VStack(spacing: 16) {
+                        primaryCard
+                        identifierSegmentsCard
+                    }
                     sideCards
                 }
             }.facilityPageContent()
-        }.scrollDismissesKeyboard(.interactively)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onChange(of: detail.object.id) { _, _ in qrCode = nil }
+        .task(id: detail.object.id) {
+            guard case .functionalLocation = detail else { return }
+            installOptions = nil
+            canReportDefect = nil
+            async let canReport = loadCanReportDefect()
+            let options = await loadInstallOptions()
+            let reportable = await canReport
+            guard !Task.isCancelled else { return }
+            installOptions = options
+            canReportDefect = reportable
+        }
+        .fullScreenCover(item: $label) { label in
+            FormReportPDFPreview(report: label, titleKey: "places.qr.label.title")
+        }
+    }
+
+    private var qrPayload: String? { TechnicalObjectQRCode.payload(for: detail.object) }
+
+    private var identifierSegments: [TechnicalObjectIdentifierSegment] {
+        TechnicalObjectIdentifierSegment.segments(
+            of: detail.object.reference.objectID,
+            breadcrumbs: breadcrumbs
+        )
+    }
+
+    /// Left out when the identifier has no separators to split on — the card
+    /// would only repeat the identifier from the master data above it.
+    @ViewBuilder private var identifierSegmentsCard: some View {
+        let segments = identifierSegments
+        if !segments.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("places.detail.segments").font(.headline)
+                ForEach(segments) { segment in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(verbatim: "\(segment.position)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 18, alignment: .trailing)
+                        Text(segment.value)
+                            .font(.subheadline.monospaced().weight(.bold))
+                            .foregroundStyle(FacilityTheme.ink)
+                        if let objectName = segment.objectName {
+                            Text(verbatim: "· \(objectName)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .frame(minHeight: 30)
+                    .accessibilityElement(children: .combine)
+                    if segment.position < segments.count { Divider() }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .facilityCard()
+        }
+    }
+
+    private func prepareCode() {
+        guard let qrPayload else { return }
+        qrCode = QRCodeImageRenderer.image(for: qrPayload)
+    }
+
+    private func shareLabel() {
+        guard let qrPayload,
+              let data = TechnicalObjectQRCode.labelPDF(for: detail.object, payload: qrPayload)
+        else {
+            model.performUnavailableAction("places.qr.unavailable")
+            return
+        }
+        label = FormReportPDFArtifact(
+            id: detail.object.id,
+            fileName: TechnicalObjectQRCode.labelFileName(for: detail.object),
+            data: data
+        )
     }
 
     private var breadcrumbs: [TechnicalObjectNode] {
@@ -357,24 +653,347 @@ private struct TechnicalObjectDetailView: View {
         VStack(spacing: 16) {
             VStack(spacing: 14) {
                 Text("places.detail.identification").font(.headline)
-                Image(systemName: "qrcode").font(.system(size: 94))
+                if let qrCode {
+                    // Nearest-neighbour keeps the modules square when the
+                    // bitmap is scaled down to the card.
+                    Image(uiImage: qrCode)
+                        .interpolation(.none)
+                        .antialiased(false)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 176, height: 176)
+                        .padding(8)
+                        .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityLabel("places.qr.code")
+                } else if qrPayload != nil {
+                    Button(action: prepareCode) { 
+                        VStack(spacing: 10) {
+                            Image(systemName: "qrcode")
+                                .font(.system(size: 76))
+                                .foregroundStyle(.tertiary)
+                            Text("places.qr.show")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(FacilityTheme.accent)
+                        }
+                        .frame(width: 176, height: 176)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    // No identifier to encode.
+                    Image(systemName: "qrcode")
+                        .font(.system(size: 94))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 176, height: 176)
+                }
                 Text(detail.object.reference.objectID).font(.caption.monospaced()).foregroundStyle(.secondary)
                 HStack {
-                    Button { model.performUnavailableAction("places.qr.unavailable") } label: { Label("places.qr", systemImage: "printer") }.buttonStyle(.borderedProminent)
+                    Button(action: shareLabel) { Label("places.qr", systemImage: "printer") }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(qrPayload == nil)
                     Button { model.performUnavailableAction("places.rfid.unavailable") } label: { Text("RFID") }.buttonStyle(.bordered)
                 }
             }.frame(maxWidth: .infinity).facilityCard()
-            VStack(alignment: .leading, spacing: 12) {
-                Text("places.detail.linked").font(.headline)
-                if notifications.isEmpty { Text("places.detail.linked.empty").foregroundStyle(.secondary) }
-                else { ForEach(notifications) { note in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(note.title.isEmpty ? note.id : note.title).font(.subheadline.weight(.semibold))
-                        Text(note.id).font(.caption.monospaced()).foregroundStyle(.secondary)
-                    }
-                } }
-            }.facilityCard()
+            linkedProcessesCard
+            actionsCard
         }
+    }
+
+    /// Everything currently open at this object: the notifications SAP has
+    /// linked to it and the fault notifications the technician has recorded
+    /// locally but not yet synchronized.
+    private var linkedProcesses: [LinkedProcessEntry] {
+        let reference = detail.object.reference
+        let sapEntries = notifications.map { note in
+            LinkedProcessEntry(
+                id: "notification-\(note.id)",
+                symbol: "list.bullet.clipboard",
+                tint: FacilityTheme.blue,
+                title: note.title.isEmpty ? note.id : note.title,
+                meta: [note.id, note.displayDateRange, note.displayStatus]
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · "),
+                status: nil,
+                open: { openNotification(note) }
+            )
+        }
+        let localEntries = offlineWorkStore.defectItems.compactMap { item -> LinkedProcessEntry? in
+            guard let defect = item.payload.defect, defect.technicalObject == reference else { return nil }
+            return LinkedProcessEntry(
+                id: "defect-\(item.id.uuidString)",
+                symbol: "exclamationmark.triangle.fill",
+                tint: FacilityTheme.red,
+                title: defect.shortText.isEmpty ? defect.technicalObjectName : defect.shortText,
+                meta: String(localized: String.LocalizationValue(defect.priority.titleKey)),
+                status: item.status,
+                open: { openDefect(item.id) }
+            )
+        }
+        return sapEntries + localEntries
+    }
+
+    private static let linkedProcessesMaxHeight: CGFloat = 330
+
+    private var linkedProcessesCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("places.detail.linked").font(.headline)
+            let entries = linkedProcesses
+            if entries.isEmpty {
+                Text("places.detail.linked.empty")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Grows with its rows up to about five, then scrolls, so a
+                // busy object does not push the actions card off the page.
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            LinkedProcessRow(entry: entry)
+                            if index < entries.count - 1 { Divider() }
+                        }
+                    }
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(maxHeight: Self.linkedProcessesMaxHeight)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .facilityCard()
+    }
+
+    /// The actions the design reference offers on a technical place.
+    ///
+    /// "Equipment einbauen" is the TFM5 / TFM7 creation forms: both close as an
+    /// I1 notification carrying a `NEU-` equipment number for `STRNO`, which is
+    /// exactly what installing equipment at this place means. It offers only
+    /// the forms SAP has a context for at this place — both as a menu, one as
+    /// a direct button, none as a disabled button — and says why the others
+    /// are missing, so an absent option never reads as an app error.
+    /// Creating a subordinate place (IL01) has no counterpart in either
+    /// reference app and no confirmed SAP write contract, so it says so
+    /// instead of pretending.
+    @ViewBuilder private var actionsCard: some View {
+        if case .functionalLocation = detail {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("places.detail.actions").font(.headline)
+                VStack(spacing: 9) {
+                    Button(action: createDefect) {
+                        HStack(spacing: 8) {
+                            if canReportDefect == nil { ProgressView().controlSize(.small) }
+                            actionButtonLabel("places.detail.action.defect")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(canReportDefect != true)
+                    actionButton("places.detail.action.childPlace") {
+                        model.performUnavailableAction("places.detail.action.childPlace.unavailable")
+                    }
+                    installEquipmentAction
+                }
+                if canReportDefect == false {
+                    TechnicalPlaceInstallNotice(
+                        symbol: "exclamationmark.bubble",
+                        title: String(localized: "places.detail.action.defect.unavailable"),
+                        message: String(localized: "manual.defect.object.noParent")
+                    )
+                    .transition(.opacity)
+                }
+                installNotes
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .facilityCard()
+            .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: installOptions)
+            .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: canReportDefect)
+        }
+    }
+
+    @ViewBuilder private var installEquipmentAction: some View {
+        let ladder = installOptions?.mobileLadder.isAvailable == true
+        let subdistribution = installOptions?.subdistribution.isAvailable == true
+        if ladder && subdistribution {
+            Menu {
+                Button(action: openMobileLadder) {
+                    Label("places.new.mobileLadder", systemImage: "figure.climbing")
+                }
+                Button(action: openSubdistribution) {
+                    Label("places.new.subdistribution", systemImage: "bolt.square")
+                }
+            } label: {
+                actionButtonLabel("places.detail.action.installEquipment")
+            }
+            .buttonStyle(.bordered)
+            .menuOrder(.fixed)
+        } else if ladder {
+            actionButton("places.new.mobileLadder", action: openMobileLadder)
+        } else if subdistribution {
+            actionButton("places.new.subdistribution", action: openSubdistribution)
+        } else {
+            Button {} label: {
+                HStack(spacing: 8) {
+                    if installOptions == nil { ProgressView().controlSize(.small) }
+                    actionButtonLabel("places.detail.action.installEquipment")
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(true)
+        }
+    }
+
+    /// One framed notice per form that cannot be used here, with SAP's
+    /// reason, in the app's notice style. A place without a business entity
+    /// gets a single notice, since neither form can address it.
+    @ViewBuilder private var installNotes: some View {
+        if let installOptions {
+            VStack(spacing: 8) {
+                if installOptions.mobileLadder == .noBusinessEntity {
+                    TechnicalPlaceInstallNotice(
+                        symbol: "shippingbox",
+                        title: String(localized: "places.install.unavailable"),
+                        message: String(localized: "places.install.noBusinessEntity")
+                    )
+                } else {
+                    if let message = Self.installReason(installOptions.mobileLadder, form: .mobileLadder) {
+                        TechnicalPlaceInstallNotice(
+                            symbol: "figure.climbing",
+                            title: String(localized: "places.install.mobileLadder.unavailable"),
+                            message: message
+                        )
+                    }
+                    if let message = Self.installReason(installOptions.subdistribution, form: .subdistribution) {
+                        TechnicalPlaceInstallNotice(
+                            symbol: "bolt.square",
+                            title: String(localized: "places.install.subdistribution.unavailable"),
+                            message: message
+                        )
+                    }
+                }
+            }
+            .transition(.opacity)
+        }
+    }
+
+    private enum InstallForm { case mobileLadder, subdistribution }
+
+    private static func installReason(
+        _ availability: TechnicalPlaceInstallAvailability,
+        form: InstallForm
+    ) -> String? {
+        switch (availability, form) {
+        case (.available, _):
+            nil
+        case let (.noContext(trade), .mobileLadder):
+            String(localized: "places.install.mobileLadder.noContext \(trade)")
+        case (.noContext, .subdistribution):
+            String(localized: "places.install.subdistribution.noContext")
+        case (.noData, _):
+            String(localized: "places.install.noData")
+        case (.noBusinessEntity, _):
+            String(localized: "places.install.noBusinessEntity")
+        }
+    }
+
+    private func actionButton(_ key: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) { actionButtonLabel(key) }
+            .buttonStyle(.bordered)
+    }
+
+    private func actionButtonLabel(_ key: LocalizedStringKey) -> some View {
+        Text(key)
+            .font(.subheadline.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, minHeight: 44)
+    }
+}
+
+/// Why a form of "Equipment einbauen" is missing at this place, styled like
+/// the app's other notices (`SafetyFormNoBuildingsNotice`) so it reads as
+/// information from SAP rather than an app error.
+private struct TechnicalPlaceInstallNotice: View {
+    let symbol: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(FacilityTheme.orange)
+                .frame(width: 34, height: 34)
+                .background(FacilityTheme.orange.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(FacilityTheme.ink)
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(FacilityTheme.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(FacilityTheme.orange.opacity(0.25))
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct LinkedProcessEntry: Identifiable {
+    let id: String
+    let symbol: String
+    let tint: Color
+    let title: String
+    let meta: String
+    /// Set for locally recorded work, so a row that has not reached SAP yet
+    /// is never read as an open SAP process.
+    let status: OfflineWorkStatus?
+    let open: () -> Void
+}
+
+private struct LinkedProcessRow: View {
+    let entry: LinkedProcessEntry
+
+    var body: some View {
+        Button(action: entry.open) {
+            HStack(spacing: 12) {
+                Image(systemName: entry.symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(entry.tint)
+                    .frame(width: 36, height: 36)
+                    .background(entry.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(FacilityTheme.ink)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                    if !entry.meta.isEmpty {
+                        Text(entry.meta)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 8)
+                if let status = entry.status { OfflineStatusPill(status: status) }
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 10)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(TechnicalObjectRowButtonStyle())
+        .accessibilityElement(children: .combine)
     }
 }
 

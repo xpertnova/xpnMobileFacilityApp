@@ -54,9 +54,6 @@ struct AppRootView: View {
                         )
                             .tint(FacilityTheme.accent)
                             .background(FacilityTheme.canvas)
-                            #if DEBUG
-                            .keyboardDebugFrame("root shell suppress=\(productionWorkspace.suppressesKeyboardAvoidance)")
-                            #endif
                     }
                 } else {
                     ProgressView()
@@ -67,9 +64,6 @@ struct AppRootView: View {
                         FacilityShellView(demo: demo, onLogout: exitDemo)
                             .tint(FacilityTheme.accent)
                             .background(FacilityTheme.canvas)
-                            #if DEBUG
-                            .keyboardDebugFrame("root shell suppress=\(demo.suppressesKeyboardAvoidance)")
-                            #endif
                     }
                 } else {
                     ProgressView()
@@ -136,19 +130,20 @@ struct AppRootView: View {
             }.value
             guard phase == .authentication || phase == .launching else { return }
             productionSession = session
+            let sapDataStore = productionSAPDataStore(
+                for: session,
+                cacheRepository: storage.cacheRepository,
+                offlineWorkRepository: storage.offlineWorkRepository,
+                photoAttachmentStore: storage.photoAttachmentStore
+            )
             productionWorkspace = FacilityDemoViewModel(
                 isDemoMode: false,
                 offlineWorkStore: OfflineWorkStore(
                     repository: storage.offlineWorkRepository,
                     workerID: workerID
                 ),
-                sapDataStore: productionSAPDataStore(
-                    for: session,
-                    cacheRepository: storage.cacheRepository,
-                    offlineWorkRepository: storage.offlineWorkRepository,
-                    photoAttachmentStore: storage.photoAttachmentStore
-                ),
-                meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+                sapDataStore: sapDataStore,
+                meterReferenceProvider: SAPMeterReferenceProvider(sapDataStore: sapDataStore),
                 photoAttachmentStore: storage.photoAttachmentStore,
                 workerDisplayName: session.displayName,
                 workerRole: session.role

@@ -179,7 +179,7 @@ final class ScanViewModel {
         acceptedValue = nil
     }
 
-    private static let demoPayload = LegacyQRCodeCodec.encodeDemoMTFM(
+    private static let demoPayload = LegacyQRCodeCodec.encodeMTFM(
         functionalLocationID: "UN01-ST01-BG01-TECH-420-Z",
         equipmentID: "EQ-100040"
     )
