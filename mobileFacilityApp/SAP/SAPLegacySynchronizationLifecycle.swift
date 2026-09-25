@@ -80,9 +80,22 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
            let fromRequestID = try await finishInterrupted(pending, progress: progress) {
             let cachedData = try await receiveIncoming(fromRequestID: fromRequestID, progress: progress)
             await logI2Arrival([])
-            return cachedData
+            // `checkBeforeSynchronize` stops here, so work closed while the
+            // old FROM request waited in SAP would need a second
+            // synchronization. That second run follows right away instead.
+            guard try await outgoingWork?.hasPendingWork() == true else {
+                SAPSynchronizationDiagnostics.logSynchronizationStep("No closed work waits to be sent")
+                return cachedData
+            }
+            SAPSynchronizationDiagnostics.logSynchronizationStep(
+                "Sending work closed after the interrupted synchronization"
+            )
         }
+        return try await synchronize(progress: progress)
+    }
 
+    /// `edata.luw.synchronize` from `prepareMetadataTo` on.
+    private func synchronize(progress: @escaping SAPReadRefreshProgressHandler) async throws -> SAPCachedData {
         // SAP prepares the FROM package only after the regular TO lifecycle,
         // including an otherwise-empty M0002001 payload.
         let toRequestID = makeRequestID("MTFMSYNCTO")
@@ -157,7 +170,7 @@ struct SAPLegacySynchronizationLifecycle: Sendable {
 
         case .incomingRequested:
             // `checkByMetadataFrom4RegSync`: SAP may still prepare the package
-            // of the old request. Newer local work goes with the next run.
+            // of the old request. Newer local work follows once it is read.
             let outcome = try await awaitIncomingPreparation(
                 requestID: pending.requestID,
                 initialDelay: .zero,

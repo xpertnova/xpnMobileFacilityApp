@@ -8,14 +8,14 @@ struct SAPRefreshPasswordDialog: View {
     let failureContext: SAPRefreshFailureContext?
     let refresh: () -> Void
     let cancel: () -> Void
-    /// Stops waiting for SAP; the next synchronization continues the request.
-    let continueLater: () -> Void
+    /// Cancels the running synchronization.
+    let cancelRefresh: () -> Void
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
         Group {
             if isRefreshing {
-                SAPRefreshProgressDialog(stage: stage ?? .authenticating, continueLater: continueLater)
+                SAPRefreshProgressDialog(stage: stage ?? .authenticating, cancel: cancelRefresh)
             } else {
                 passwordEntry
             }
@@ -136,7 +136,7 @@ private struct SAPRefreshFailureDetailsView: View {
 
 private struct SAPRefreshProgressDialog: View {
     let stage: SAPReadRefreshStage
-    let continueLater: () -> Void
+    let cancel: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
@@ -162,8 +162,8 @@ private struct SAPRefreshProgressDialog: View {
             .accessibilityElement(children: .combine)
             .accessibilityAddTraits(.updatesFrequently)
 
-            if stage.canContinueLater {
-                Button("sap.refresh.continueLater", action: continueLater)
+            if stage.canCancel {
+                Button("common.cancel", action: cancel)
                     .buttonStyle(.bordered)
             }
         }
@@ -308,7 +308,7 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
             failureContext: nil,
             refresh: {},
             cancel: {},
-            continueLater: {}
+            cancelRefresh: {}
         )
     }
     .facilityLayoutRoot()
