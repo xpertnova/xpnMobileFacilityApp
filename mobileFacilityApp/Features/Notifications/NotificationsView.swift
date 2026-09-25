@@ -84,21 +84,11 @@ struct NotificationsView: View {
                 searchBar
             }
             .facilityPageContent()
-            #if DEBUG
-            .keyboardDebugFrame("header+search")
-            #endif
 
             notificationList
-            #if DEBUG
-                .keyboardDebugFrame("list")
-            #endif
         }
         // Keyboard avoidance for the list is disabled at the window root in AppRootView.
         .background(Color(white: 0.97).ignoresSafeArea())
-        #if DEBUG
-        .keyboardDebugFrame("overview")
-        .onAppear { KeyboardDebugObserver.shared.start() }
-        #endif
     }
 
     @ViewBuilder
@@ -1242,57 +1232,3 @@ private struct NotificationDetailCard: View {
         .facilityCard()
     }
 }
-
-// MARK: - TEMP keyboard shift diagnostics (remove after fix)
-
-#if DEBUG
-extension View {
-    func keyboardDebugFrame(_ name: String) -> some View {
-        onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-            print("[KeyboardDebug] \(name) frame=\(frame)")
-        }
-    }
-}
-
-final class KeyboardDebugObserver {
-    static let shared = KeyboardDebugObserver()
-    private var tokens: [NSObjectProtocol] = []
-
-    func start() {
-        guard tokens.isEmpty else { return }
-        let names: [Notification.Name] = [
-            UIResponder.keyboardWillShowNotification,
-            UIResponder.keyboardDidShowNotification,
-            UIResponder.keyboardWillHideNotification,
-            UIResponder.keyboardWillChangeFrameNotification,
-        ]
-        tokens = names.map { name in
-            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
-                let end = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? .zero
-                print("[KeyboardDebug] \(name.rawValue) keyboardEnd=\(end)")
-                Self.dumpScrollViews(label: name.rawValue)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    Self.dumpScrollViews(label: "\(name.rawValue) +0.6s")
-                }
-            }
-        }
-    }
-
-    private static func dumpScrollViews(label: String) {
-        let windows = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-        for window in windows {
-            print("[KeyboardDebug] (\(label)) window=\(type(of: window)) frame=\(window.frame) root=\(window.rootViewController.map { String(describing: type(of: $0)) } ?? "nil") rootViewFrame=\(window.rootViewController?.view.frame ?? .zero) safeArea=\(window.rootViewController?.view.safeAreaInsets ?? .zero)")
-            visit(window, label: label)
-        }
-    }
-
-    private static func visit(_ view: UIView, label: String) {
-        if let scrollView = view as? UIScrollView, !(view is UITextView), scrollView.bounds.height > 200 {
-            print("[KeyboardDebug] (\(label)) \(type(of: scrollView)) frame=\(scrollView.convert(scrollView.bounds, to: nil)) offset=\(scrollView.contentOffset) inset=\(scrollView.contentInset) adjusted=\(scrollView.adjustedContentInset) behavior=\(scrollView.contentInsetAdjustmentBehavior.rawValue) safeArea=\(scrollView.safeAreaInsets)")
-        }
-        view.subviews.forEach { visit($0, label: label) }
-    }
-}
-#endif

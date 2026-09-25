@@ -39,6 +39,8 @@ struct SAPNotificationOutgoingBatch: Sendable {
     /// same way as every other `TO_T0302` row: staged with the metadata and
     /// sent through `M0002031` with an empty `FELDWERT`.
     var i3DocumentReferences: [SAPNotificationOutgoingDocument] = []
+    /// `TO_T0286` meter readings, one row per technical place.
+    var meterReadings: [LegacySAPRow] = []
 
     static let empty = SAPNotificationOutgoingBatch(
         workItemIDs: [], attachmentIDs: [], processIDs: [], equipmentIDs: [],
@@ -60,6 +62,14 @@ protocol SAPOutgoingWorkCoordinating: Sendable {
     func fail(_ batch: SAPOutgoingBatchManifest, error: Error) async
 }
 
+enum SAPMeterReadingUploadError: LocalizedError {
+    case missingTechnicalPlace
+
+    var errorDescription: String? {
+        "Zählerstand ohne SAP-Messpunkt kann nicht übertragen werden."
+    }
+}
+
 enum SAPNotificationReviewUploadError: Error {
     case invalidReview(String)
     case missingSourceNotification(String)
@@ -74,6 +84,7 @@ enum SAPNotificationReviewUploadBuilder {
         syncUserID: String,
         photoData: [String: Data],
         reportPDF: Data? = nil,
+        measuringDocument: String = "",
         now: Date = .now
     ) throws -> SAPNotificationOutgoingBatch {
         guard case let .notificationReview(review) = workItem.payload,
@@ -97,9 +108,11 @@ enum SAPNotificationReviewUploadBuilder {
         }
 
         let detail = SAPNotificationDetail(summary: source)
+        // A `MEASURE` row has no Befund to answer (`validateFormValues`).
         guard !detail.inspectionItems.isEmpty,
               detail.inspectionItems.allSatisfy({
-                  !$0.resultElementID.isEmpty && !$0.commentElementID.isEmpty && review.results[$0.id] != nil
+                  !$0.resultElementID.isEmpty && !$0.commentElementID.isEmpty
+                      && ($0.isMeasuringPointEntry || review.results[$0.id] != nil)
               })
         else {
             throw SAPNotificationReviewUploadError.invalidReview(source.id)
@@ -115,7 +128,9 @@ enum SAPNotificationReviewUploadBuilder {
         let createdTime = basicTime(now)
         let performedDate = basicDate(review.performedOn)
         let userID = syncUserID.uppercased()
-        let hasDefect = review.results.values.contains(.yes)
+        let hasDefect = detail.inspectionItems.contains {
+            !$0.isMeasuringPointEntry && review.results[$0.id] == .yes
+        }
         notificationData["STTXT"] = "MMAB"
         notificationData["USTXT"] = updatedUserStatus(
             stringValue(value(named: "USTXT", in: notificationData)) ?? "",
@@ -153,10 +168,15 @@ enum SAPNotificationReviewUploadBuilder {
 
         var values: [LegacySAPRow] = []
         for item in detail.inspectionItems {
+            // `Rundgang._onViewDisplay` stores the saved `MEASURMENT_BELEG`
+            // as the reading button's element value.
+            let resultValue = item.isMeasuringPointEntry
+                ? measuringDocument
+                : (review.results[item.id] == .yes ? "X" : "")
             values.append(valueRow(
                 client: source.client, processID: processID, notificationID: review.notificationID,
                 elementID: item.resultElementID,
-                value: review.results[item.id] == .yes ? "X" : "",
+                value: resultValue,
                 userID: userID, date: createdDate, time: createdTime
             ))
             values.append(valueRow(
@@ -326,9 +346,15 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
             if let qualification = item.payload.proofOfQualification { return qualification.completedAt != nil }
             if let electricalSafety = item.payload.electricalSafety { return electricalSafety.completedAt != nil }
             if item.payload.firePermit != nil { return true }
+            // A defect is saved as pending only when it is reported.
+            if item.payload.defect != nil { return true }
+            // `MeasurePoints.onPressSave` writes `TO_T0286` straight away;
+            // a reading is sent with the next synchronization.
+            if item.payload.meterReading != nil { return true }
             return false
         }
         guard !pending.isEmpty else { return .empty }
+        let pendingIDs = Set(pending.map(\.id))
 
         // An instruction form that cannot be built, such as one closed before
         // its report was kept, is marked failed on its own instead of holding
@@ -341,6 +367,14 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
                 case .briefing, .proofOfQualification, .electricalSafety, .firePermit:
                     do {
                         batches.append(try await instructionFormBatch(for: item))
+                    } catch {
+                        rejected.append((item, error))
+                    }
+                case let .defect(defect):
+                    // A defect that cannot be built, such as one saved before
+                    // it had a category, fails on its own.
+                    do {
+                        batches.append(try await defectBatch(for: item, defect: defect))
                     } catch {
                         rejected.append((item, error))
                     }
@@ -362,15 +396,19 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
                         formCode: detail.formCode,
                         notificationID: review.notificationID,
                         fields: NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON),
-                        items: detail.inspectionItems,
+                        // `addReportTableWN` prints only rows with a Befund.
+                        items: detail.inspectionItems.filter { !$0.isMeasuringPointEntry },
                         results: review.results,
                         comments: review.comments,
                         performedOn: review.performedOn,
                         worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: syncUserID)
                     ))
+                    let measuringDocument = try measuringDocument(
+                        for: source, in: allWork.filter { pendingIDs.contains($0.id) }
+                    )
                     var batch = try SAPNotificationReviewUploadBuilder.build(
                         workItem: item, source: source, syncUserID: syncUserID, photoData: photos,
-                        reportPDF: report
+                        reportPDF: report, measuringDocument: measuringDocument
                     )
                     try await addI2Notifications(review.i2Requests, source: source, to: &batch)
                     batches.append(batch)
@@ -477,6 +515,19 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
                     continue
                 }
             }
+            let meterItems = pending.filter { $0.payload.meterReading != nil }
+            if !meterItems.isEmpty {
+                let meterOutput = try SAPMeterReadingUploadBuilder.build(items: meterItems, syncUserID: syncUserID)
+                var meterBatch = SAPNotificationOutgoingBatch(
+                    workItemIDs: meterOutput.workItemIDs, attachmentIDs: [], processIDs: [], equipmentIDs: [],
+                    headers: [], values: [], documents: [], equipment: []
+                )
+                meterBatch.meterReadings = meterOutput.rows
+                batches.append(meterBatch)
+                for item in meterItems where !meterOutput.workItemIDs.contains(item.id) {
+                    rejected.append((item, SAPMeterReadingUploadError.missingTechnicalPlace))
+                }
+            }
             let merged = SAPNotificationOutgoingBatch(
                 workItemIDs: batches.flatMap(\.workItemIDs),
                 attachmentIDs: batches.flatMap(\.attachmentIDs),
@@ -494,7 +545,8 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
                 i3Documents: batches.flatMap(\.i3Documents),
                 // Leaving this out defaults it to empty, which still stages
                 // the rows but drops them from the document upload.
-                i3DocumentReferences: batches.flatMap(\.i3DocumentReferences)
+                i3DocumentReferences: batches.flatMap(\.i3DocumentReferences),
+                meterReadings: batches.flatMap(\.meterReadings)
             )
             let i3DocumentRows = merged.i3Documents.map(\.legacyRow)
                 + merged.i3DocumentReferences.map(\.legacyRow)
@@ -509,10 +561,16 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
                 i2Notifications: merged.i2Notifications,
                 i2Documents: merged.i2Documents.map(\.legacyRow),
                 i3Notifications: merged.i3Notifications,
-                i3Documents: i3DocumentRows
+                i3Documents: i3DocumentRows,
+                meterReadings: merged.meterReadings
             )
             for item in pending {
                 if let rejection = rejected.first(where: { $0.item.id == item.id }) {
+                    if item.type == .defect {
+                        SAPSynchronizationDiagnostics.logI2(
+                            "defect \(item.id) not sent: \(rejection.error.localizedDescription)"
+                        )
+                    }
                     try await offlineRepository.save(copy(
                         item, status: .failed, error: rejection.error.localizedDescription
                     ))
@@ -557,40 +615,17 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         source: SAPNotificationSummary,
         to batch: inout SAPNotificationOutgoingBatch
     ) async throws {
-        SAPSynchronizationDiagnostics.logI2(
-            "I1 \(source.id) carries \(requests.count) request(s) " +
-                requests.map { "\($0.id)=\($0.category.code)" }.joined(separator: ", ")
-        )
         guard !requests.isEmpty else { return }
         guard let parent = SAPI2NotificationUploadBuilder.parentNotification(from: source) else {
-            SAPSynchronizationDiagnostics.logI2("I1 \(source.id) has no readable cached payload")
             throw SAPNotificationReviewUploadError.missingSourceNotification(source.id)
         }
-        let template = try await newNotificationTemplate()
         let output = try SAPI2NotificationUploadBuilder.build(
             requests: requests,
             parentNotification: parent,
-            template: template,
+            template: try await newNotificationTemplate(),
             parentDocuments: batch.documents,
             syncUserID: syncUserID
         )
-        SAPSynchronizationDiagnostics.logI2(
-            "I1 \(source.id): template \(template == nil ? "missing" : "found"), " +
-                "\(output.notifications.count) TO_T0284 row(s), \(output.documents.count) TO_T0285 document(s)"
-        )
-        for row in output.notifications {
-            let fields = ["MANDT", "QMNUM", "QMART", "REFNUM", "QMCOD", "QMGRP", "PRIOK", "STSMA", "USTXT", "STRNO", "EQUNR"]
-                .map { "\($0)=\(row[$0].flatMap { $0 } ?? "nil")" }
-                .joined(separator: " ")
-            SAPSynchronizationDiagnostics.logI2(
-                "TO_T0284 \(fields) FELDWERT=\((row["FELDWERT"].flatMap { $0 } ?? "").count) chars"
-            )
-            if let feldwert = row["FELDWERT"].flatMap({ $0 }),
-               let object = SAPLegacyDataExchangeCodec.decodedFeldwertObject(feldwert),
-               let json = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) {
-                SAPSynchronizationDiagnostics.logI2("TO_T0284 FELDWERT decoded \(String(decoding: json, as: UTF8.self))")
-            }
-        }
         batch.i2Notifications += output.notifications
         batch.i2Documents += output.documents
     }
@@ -705,12 +740,50 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         ))
     }
 
+    /// A defect from the defect form: an I2 under the I1 the technician chose.
+    private func defectBatch(for item: OfflineWorkItem, defect: DefectDraftPayload) async throws -> SAPNotificationOutgoingBatch {
+        guard defect.category?.createsNotification == true else {
+            throw SAPDefectNotificationUploadError.missingCategory
+        }
+        guard let parentID = defect.parentNotificationID, !parentID.isEmpty else {
+            throw SAPDefectNotificationUploadError.missingParentNotification
+        }
+        let page = try await cacheRepository.loadNotifications(
+            for: workerID, matching: parentID, structuralFilter: .empty, limit: 20, offset: 0
+        )
+        guard let source = page.notifications.first(where: { $0.id == parentID }),
+              let parent = SAPI2NotificationUploadBuilder.parentNotification(from: source)
+        else {
+            throw SAPDefectNotificationUploadError.parentNotificationUnavailable(parentID)
+        }
+        var photos: [String: Data] = [:]
+        for id in defect.attachmentIDs {
+            photos[id] = try await loadPhoto(id)
+        }
+        return try SAPDefectNotificationUploadBuilder.build(
+            workItem: item, defect: defect, parentNotification: parent,
+            template: try await newNotificationTemplate(), photoData: photos, syncUserID: syncUserID
+        )
+    }
+
     private func newNotificationTemplate() async throws -> [String: Any]? {
         guard let provider = cacheRepository as? any I2NotificationTemplateProviding,
               let json = try await provider.loadNewNotificationTemplateJSON(),
               let data = json.data(using: .utf8)
         else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// The packed readings of the notification's place that go with this
+    /// synchronization, or empty when there are none.
+    private func measuringDocument(for source: SAPNotificationSummary, in work: [OfflineWorkItem]) throws -> String {
+        let payload = source.rawPayloadJSON.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        let locationID = (payload["STRNO"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? source.functionalLocationID
+        let readings = work.filter { $0.payload.meterReading?.meter.technicalPlaceID == locationID }
+        guard !readings.isEmpty else { return "" }
+        let output = try SAPMeterReadingUploadBuilder.build(items: readings, syncUserID: syncUserID)
+        return (output.rows.first?["MEASURMENT_BELEG"] ?? nil) ?? ""
     }
 
     private func loadPhoto(_ id: String) async throws -> Data {
@@ -730,6 +803,7 @@ private extension SAPNotificationOutgoingBatch {
             i3Notifications: i3Notifications, i3Documents: i3Documents
         )
         copy.i3DocumentReferences = i3DocumentReferences
+        copy.meterReadings = meterReadings
         return copy
     }
 }

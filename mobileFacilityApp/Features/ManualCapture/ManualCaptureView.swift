@@ -9,6 +9,8 @@ struct ManualCaptureView: View {
     @State private var meterModel: MeterReadingViewModel
     @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var isObjectPickerPresented = false
+    @State private var isParentPickerPresented = false
+    @State private var isCategoryPickerPresented = false
     @State private var objectSearchText = ""
     @State private var isMeterPointPickerPresented = false
     @State private var meterPointSearchText = ""
@@ -69,7 +71,7 @@ struct ManualCaptureView: View {
             case .landing:
                 break
             case let .defect(id):
-                await defectModel.load(itemID: id)
+                await defectModel.load(itemID: id, preselecting: demo.consumePendingDefectObject())
             case let .meterReading(id):
                 await meterModel.load(itemID: id)
             }
@@ -175,8 +177,10 @@ struct ManualCaptureView: View {
                     .font(.title2.weight(.bold))
                     .foregroundStyle(FacilityTheme.ink)
                 Spacer()
-                if defectModel.isReadOnly {
-                    FacilityTemplateBadge(localized: .init("offline.status.localOnly"), style: .temporarilySaved)
+                if defectModel.isReadOnly, let status = defectModel.itemStatus {
+                    FacilityTemplateBadge(localized: .init(status.titleKey), style: .open)
+                } else if defectModel.itemStatus == .failed {
+                    FacilityTemplateBadge(localized: .init(OfflineWorkStatus.failed.titleKey), style: .temporarilySaved)
                 } else if defectModel.isExistingDraft {
                     FacilityTemplateBadge(localized: .init("offline.status.draft"), style: .temporarilySaved)
                 }
@@ -206,7 +210,7 @@ struct ManualCaptureView: View {
 
     private var defectFields: some View {
         VStack(alignment: .leading, spacing: 18) {
-            fieldLabel("manual.defect.object") {
+            fieldLabel("manual.defect.object", required: !defectModel.isReadOnly) {
                 Button {
                     guard !defectModel.isReadOnly else { return }
                     isObjectPickerPresented = true
@@ -234,14 +238,14 @@ struct ManualCaptureView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(defectModel.isReadOnly || defectModel.objects.isEmpty)
-                .popover(
-                    isPresented: $isObjectPickerPresented,
-                    attachmentAnchor: .rect(.bounds),
-                    arrowEdge: .top
-                ) {
+                // Opens above the field when there is no room below it.
+                .facilityPopover(isPresented: $isObjectPickerPresented, arrowEdge: .top) {
                     defectObjectPicker
-                        .presentationCompactAdaptation(.popover)
                 }
+            }
+
+            if defectModel.selectedObject != nil {
+                defectParentField
             }
 
             ViewThatFits(in: .horizontal) {
@@ -249,7 +253,9 @@ struct ManualCaptureView: View {
                 VStack(alignment: .leading, spacing: 18) { defectDINField; defectPriorityField }
             }
 
-            fieldLabel("manual.defect.shortText") {
+            defectCategoryField
+
+            fieldLabel("manual.defect.shortText", required: !defectModel.isReadOnly) {
                 if defectModel.isReadOnly {
                     Text(defectModel.shortText.isEmpty ? "—" : defectModel.shortText)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -257,7 +263,11 @@ struct ManualCaptureView: View {
                         .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
                         .foregroundStyle(FacilityTheme.ink)
                 } else {
-                    TextField("manual.defect.shortText.placeholder", text: $defectModel.shortText)
+                    TextField("manual.defect.shortText.placeholder", text: Binding(
+                        get: { defectModel.shortText },
+                        // `QMTXT` holds 40 characters.
+                        set: { defectModel.shortText = String($0.prefix(DefectDraftPayload.maximumShortTextLength)) }
+                    ))
                         .manualTextField()
                 }
             }
@@ -270,7 +280,11 @@ struct ManualCaptureView: View {
                         .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
                         .foregroundStyle(defectModel.longText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : FacilityTheme.ink)
                 } else {
-                    TextEditor(text: $defectModel.longText)
+                    TextEditor(text: Binding(
+                        get: { defectModel.longText },
+                        // `insertI2Meldung` sends the first 300 characters.
+                        set: { defectModel.longText = String($0.prefix(I2NotificationRules.maximumLongTextLength)) }
+                    ))
                         .frame(minHeight: 110)
                         .padding(8)
                         .scrollContentBackground(.hidden)
@@ -280,6 +294,11 @@ struct ManualCaptureView: View {
 
             photoSection
 
+            if let syncError = defectModel.syncError {
+                Label(syncError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(FacilityTheme.red)
+            }
             if defectModel.saveFailed { formError("offline.save.error.message") }
             if defectModel.photoFailed { formError("manual.photo.error") }
 
@@ -345,6 +364,102 @@ struct ManualCaptureView: View {
             .disabled(defectModel.isReadOnly)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// The I1 the defect is reported under (`REFNUM`): SAP creates an I2 only
+    /// with one. Filled in when the object has a single I1.
+    private var defectParentField: some View {
+        fieldLabel("manual.defect.parent", required: !defectModel.isReadOnly) {
+            if defectModel.parentOptions.isEmpty {
+                Label("manual.defect.parent.none", systemImage: "info.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                defectDropdown(
+                    titleKey: "manual.defect.parent",
+                    iconName: "doc.text",
+                    options: defectModel.parentOptions.map {
+                        FacilityDropdownOption(id: $0.id, title: [$0.id, $0.title].filter { !$0.isEmpty }.joined(separator: " · "))
+                    },
+                    selectedID: defectModel.selectedParentID,
+                    width: 520,
+                    searchPrompt: "manual.defect.parent.search",
+                    isPresented: $isParentPickerPresented
+                ) { defectModel.selectedParentID = $0 }
+            }
+        }
+    }
+
+    /// `QMCOD` of the I2 notification, from the same list the form I2s use.
+    private var defectCategoryField: some View {
+        fieldLabel("manual.defect.category", required: !defectModel.isReadOnly) {
+            defectDropdown(
+                titleKey: "manual.defect.category",
+                iconName: "tag",
+                options: I2NotificationCategory.allCases.filter(\.createsNotification).map {
+                    FacilityDropdownOption(id: $0.id, title: String(localized: String.LocalizationValue($0.titleKey)))
+                },
+                selectedID: defectModel.category?.id,
+                isPresented: $isCategoryPickerPresented
+            ) { defectModel.category = I2NotificationCategory(rawValue: $0) }
+        }
+    }
+
+    /// A dropdown in the chrome of the object field, opening the shared
+    /// option list of `FacilityDropdownField`.
+    private func defectDropdown(
+        titleKey: LocalizedStringKey,
+        iconName: String,
+        options: [FacilityDropdownOption],
+        selectedID: String?,
+        width: CGFloat = 340,
+        searchPrompt: LocalizedStringKey? = nil,
+        isPresented: Binding<Bool>,
+        onSelect: @escaping (String) -> Void
+    ) -> some View {
+        let selected = options.first { $0.id == selectedID }
+        return Button {
+            guard !defectModel.isReadOnly else { return }
+            isPresented.wrappedValue = true
+        } label: {
+            HStack(spacing: 12) {
+                if let selected {
+                    Text(selected.title)
+                        .foregroundStyle(FacilityTheme.ink)
+                } else {
+                    Text("manual.select.placeholder")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                if !defectModel.isReadOnly {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(FacilityTheme.blue)
+                }
+            }
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 12)
+            .background(FacilityTheme.canvas, in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .disabled(defectModel.isReadOnly)
+        // Opens above the field when there is no room below it.
+        .facilityPopover(isPresented: isPresented, arrowEdge: .top) {
+            FacilityDropdownOptionsPicker(
+                label: Text(titleKey),
+                iconName: iconName,
+                options: options,
+                selection: Set([selectedID].compactMap { $0 }),
+                width: width,
+                searchPrompt: searchPrompt,
+                onSelect: { option in
+                    onSelect(option.id)
+                    isPresented.wrappedValue = false
+                }
+            )
+        }
     }
 
     private var photoSection: some View {
@@ -422,6 +537,11 @@ struct ManualCaptureView: View {
                     }
                 }
 
+                if meterModel.isRejectedBelowPreviousValue {
+                    formError("manual.meter.validation.lessThanPrevious")
+                } else if meterModel.hasTooManyDecimals, let decimals = meterModel.selectedReference?.decimals {
+                    formError("measuringPoints.issue.tooManyDecimals \(decimals)")
+                }
                 if meterModel.saveFailed { formError("offline.save.error.message") }
             }
             .disabled(meterModel.isReadOnly)
@@ -533,6 +653,9 @@ struct ManualCaptureView: View {
                             case .water:
                                 Image(systemName: "drop.fill")
                                     .foregroundStyle(Color.blue)
+                            case .heat:
+                                Image(systemName: "thermometer.medium")
+                                    .foregroundStyle(Color.red)
                             }
 
                             Text(LocalizedStringKey(kind.titleKey))
@@ -630,7 +753,11 @@ struct ManualCaptureView: View {
 
     private var meterNoteField: some View {
         fieldLabel("manual.meter.note") {
-            TextField("manual.meter.note.placeholder", text: $meterModel.note)
+            TextField("manual.meter.note.placeholder", text: Binding(
+                get: { meterModel.note },
+                // `PARAMETER5` takes the 40 characters of the legacy text area.
+                set: { meterModel.note = String($0.prefix(MeasuringPointReadingEntry.maximumTextLength)) }
+            ))
                 .textFieldStyle(.plain)
                 .foregroundStyle(FacilityTheme.ink)
                 .focused($focusedMeterField, equals: .note)
@@ -651,9 +778,18 @@ struct ManualCaptureView: View {
         }
     }
 
-    private func fieldLabel<Content: View>(_ key: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+    /// `required` adds the red asterisk the other forms put after a field that
+    /// must be filled in (`SafetyFormField`).
+    private func fieldLabel<Content: View>(
+        _ key: LocalizedStringKey,
+        required: Bool = false,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(key)
+            HStack(spacing: 0) {
+                Text(key)
+                if required { Text(verbatim: " *").foregroundStyle(FacilityTheme.red) }
+            }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
             content()
@@ -797,7 +933,7 @@ struct ManualCaptureView: View {
                     LazyVStack(spacing: 0) {
                         if defectModel.selectedObjectID != nil && objectSearchText.isEmpty {
                             Button {
-                                defectModel.selectedObjectID = nil
+                                defectModel.selectObject(nil)
                                 isObjectPickerPresented = false
                             } label: {
                                 HStack(spacing: 12) {
@@ -820,9 +956,10 @@ struct ManualCaptureView: View {
 
                         ForEach(filteredDefectObjects) { object in
                             let isSelected = object.id == defectModel.selectedObjectID
+                            let isAvailable = defectModel.canReportDefect(on: object)
 
                             Button {
-                                defectModel.selectedObjectID = object.id
+                                defectModel.selectObject(object.id)
                                 isObjectPickerPresented = false
                             } label: {
                                 HStack(spacing: 12) {
@@ -852,7 +989,15 @@ struct ManualCaptureView: View {
                                                     .background(FacilityTheme.blue.opacity(0.10), in: Capsule())
                                             }
                                         }
+
+                                        if !isAvailable {
+                                            Text("manual.defect.object.noParent")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(2)
+                                        }
                                     }
+                                    .opacity(isAvailable ? 1 : 0.55)
 
                                     Spacer(minLength: 12)
 
@@ -865,6 +1010,7 @@ struct ManualCaptureView: View {
                                 .background(isSelected ? FacilityTheme.accentSoft : FacilityTheme.surface)
                             }
                             .buttonStyle(.plain)
+                            .disabled(!isAvailable && !isSelected)
 
                             if object.id != filteredDefectObjects.last?.id {
                                 Divider().padding(.leading, 18)

@@ -109,7 +109,10 @@ final class SubdistributionCreationViewModel {
             && (!hasDefect || draft.defectCloseAction != nil)
     }
 
-    func load() async {
+    /// `anchor` is the building the technician opened the form from. It only
+    /// preselects the address of a new draft — a saved one keeps the context
+    /// it was saved with.
+    func load(preselecting anchor: TechnicalPlaceCreationAnchor? = nil) async {
         await offlineWorkStore.load()
         itemStatus = offlineWorkStore.subdistributionItem(id: workItemID)?.status ?? itemStatus
         do {
@@ -119,6 +122,9 @@ final class SubdistributionCreationViewModel {
                 applyTemplate(context.legacyContext.template)
                 state = .ready
             } else {
+                // A reload (the form's task can restart) never overrides a
+                // choice the technician has already made.
+                if let anchor, selectedBusinessEntity == nil { applyAnchor(anchor) }
                 state = contexts.isEmpty ? .unavailable : .ready
             }
             synchronizePhotoAttachments()
@@ -135,6 +141,43 @@ final class SubdistributionCreationViewModel {
                 state = .unavailable
             }
         }
+    }
+
+    /// Fills the pickers from the anchored place as far as this landscape has
+    /// a sub-distribution context for it: the business entity, then the
+    /// building, then the parent place when only one is left. Several parents
+    /// are a real choice the technician has to make.
+    private func applyAnchor(_ anchor: TechnicalPlaceCreationAnchor) {
+        let entityMatches = contexts.filter {
+            anchor.matches(countryCode: $0.legacyContext.country, businessEntity: $0.legacyContext.businessEntity)
+        }
+        let entities = Set(entityMatches.map(\.businessEntity))
+        guard entities.count == 1, let entity = entities.first else { return }
+        selectedBusinessEntity = entity
+
+        let buildingMatches = entityMatches.filter {
+            anchor.matches(
+                countryCode: $0.legacyContext.country,
+                businessEntity: $0.legacyContext.businessEntity,
+                building: $0.legacyContext.building
+            )
+        }
+        let matchedBuildings = Set(buildingMatches.map(\.building))
+        let entityBuildings = Set(entityMatches.map(\.building))
+        if matchedBuildings.count == 1 {
+            selectedBuilding = matchedBuildings.first
+        } else if anchor.buildingCode.isEmpty, entityBuildings.count == 1 {
+            // A place above building level: a single building is still no
+            // choice. A place in a building without a context of its own
+            // never falls back to another building.
+            selectedBuilding = entityBuildings.first
+        } else {
+            return
+        }
+
+        let parents = Set(entityMatches.filter { $0.building == selectedBuilding }.map(\.parentLocation))
+        guard parents.count == 1, let parent = parents.first else { return }
+        selectParentLocation(parent)
     }
 
     func selectBusinessEntity(_ value: String) {

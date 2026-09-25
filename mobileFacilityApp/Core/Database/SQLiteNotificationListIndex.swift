@@ -4,7 +4,7 @@ import Foundation
 /// beside, rather than inside, the exact legacy SAP database: the latter has a
 /// validated fixed schema and must not gain app-specific tables or indexes.
 actor SQLiteNotificationListIndex {
-    private static let schemaVersion: Int32 = 1
+    private static let schemaVersion: Int32 = 2
     private var database: OpaquePointer?
 
     init(databaseURL: URL) throws {
@@ -107,49 +107,90 @@ actor SQLiteNotificationListIndex {
         let rows = try Self.query(
             on: database,
             """
-            SELECT notification_id, client, title, functional_location_id,
-                   functional_location_name, equipment_id, start_date, end_date,
-                   system_status, user_status, raw_payload_json, country_code,
-                   location_code, business_entity_code, building_code, trade_code, form_code
+            SELECT \(Self.summaryColumns)
             FROM notification_list_items
             WHERE \(predicate.sql)
             ORDER BY start_date, notification_id
             LIMIT ? OFFSET ?
             """,
-            bindings: predicate.bindings + [String(pageSize), String(start)]
-        ) { statement in
-            let country = Self.string(at: 11, from: statement)
-            let location = Self.string(at: 12, from: statement)
-            let entity = Self.string(at: 13, from: statement)
-            let structuralMetadata: NotificationStructuralFilterMetadata? = entity.isEmpty ? nil : .init(
-                countryCode: country,
-                locationCode: location,
-                businessEntityCode: entity,
-                buildingCode: Self.string(at: 14, from: statement),
-                tradeCode: Self.string(at: 15, from: statement),
-                formCode: Self.string(at: 16, from: statement),
-                functionalLocationName: Self.string(at: 4, from: statement)
-            )
-            return SAPNotificationSummary(
-                id: Self.string(at: 0, from: statement),
-                client: Self.string(at: 1, from: statement),
-                title: Self.string(at: 2, from: statement),
-                functionalLocationID: Self.string(at: 3, from: statement),
-                functionalLocationName: Self.string(at: 4, from: statement),
-                equipmentID: Self.string(at: 5, from: statement),
-                startDate: Self.string(at: 6, from: statement),
-                endDate: Self.string(at: 7, from: statement),
-                systemStatus: Self.string(at: 8, from: statement),
-                userStatus: Self.string(at: 9, from: statement),
-                rawPayloadJSON: Self.string(at: 10, from: statement),
-                structuralFilterMetadata: structuralMetadata
-            )
-        }
+            bindings: predicate.bindings + [String(pageSize), String(start)],
+            map: Self.summary(from:)
+        )
         let end = start + rows.count
         return SAPNotificationPage(
             notifications: rows,
             nextOffset: end < totalCount ? end : nil,
             totalCount: totalCount
+        )
+    }
+
+    /// The notifications of one technical object, for its detail screen.
+    ///
+    /// The legacy table stores each notification as a compressed payload and
+    /// most rows leave `STRNO`/`EQUNR` empty at column level, so answering
+    /// this from there means decoding every notification the worker has. This
+    /// projection already holds the decoded identifiers, indexed.
+    func loadNotifications(
+        for workerID: String,
+        functionalLocationID: String?,
+        equipmentID: String?
+    ) throws -> [SAPNotificationSummary] {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let clause: String
+        let bindings: [String]
+        if let equipmentID {
+            clause = "worker_id = ? AND equipment_id = ?"
+            bindings = [workerID, equipmentID]
+        } else if let functionalLocationID {
+            clause = "worker_id = ? AND functional_location_id = ?"
+            bindings = [workerID, functionalLocationID]
+        } else {
+            return []
+        }
+        return try Self.query(
+            on: database,
+            """
+            SELECT \(Self.summaryColumns)
+            FROM notification_list_items
+            WHERE \(clause)
+            ORDER BY start_date, notification_id
+            """,
+            bindings: bindings,
+            map: Self.summary(from:)
+        )
+    }
+
+    private static let summaryColumns = """
+        notification_id, client, title, functional_location_id, \
+        functional_location_name, equipment_id, start_date, end_date, \
+        system_status, user_status, raw_payload_json, country_code, \
+        location_code, business_entity_code, building_code, trade_code, form_code
+        """
+
+    private static func summary(from statement: OpaquePointer) -> SAPNotificationSummary {
+        let entity = string(at: 13, from: statement)
+        let structuralMetadata: NotificationStructuralFilterMetadata? = entity.isEmpty ? nil : .init(
+            countryCode: string(at: 11, from: statement),
+            locationCode: string(at: 12, from: statement),
+            businessEntityCode: entity,
+            buildingCode: string(at: 14, from: statement),
+            tradeCode: string(at: 15, from: statement),
+            formCode: string(at: 16, from: statement),
+            functionalLocationName: string(at: 4, from: statement)
+        )
+        return SAPNotificationSummary(
+            id: string(at: 0, from: statement),
+            client: string(at: 1, from: statement),
+            title: string(at: 2, from: statement),
+            functionalLocationID: string(at: 3, from: statement),
+            functionalLocationName: string(at: 4, from: statement),
+            equipmentID: string(at: 5, from: statement),
+            startDate: string(at: 6, from: statement),
+            endDate: string(at: 7, from: statement),
+            systemStatus: string(at: 8, from: statement),
+            userStatus: string(at: 9, from: statement),
+            rawPayloadJSON: string(at: 10, from: statement),
+            structuralFilterMetadata: structuralMetadata
         )
     }
 
@@ -282,6 +323,16 @@ actor SQLiteNotificationListIndex {
             try execute(on: database, """
                 CREATE INDEX IF NOT EXISTS notification_list_by_date
                 ON notification_list_items (worker_id, start_date, notification_id)
+                """)
+            // The technical-object detail screen asks for the notifications of
+            // one object, which is otherwise a scan of the worker's whole list.
+            try execute(on: database, """
+                CREATE INDEX IF NOT EXISTS notification_list_by_equipment
+                ON notification_list_items (worker_id, equipment_id)
+                """)
+            try execute(on: database, """
+                CREATE INDEX IF NOT EXISTS notification_list_by_location
+                ON notification_list_items (worker_id, functional_location_id)
                 """)
             try execute(on: database, "PRAGMA user_version = \(schemaVersion)")
             try execute(on: database, "COMMIT")

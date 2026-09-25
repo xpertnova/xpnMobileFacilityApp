@@ -44,6 +44,50 @@ struct TechnicalLocationKey: Hashable, Sendable {
     }
 }
 
+/// The address a creation form should start on, taken from the technical
+/// place the technician opened it from.
+///
+/// TFM5 and TFM7 address a building through the legacy `TPLND` / `TPWEH` /
+/// `TPGEB` classification, never through the place's own identifier, so that
+/// is what is matched. The trade is deliberately left out: the ladder contexts
+/// live under their own `TPGSG` (350), which is not the trade of the place the
+/// technician is standing on.
+///
+/// The form is filled as far down as the anchor matches: the business entity
+/// alone when the building has no creation context (or the place sits above
+/// building level), then the building, then the last level if only one is
+/// left to choose.
+struct TechnicalPlaceCreationAnchor: Equatable, Sendable {
+    let countryCode: String
+    let businessEntityCode: String
+    /// Empty for a place that is not classified down to a building, such as
+    /// an outdoor area.
+    let buildingCode: String
+
+    /// Nil when the place carries no business entity; the form then opens
+    /// with its normal pickers.
+    init?(_ node: TechnicalObjectNode) {
+        guard node.reference.kind == .functionalLocation, !node.isSynthetic,
+              !node.businessEntityCode.isEmpty
+        else { return nil }
+        countryCode = node.countryCode
+        businessEntityCode = node.businessEntityCode
+        buildingCode = node.buildingCode
+    }
+
+    /// A country code is only compared when both sides carry one, so a cache
+    /// that leaves `TPLND` empty still matches on the business entity.
+    func matches(countryCode other: String, businessEntity: String) -> Bool {
+        guard businessEntity == businessEntityCode else { return false }
+        return countryCode.isEmpty || other.isEmpty || other == countryCode
+    }
+
+    func matches(countryCode other: String, businessEntity: String, building: String) -> Bool {
+        !buildingCode.isEmpty && building == buildingCode
+            && matches(countryCode: other, businessEntity: businessEntity)
+    }
+}
+
 struct TechnicalObjectNode: Codable, Equatable, Identifiable, Sendable {
     let reference: TechnicalObjectReference
     var parent: TechnicalObjectReference?
@@ -56,6 +100,13 @@ struct TechnicalObjectNode: Codable, Equatable, Identifiable, Sendable {
     let hierarchyLevel: String
     let category: String
     let structureIndicator: String
+    /// `TPWEH` / `TPGEB` / `TPGSG`: the business entity, building and trade a
+    /// functional location belongs to. The creation forms address a building
+    /// by these codes, so a place can point them at itself. Equipment rows
+    /// (`FROM_T0262`) do not carry them and leave them empty.
+    let businessEntityCode: String
+    let buildingCode: String
+    let tradeCode: String
     let equipmentCategory: String
     let equipmentType: String
     let manufacturer: String
@@ -82,6 +133,9 @@ struct TechnicalObjectNode: Codable, Equatable, Identifiable, Sendable {
         hierarchyLevel: String,
         category: String,
         structureIndicator: String,
+        businessEntityCode: String = "",
+        buildingCode: String = "",
+        tradeCode: String = "",
         equipmentCategory: String,
         equipmentType: String,
         manufacturer: String,
@@ -107,6 +161,9 @@ struct TechnicalObjectNode: Codable, Equatable, Identifiable, Sendable {
         self.hierarchyLevel = hierarchyLevel
         self.category = category
         self.structureIndicator = structureIndicator
+        self.businessEntityCode = businessEntityCode
+        self.buildingCode = buildingCode
+        self.tradeCode = tradeCode
         self.equipmentCategory = equipmentCategory
         self.equipmentType = equipmentType
         self.manufacturer = manufacturer
@@ -233,6 +290,18 @@ struct TechnicalObjectPage: Equatable, Sendable {
     static let empty = TechnicalObjectPage(objects: [], nextOffset: nil, totalCount: 0)
 }
 
+/// How many cached technical objects a worker has, split by kind. Feeds the
+/// hierarchy subtitle, which names functional locations and equipment
+/// separately.
+struct TechnicalObjectCounts: Equatable, Sendable {
+    let functionalLocations: Int
+    let equipment: Int
+
+    static let zero = TechnicalObjectCounts(functionalLocations: 0, equipment: 0)
+
+    var total: Int { functionalLocations + equipment }
+}
+
 struct TechnicalObjectDINCount: Equatable, Identifiable, Sendable {
     let code: String
     let count: Int
@@ -301,6 +370,24 @@ enum TechnicalDIN276 {
         "410", "420", "430", "440", "450", "460",
         "470", "480", "500", "550"
     ]
+
+    /// Short cost-group name for the filter chips. The full DIN 276 titles are
+    /// too long for a chip (KG 450 alone is 63 characters), so the bar uses the
+    /// abbreviated names from the design reference.
+    static func shortNameKey(for code: String) -> String {
+        "places.din.\(code)"
+    }
+
+    /// `"430 · Raumlufttechnik (4)"`. The separator and the count are the same
+    /// in both catalog languages, so only the name is localized.
+    static func chipLabel(for code: String, count: Int) -> String {
+        let key = shortNameKey(for: code)
+        let name = String(localized: String.LocalizationValue(stringLiteral: key))
+        // A code without a short name in the catalog keeps the bare KG label
+        // instead of printing the missing key.
+        guard name != key else { return "KG \(code) (\(count))" }
+        return "\(code) · \(name) (\(count))"
+    }
 
     static func detect(explicitValue: String = "", label: String) -> String? {
         if let explicit = uniqueSupportedCode(in: explicitValue) {
@@ -510,6 +597,9 @@ enum SAPTechnicalObjectMapper {
             hierarchyLevel: string("LEVELID", in: row),
             category: string("FLTYP", in: row),
             structureIndicator: string("TPLKZ", in: row),
+            businessEntityCode: string("TPWEH", in: row),
+            buildingCode: string("TPGEB", in: row),
+            tradeCode: string("TPGSG", in: row),
             equipmentCategory: "",
             equipmentType: "",
             manufacturer: string("HERST", in: row),

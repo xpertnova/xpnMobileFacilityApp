@@ -70,6 +70,22 @@ struct FrontendPreviewMeterReferenceProvider: MeterReferenceProviding {
     }
 }
 
+/// The measuring points of `FROM_T0274`, the source the Rundgang reading
+/// screen uses. A reading saved from them goes to SAP as `TO_T0286`.
+struct SAPMeterReferenceProvider: MeterReferenceProviding {
+    let sapDataStore: SAPDataStore
+
+    func references(for kind: MeterKind) async throws -> [MeterReference] {
+        let pointsByLocation = try await sapDataStore.loadAllMeasuringPoints()
+        return pointsByLocation.keys.sorted().flatMap { locationID in
+            (pointsByLocation[locationID] ?? []).compactMap { point -> MeterReference? in
+                guard MeterKind(position: point.position, unit: point.unit) == kind else { return nil }
+                return MeterReference(point: point, locationID: locationID)
+            }
+        }
+    }
+}
+
 struct UnavailableMeterReferenceProvider: MeterReferenceProviding {
     func references(for kind: MeterKind) async throws -> [MeterReference] {
         throw MeterReferenceError.unavailable

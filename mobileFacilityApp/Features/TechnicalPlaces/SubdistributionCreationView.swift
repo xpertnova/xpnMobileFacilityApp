@@ -9,6 +9,8 @@ struct SubdistributionCreationView: View {
 
     let demo: FacilityDemoViewModel
     let itemID: UUID?
+    /// The technical place a new form was opened from.
+    let anchor: TechnicalPlaceCreationAnchor?
     let close: () -> Void
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: SubdistributionCreationViewModel
@@ -23,9 +25,15 @@ struct SubdistributionCreationView: View {
     @State private var isBuildingPickerPresented = false
     @State private var isParentPickerPresented = false
 
-    init(demo: FacilityDemoViewModel, itemID: UUID?, close: @escaping () -> Void) {
+    init(
+        demo: FacilityDemoViewModel,
+        itemID: UUID?,
+        anchor: TechnicalPlaceCreationAnchor? = nil,
+        close: @escaping () -> Void
+    ) {
         self.demo = demo
         self.itemID = itemID
+        self.anchor = anchor
         self.close = close
         _model = State(initialValue: SubdistributionCreationViewModel(
             provider: demo.subdistributionCreationProvider,
@@ -83,7 +91,7 @@ struct SubdistributionCreationView: View {
             }
         }
         .animation(accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation, value: photoWorkspaceScope?.rowID)
-        .task { await model.load() }
+        .task { await model.load(preselecting: anchor) }
         .alert(item: $outOfOperationTransition) { transition in
             Alert(
                 title: Text("subdistribution.outOfOperation.warning.title"),

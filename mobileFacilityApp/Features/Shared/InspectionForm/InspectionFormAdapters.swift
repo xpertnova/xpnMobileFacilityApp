@@ -33,8 +33,29 @@ extension NotificationReviewResult {
 
 extension SAPNotificationDetail.InspectionItem {
     /// Presents a decoded `T_PLPOD` position as a shared checklist row.
-    func inspectionFormItem(number: Int) -> InspectionFormItem {
-        InspectionFormItem(
+    ///
+    /// A `MEASURE` row becomes a reading button only when the form passes
+    /// `measuringPoints`; the Rundgang is the only legacy form that defines
+    /// `getColumnListItemReading`.
+    func inspectionFormItem(
+        number: Int,
+        measuringPoints: InspectionFormMeasuringPointAvailability? = nil
+    ) -> InspectionFormItem {
+        if let buttonTitle = measuringPointButtonTitle, let measuringPoints {
+            return InspectionFormItem(
+                id: id,
+                number: number,
+                title: title,
+                information: information,
+                groupTitle: groupTitle,
+                requiresResult: false,
+                measuringPoint: InspectionFormMeasuringPoint(
+                    buttonTitle: buttonTitle,
+                    unavailableReasonKey: measuringPoints.unavailableReasonKey
+                )
+            )
+        }
+        return InspectionFormItem(
             id: id,
             number: number,
             title: title,
@@ -42,6 +63,35 @@ extension SAPNotificationDetail.InspectionItem {
             groupTitle: groupTitle,
             resultOptions: NotificationReviewResult.formOptions
         )
+    }
+}
+
+/// Whether SAP delivered measuring points for the notification's place.
+enum InspectionFormMeasuringPointAvailability: Equatable, Sendable {
+    case loading
+    case available
+    /// `FROM_T0274` holds no point for the place.
+    case none
+    /// The points could not be read from the cache.
+    case unreadable
+
+    init(points: [SAPMeasuringPoint]?, isLoading: Bool) {
+        if isLoading {
+            self = .loading
+        } else if let points {
+            self = points.isEmpty ? .none : .available
+        } else {
+            self = .unreadable
+        }
+    }
+
+    var unavailableReasonKey: String? {
+        switch self {
+        case .available: nil
+        case .loading: "measuringPoints.row.loading"
+        case .none: "measuringPoints.row.none"
+        case .unreadable: "measuringPoints.row.unreadable"
+        }
     }
 }
 

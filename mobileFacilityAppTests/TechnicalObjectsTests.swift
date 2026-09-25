@@ -21,6 +21,241 @@ final class TechnicalObjectsTests: XCTestCase {
         XCTAssertEqual(equipment.manufacturer, "Maker")
     }
 
+    /// The creation forms address a building by `TPLND` / `TPWEH` / `TPGEB`,
+    /// so those have to survive mapping and normalization; equipment rows
+    /// carry none of them.
+    func testFunctionalLocationCarriesBuildingClassificationForCreationForms() throws {
+        let location = try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: [
+            "STRNO": "DE-ESS-10748-01-420-HZG1", "TPLMA": "DE-ESS-10748-01-420",
+            "PLTXT": "Heating", "TPLND": "DE", "TPORT": "ESS",
+            "TPWEH": "10748", "TPGEB": "01", "TPGSG": "420"
+        ]))
+        XCTAssertEqual(location.businessEntityCode, "10748")
+        XCTAssertEqual(location.buildingCode, "01")
+        XCTAssertEqual(location.tradeCode, "420")
+
+        let normalized = TechnicalObjectHierarchyNormalizer.normalize([location])
+        XCTAssertEqual(normalized.first?.buildingCode, "01")
+
+        let equipment = try XCTUnwrap(SAPTechnicalObjectMapper.equipment(from: [
+            "EQUNR": "EQ-2", "STRNO": "DE-ESS-10748-01-420-HZG1", "EQKTX": "Pump"
+        ]))
+        XCTAssertEqual(equipment.buildingCode, "")
+    }
+
+    /// The anchor matches the building, never the place's own trade: the
+    /// ladder contexts sit under their own `TPGSG`.
+    func testCreationAnchorMatchesBuildingAndIgnoresTrade() throws {
+        let place = try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: [
+            "STRNO": "DE-ESS-10748-01-420-HZG1", "PLTXT": "Heating", "TPLND": "DE",
+            "TPORT": "ESS", "TPWEH": "10748", "TPGEB": "01", "TPGSG": "420"
+        ]))
+        let anchor = try XCTUnwrap(TechnicalPlaceCreationAnchor(place))
+        XCTAssertTrue(anchor.matches(countryCode: "DE", businessEntity: "10748", building: "01"))
+        // A cache without TPLND still matches on the building.
+        XCTAssertTrue(anchor.matches(countryCode: "", businessEntity: "10748", building: "01"))
+        XCTAssertFalse(anchor.matches(countryCode: "DE", businessEntity: "10748", building: "02"))
+        XCTAssertFalse(anchor.matches(countryCode: "AT", businessEntity: "10748", building: "01"))
+
+        // An outdoor place that never reaches a building still anchors its
+        // business entity, but no building.
+        let outdoor = try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: [
+            "STRNO": "DE-ESS-10748-AUSS", "PLTXT": "Outdoor", "TPLND": "DE",
+            "TPORT": "ESS", "TPWEH": "10748"
+        ]))
+        let outdoorAnchor = try XCTUnwrap(TechnicalPlaceCreationAnchor(outdoor))
+        XCTAssertTrue(outdoorAnchor.matches(countryCode: "DE", businessEntity: "10748"))
+        XCTAssertFalse(outdoorAnchor.matches(countryCode: "DE", businessEntity: "10748", building: ""))
+
+        // Without a business entity there is nothing to anchor.
+        let site = try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: [
+            "STRNO": "DE-ESS", "PLTXT": "Site", "TPLND": "DE", "TPORT": "ESS"
+        ]))
+        XCTAssertNil(TechnicalPlaceCreationAnchor(site))
+    }
+
+    /// "Equipment einbauen" fills the TFM5 form from the place it was opened
+    /// on: the whole address when the building matches, the business entity
+    /// alone when the place's building has no ladder context.
+    @MainActor
+    func testMobileLadderFormIsFilledFromTheAnchoredPlace() async throws {
+        let full = try await ladderModel(anchoredAt: ["TPWEH": "UN01", "TPGEB": "BG01"])
+        XCTAssertEqual(full.selectedBusinessEntity, "Musterunternehmen · Essen")
+        XCTAssertEqual(full.selectedBuilding, "Bürogebäude")
+        XCTAssertEqual(full.selectedTrade, "350 Leitern und Tritte")
+        XCTAssertEqual(full.draft.context?.legacyContext.functionalLocation, "UN01-ST01-BG01-TECH-350")
+
+        let aboveBuilding = try await ladderModel(anchoredAt: ["TPWEH": "UN01"])
+        XCTAssertEqual(aboveBuilding.selectedBuilding, "Bürogebäude", "the only building is no choice")
+        XCTAssertNotNil(aboveBuilding.draft.context)
+
+        let otherBuilding = try await ladderModel(anchoredAt: ["TPWEH": "UN01", "TPGEB": "BG02"])
+        XCTAssertEqual(otherBuilding.selectedBusinessEntity, "Musterunternehmen · Essen")
+        XCTAssertNil(otherBuilding.selectedBuilding, "never falls back to another building")
+        XCTAssertNil(otherBuilding.draft.context)
+
+        let otherEntity = try await ladderModel(anchoredAt: ["TPWEH": "UN02", "TPGEB": "BG01"])
+        XCTAssertNil(otherEntity.selectedBusinessEntity)
+        XCTAssertNil(otherEntity.draft.context)
+    }
+
+    @MainActor
+    func testSubdistributionFormIsFilledFromTheAnchoredPlace() async throws {
+        let full = try await subdistributionModel(anchoredAt: ["TPWEH": "UN01", "TPGEB": "BG01"])
+        XCTAssertEqual(full.selectedBusinessEntity, "Musterunternehmen · Essen")
+        XCTAssertEqual(full.selectedBuilding, "Bürogebäude")
+        XCTAssertEqual(full.selectedParentLocation, "Unterverteilung EG")
+        XCTAssertTrue(full.isContextSelected)
+
+        let otherBuilding = try await subdistributionModel(anchoredAt: ["TPWEH": "UN01", "TPGEB": "BG02"])
+        XCTAssertEqual(otherBuilding.selectedBusinessEntity, "Musterunternehmen · Essen")
+        XCTAssertNil(otherBuilding.selectedBuilding)
+        XCTAssertFalse(otherBuilding.isContextSelected)
+    }
+
+    /// The place travels in the route, so a form whose task restarts still
+    /// finds it; an existing draft never gets one.
+    @MainActor
+    func testCreationRouteCarriesTheAnchoredPlace() throws {
+        let demo = FacilityDemoViewModel(
+            isDemoMode: true,
+            offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo"),
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(seed: TechnicalObjectDemoData.cachedData),
+                refreshService: nil,
+                localWorkerID: "demo"
+            ),
+            meterReferenceProvider: DemoMeterReferenceProvider(),
+            photoAttachmentStore: InMemoryPhotoAttachmentStore(),
+            workerDisplayName: "Alex Morgan",
+            workerRole: .technician
+        )
+        let place = try anchor(["TPWEH": "UN01", "TPGEB": "BG01"])
+
+        demo.openMobileLadder(preselecting: place)
+        XCTAssertEqual(demo.technicalPlacesRoute, .createMobileLadder(place))
+        demo.closeMobileLadder()
+
+        demo.openSubdistribution(preselecting: place)
+        XCTAssertEqual(demo.technicalPlacesRoute, .createSubdistribution(place))
+
+        let draftID = UUID()
+        demo.openMobileLadder(draftID, preselecting: place)
+        XCTAssertEqual(demo.technicalPlacesRoute, .mobileLadderDraft(draftID))
+    }
+
+    /// "Equipment einbauen" offers a form only where the place's own
+    /// building (or, above building level, its business entity) has a
+    /// context, and names the reason otherwise.
+    func testInstallAvailabilityFollowsThePlacesBuilding() throws {
+        let contexts = [(country: "DE", businessEntity: "UN01", building: "BG01")]
+        typealias Options = TechnicalPlaceInstallOptions
+        XCTAssertEqual(
+            Options.availability(at: try anchor(["TPWEH": "UN01", "TPGEB": "BG01"]), among: contexts), .available
+        )
+        XCTAssertEqual(Options.availability(at: try anchor(["TPWEH": "UN01"]), among: contexts), .available)
+        XCTAssertEqual(
+            Options.availability(at: try anchor(["TPWEH": "UN01", "TPGEB": "BG02"]), among: contexts, trade: "350"),
+            .noContext(trade: "350"),
+            "another building of the same entity is not this place"
+        )
+        XCTAssertEqual(
+            Options.availability(at: try anchor(["TPWEH": "UN02"]), among: contexts, trade: "350"),
+            .noContext(trade: "350")
+        )
+        XCTAssertEqual(Options.availability(at: try anchor(["TPWEH": "UN01"]), among: []), .noData)
+        XCTAssertEqual(Options.availability(at: nil, among: contexts), .noBusinessEntity)
+    }
+
+    /// The demo place offers both forms.
+    @MainActor
+    func testDemoPlaceOffersBothInstallForms() async throws {
+        let demo = FacilityDemoViewModel(
+            isDemoMode: true,
+            offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo"),
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(seed: TechnicalObjectDemoData.cachedData),
+                refreshService: nil,
+                localWorkerID: "demo"
+            ),
+            meterReferenceProvider: DemoMeterReferenceProvider(),
+            photoAttachmentStore: InMemoryPhotoAttachmentStore(),
+            workerDisplayName: "Alex Morgan",
+            workerRole: .technician
+        )
+        let leaf = try XCTUnwrap(TechnicalObjectDemoData.objects.first {
+            $0.reference.objectID == "UN01-ST01-BG01-EG00-300-BAU1"
+        })
+        let options = await demo.equipmentInstallOptions(at: leaf)
+        XCTAssertEqual(options.mobileLadder, .available)
+        XCTAssertEqual(options.subdistribution, .available)
+    }
+
+    /// Loading twice keeps a choice the technician made in between.
+    @MainActor
+    func testReloadDoesNotOverrideAChosenBusinessEntity() async throws {
+        let model = try await ladderModel(anchoredAt: ["TPWEH": "UN01", "TPGEB": "BG02"])
+        model.selectBusinessEntity("Musterunternehmen · Essen")
+        model.selectBuilding("Bürogebäude")
+        await model.load(preselecting: try anchor(["TPWEH": "UN01", "TPGEB": "BG02"]))
+        XCTAssertEqual(model.selectedBuilding, "Bürogebäude")
+    }
+
+    private func anchor(_ codes: [String: String]) throws -> TechnicalPlaceCreationAnchor {
+        var row: [String: Any] = ["STRNO": "UN01-ST01-X", "PLTXT": "Place", "TPLND": "DE", "TPORT": "ST01"]
+        codes.forEach { row[$0.key] = $0.value }
+        let node = try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: row))
+        return try XCTUnwrap(TechnicalPlaceCreationAnchor(node))
+    }
+
+    @MainActor
+    private func ladderModel(anchoredAt codes: [String: String]) async throws -> MobileLadderCreationViewModel {
+        let model = MobileLadderCreationViewModel(
+            provider: DemoMobileLadderCreationProvider(),
+            offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo"),
+            isDemo: true,
+            item: nil
+        )
+        await model.load(preselecting: try anchor(codes))
+        return model
+    }
+
+    @MainActor
+    private func subdistributionModel(anchoredAt codes: [String: String]) async throws -> SubdistributionCreationViewModel {
+        let model = SubdistributionCreationViewModel(
+            provider: DemoSubdistributionCreationProvider(),
+            offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "demo"),
+            isDemo: true,
+            item: nil
+        )
+        await model.load(preselecting: try anchor(codes))
+        return model
+    }
+
+    /// The demo tree has to contain at least one technical place whose detail
+    /// opens — only a leaf does — and that place has to anchor the demo
+    /// creation forms, or neither the actions card nor the preselection can
+    /// be seen without a SAP landscape.
+    func testDemoTreeHasAnOpenablePlaceThatAnchorsTheCreationForms() async throws {
+        let leaf = try XCTUnwrap(TechnicalObjectDemoData.objects.first {
+            $0.reference.objectID == "UN01-ST01-BG01-EG00-300-BAU1"
+        })
+        XCTAssertEqual(leaf.reference.kind, .functionalLocation)
+        XCTAssertFalse(leaf.isSynthetic)
+        XCTAssertEqual(leaf.directChildCount, 0, "the detail only opens for a leaf")
+
+        let anchor = try XCTUnwrap(TechnicalPlaceCreationAnchor(leaf))
+        let contexts = try await DemoMobileLadderCreationProvider()
+            .loadMobileLadderCreationData(for: "demo").contexts
+        XCTAssertTrue(contexts.contains {
+            anchor.matches(
+                countryCode: $0.legacyContext.country,
+                businessEntity: $0.legacyContext.businessEntity,
+                building: $0.legacyContext.building
+            )
+        })
+    }
+
     func testSAPInternalFunctionalLocationKeysResolveToDisplayedHierarchy() throws {
         let rows: [[String: Any]] = [
             ["STRNO": "DE-ESS-10748", "TPLNR": "00000000000000000001", "TPLMA": "", "PLTXT": "Site"],

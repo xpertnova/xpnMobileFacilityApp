@@ -30,7 +30,8 @@ enum SAPI2NotificationUploadBuilder {
         template: [String: Any]?,
         parentDocuments: [SAPNotificationOutgoingDocument],
         syncUserID: String,
-        now: Date = .now
+        now: Date = .now,
+        priority: String = I2NotificationRules.priority
     ) throws -> Output {
         guard !requests.isEmpty else { return Output(notifications: [], documents: []) }
 
@@ -75,7 +76,7 @@ enum SAPI2NotificationUploadBuilder {
         let userID = syncUserID.uppercased()
         base["REFNUM"] = parentID
         base["QMART"] = "I2"
-        base["PRIOK"] = I2NotificationRules.priority
+        base["PRIOK"] = priority
         base["QMGRP"] = I2NotificationRules.codeGroup
         base["TPLNR"] = functionalLocation
         base["STRNO"] = functionalLocation

@@ -10,6 +10,12 @@ enum FacilityTheme {
     static let accentSoft = Color(red: 0.90, green: 0.97, blue: 0.94)
     static let navy = Color(red: 0.04, green: 0.12, blue: 0.20)
     static let blue = Color(red: 0.0, green: 0.43, blue: 0.85)
+    /// `--purple` / `--purple-soft` of the design reference (#5e5ce6 on
+    /// #f0ecfd), used for DIN-276 cost groups and equipment.
+    static let purple = Color(red: 0.369, green: 0.361, blue: 0.902)
+    static let purpleSoft = Color(red: 0.941, green: 0.925, blue: 0.992)
+    /// Neutral tile fill for the structural levels of the hierarchy.
+    static let neutralSoft = Color(red: 0.463, green: 0.463, blue: 0.502).opacity(0.12)
     static let orange = Color(red: 0.87, green: 0.43, blue: 0.0)
     static let red = Color(red: 0.83, green: 0.18, blue: 0.16)
 }

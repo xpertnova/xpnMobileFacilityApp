@@ -26,6 +26,8 @@ final class OfflineWorkStore {
     /// while `state` is `.loading` again; before the first read they are not
     /// known at all.
     private(set) var hasLoaded = false
+    @ObservationIgnored private var technicalObjectEditIndex: [String: OfflineWorkItem] = [:]
+    @ObservationIgnored private var technicalObjectEditIndexRevision = -1
 
     init(repository: any OfflineWorkRepository, workerID: String) {
         self.repository = repository
@@ -305,6 +307,70 @@ final class OfflineWorkStore {
         return item
     }
 
+    /// The readings of these measuring points still waiting for SAP, as the
+    /// legacy screen shows its saved `TO_T0286` values (`MEASURMENT_SAVED`).
+    func measuringPointReadings(at locationID: String, pointIDs: Set<String>) -> [MeasuringPointReadingEntry] {
+        meterReadingItems.compactMap { item in
+            guard let reading = item.payload.meterReading,
+                  reading.meter.technicalPlaceID == locationID,
+                  pointIDs.contains(reading.meter.id) else { return nil }
+            return MeasuringPointReadingEntry(
+                client: reading.meter.client ?? "",
+                pointID: reading.meter.id,
+                unit: reading.meter.unit,
+                value: reading.value,
+                text: reading.note,
+                recordedAt: reading.recordedAt ?? item.updatedAt
+            )
+        }
+    }
+
+    /// `MeasurePoints.onPressSave`: the place's readings replace the ones not
+    /// yet sent. Each point is its own work item, queued for the next
+    /// synchronization, which folds them into one `TO_T0286` row per place.
+    func replaceMeasuringPointReadings(
+        at locationID: String,
+        points: [SAPMeasuringPoint],
+        with entries: [MeasuringPointReadingEntry]
+    ) async throws {
+        let pointsByID = Dictionary(points.map { ($0.pointID, $0) }, uniquingKeysWith: { first, _ in first })
+        let existing = meterReadingItems.filter {
+            guard let meter = $0.payload.meterReading?.meter else { return false }
+            return meter.technicalPlaceID == locationID && pointsByID[meter.id] != nil
+        }
+        let enteredIDs = Set(entries.map(\.pointID))
+        let removed = existing.filter { !enteredIDs.contains($0.payload.meterReading?.meter.id ?? "") }
+        if !removed.isEmpty {
+            try await repository.delete(ids: removed.map(\.id))
+        }
+        let now = Date()
+        for entry in entries {
+            guard let point = pointsByID[entry.pointID] else { continue }
+            let previous = existing.first { $0.payload.meterReading?.meter.id == entry.pointID }
+            let payload = MeterReadingDraftPayload(
+                meter: MeterReference(
+                    point: point,
+                    locationID: locationID
+                ),
+                value: entry.value,
+                note: entry.text,
+                recordedAt: entry.recordedAt
+            )
+            guard previous?.payload.meterReading != payload else { continue }
+            try await repository.save(OfflineWorkItem(
+                id: previous?.id ?? UUID(),
+                workerID: workerID,
+                type: .meterReading,
+                status: .pendingSynchronization,
+                payload: .meterReading(payload),
+                createdAt: previous?.createdAt ?? now,
+                updatedAt: now,
+                syncError: nil
+            ))
+        }
+        await load()
+    }
+
     func notificationReview(notificationID: String) -> NotificationReviewDraftPayload? {
         items.first {
             $0.type == .notificationReview && $0.payload.notificationReview?.notificationID == notificationID
@@ -411,8 +477,31 @@ final class OfflineWorkStore {
         return item
     }
 
+    /// The pending edit of one technical object.
+    ///
+    /// The hierarchy asks for this once per visible row, twice — for the badge
+    /// and for the displayed name — so scanning the whole queue per row was
+    /// the bulk of a render pass. The lookup goes through an index that is
+    /// rebuilt only when `items` changes.
     func technicalObjectEdit(equipmentID: String) -> OfflineWorkItem? {
-        technicalObjectEditItems.first { $0.payload.technicalObjectEdit?.equipmentID == equipmentID }
+        technicalObjectEditsByEquipmentID[equipmentID]
+    }
+
+    private var technicalObjectEditsByEquipmentID: [String: OfflineWorkItem] {
+        let revision = revision
+        guard technicalObjectEditIndexRevision != revision else {
+            return technicalObjectEditIndex
+        }
+        var index: [String: OfflineWorkItem] = [:]
+        for item in technicalObjectEditItems {
+            guard let equipmentID = item.payload.technicalObjectEdit?.equipmentID,
+                  index[equipmentID] == nil
+            else { continue }
+            index[equipmentID] = item
+        }
+        technicalObjectEditIndex = index
+        technicalObjectEditIndexRevision = revision
+        return index
     }
 
     func saveTechnicalObjectEdit(

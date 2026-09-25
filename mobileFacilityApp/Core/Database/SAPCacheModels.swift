@@ -533,6 +533,13 @@ struct SAPNotificationDetail: Equatable, Sendable {
         /// between the positions (`BaseFormController` line 103 onwards), so
         /// the text belongs to the checklist, not to the position itself.
         var groupTitle: String = ""
+        /// `DFVAL_TXT` of a `USR00 == "MEASURE"` row, or `nil` for a result
+        /// position. `Rundgang.getColumnListItemReading` renders such a row
+        /// as a button to the measuring points instead of a Befund control,
+        /// so it has no result to answer and none to validate or print.
+        var measuringPointButtonTitle: String? = nil
+
+        var isMeasuringPointEntry: Bool { measuringPointButtonTitle != nil }
     }
 
     let summary: SAPNotificationSummary
@@ -653,13 +660,18 @@ struct SAPNotificationDetail: Equatable, Sendable {
                 : ""
             let resultElementID = "\(control)-\(operation)-\(resultPosition)\(postfix)"
             let commentElementID = "\(control)-\(operation)-9B"
+            // `getReadingButton` labels the button with `T_PROPS[0].DFVAL_TXT`.
+            let measuringPointButtonTitle: String? = normalizedRowType == "MEASURE"
+                ? properties.first.map { Self.stringValue(named: "DFVAL_TXT", in: $0) } ?? ""
+                : nil
             return InspectionItem(
                 id: resultElementID.isEmpty ? "position-\(index)" : resultElementID,
                 title: title,
                 information: Self.stringValue(named: "LTXA2", in: row),
                 resultElementID: resultElementID,
                 commentElementID: commentElementID,
-                groupTitle: currentGroupTitle
+                groupTitle: currentGroupTitle,
+                measuringPointButtonTitle: measuringPointButtonTitle
             )
         }
     }
@@ -694,7 +706,8 @@ struct SAPNotificationDetail: Equatable, Sendable {
                 information: $0.information,
                 resultElementID: $0.resultElementID ?? "",
                 commentElementID: $0.commentElementID ?? "",
-                groupTitle: $0.groupTitle ?? ""
+                groupTitle: $0.groupTitle ?? "",
+                measuringPointButtonTitle: $0.measuringPointButtonTitle
             )
         }
     }
@@ -736,7 +749,8 @@ extension OfflineNotificationSnapshot {
                 information: $0.information,
                 resultElementID: $0.resultElementID,
                 commentElementID: $0.commentElementID,
-                groupTitle: $0.groupTitle.isEmpty ? nil : $0.groupTitle
+                groupTitle: $0.groupTitle.isEmpty ? nil : $0.groupTitle,
+                measuringPointButtonTitle: $0.measuringPointButtonTitle
             )
         }
     }
@@ -868,11 +882,43 @@ protocol SAPNotificationOutgoingStore: Sendable {
         i2Notifications: [LegacySAPRow],
         i2Documents: [LegacySAPRow],
         i3Notifications: [LegacySAPRow],
-        i3Documents: [LegacySAPRow]
+        i3Documents: [LegacySAPRow],
+        meterReadings: [LegacySAPRow]
     ) async throws
 }
 
 extension SAPNotificationOutgoingStore {
+    func replaceNotificationOutgoingRows(
+        processIDs: [String],
+        equipmentIDs: [String],
+        headers: [LegacySAPRow],
+        values: [LegacySAPRow],
+        documents: [LegacySAPRow],
+        equipment: [LegacySAPRow],
+        functionalLocations: [LegacySAPRow],
+        proposals: [LegacySAPRow],
+        i2Notifications: [LegacySAPRow],
+        i2Documents: [LegacySAPRow],
+        i3Notifications: [LegacySAPRow],
+        i3Documents: [LegacySAPRow]
+    ) async throws {
+        try await replaceNotificationOutgoingRows(
+            processIDs: processIDs,
+            equipmentIDs: equipmentIDs,
+            headers: headers,
+            values: values,
+            documents: documents,
+            equipment: equipment,
+            functionalLocations: functionalLocations,
+            proposals: proposals,
+            i2Notifications: i2Notifications,
+            i2Documents: i2Documents,
+            i3Notifications: i3Notifications,
+            i3Documents: i3Documents,
+            meterReadings: []
+        )
+    }
+
     func replaceNotificationOutgoingRows(
         processIDs: [String],
         equipmentIDs: [String],
@@ -897,7 +943,8 @@ extension SAPNotificationOutgoingStore {
             i2Notifications: i2Notifications,
             i2Documents: i2Documents,
             i3Notifications: [],
-            i3Documents: []
+            i3Documents: [],
+            meterReadings: []
         )
     }
 
@@ -923,7 +970,8 @@ extension SAPNotificationOutgoingStore {
             i2Notifications: [],
             i2Documents: [],
             i3Notifications: [],
-            i3Documents: []
+            i3Documents: [],
+            meterReadings: []
         )
     }
 
@@ -947,7 +995,8 @@ extension SAPNotificationOutgoingStore {
             i2Notifications: [],
             i2Documents: [],
             i3Notifications: [],
-            i3Documents: []
+            i3Documents: [],
+            meterReadings: []
         )
     }
 }
@@ -1043,24 +1092,45 @@ enum SAPReadError: LocalizedError, Sendable {
     }
 }
 
-actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationReading {
+actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationReading, MeasuringPointProviding, DefectParentNotificationProviding {
     private var dataByWorkerID: [String: SAPCachedData] = [:]
     /// I2 notifications keyed by equipment, or by functional location for
     /// objects without equipment.
     private let i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]]
     private let functionalLocationDirectory: FunctionalLocationDirectory
+    /// Measuring points keyed by `STRNO`.
+    private let measuringPointsByLocationID: [String: [SAPMeasuringPoint]]
 
     init(
         seed: SAPCachedData? = nil,
         workerID: String = "demo",
         i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]] = [:],
-        functionalLocationDirectory: FunctionalLocationDirectory = .empty
+        functionalLocationDirectory: FunctionalLocationDirectory = .empty,
+        measuringPointsByLocationID: [String: [SAPMeasuringPoint]] = [:]
     ) {
         if let seed {
             dataByWorkerID[workerID] = seed
         }
         self.i2NotificationsByObjectID = i2NotificationsByObjectID
         self.functionalLocationDirectory = functionalLocationDirectory
+        self.measuringPointsByLocationID = measuringPointsByLocationID
+    }
+
+    func loadMeasuringPoints(functionalLocationID: String) async throws -> [SAPMeasuringPoint] {
+        measuringPointsByLocationID[functionalLocationID] ?? []
+    }
+
+    func loadAllMeasuringPoints() async throws -> [String: [SAPMeasuringPoint]] {
+        measuringPointsByLocationID
+    }
+
+    func loadDefectParentNotifications(for localWorkerID: String) async throws -> [DefectParentNotification] {
+        (dataByWorkerID[localWorkerID]?.notifications ?? []).map {
+            DefectParentNotification(
+                id: $0.id, title: $0.title, functionalLocationID: $0.functionalLocationID,
+                equipmentID: $0.equipmentID, startDate: $0.startDate
+            )
+        }
     }
 
     func loadI2Notifications(

@@ -125,6 +125,21 @@ protocol I2NotificationTemplateProviding: Sendable {
     func loadNewNotificationTemplateJSON() async throws -> String?
 }
 
+/// Diagnostics: the I2 notifications of the FROM package a reporter created,
+/// wherever SAP put them, to confirm that a sent I2 reached SAP.
+protocol I2NotificationDiagnosticsReading: Sendable {
+    /// The `FROM_T0271` I2 count, how many have no `REFNUM`, and the rows
+    /// whose `QMNAM` is `reporter`.
+    func i2NotificationsForDiagnostics(
+        reporter: String
+    ) async throws -> (total: Int, withoutReference: Int, byReporter: [[String: String]])
+}
+
+/// The open I1s a defect from the defect form can be reported under.
+protocol DefectParentNotificationProviding: Sendable {
+    func loadDefectParentNotifications(for localWorkerID: String) async throws -> [DefectParentNotification]
+}
+
 /// Faults already reported for the demo Wartungsplan, so the per-position
 /// lookup can be tried without SAP. Demo only.
 enum I2NotificationDemoData {

@@ -49,9 +49,6 @@ struct AppRootView: View {
                         )
                             .tint(FacilityTheme.accent)
                             .background(FacilityTheme.canvas)
-                            #if DEBUG
-                            .keyboardDebugFrame("root shell suppress=\(productionWorkspace.suppressesKeyboardAvoidance)")
-                            #endif
                     }
                 } else {
                     ProgressView()
@@ -62,9 +59,6 @@ struct AppRootView: View {
                         FacilityShellView(demo: demo, onLogout: exitDemo)
                             .tint(FacilityTheme.accent)
                             .background(FacilityTheme.canvas)
-                            #if DEBUG
-                            .keyboardDebugFrame("root shell suppress=\(demo.suppressesKeyboardAvoidance)")
-                            #endif
                     }
                 } else {
                     ProgressView()
@@ -121,14 +115,15 @@ struct AppRootView: View {
 
     private func enterProductionWorkspace(for session: FacilityUserSession) {
         productionSession = session
+        let sapDataStore = productionSAPDataStore(for: session)
         productionWorkspace = FacilityDemoViewModel(
             isDemoMode: false,
             offlineWorkStore: OfflineWorkStore(
                 repository: productionOfflineWorkRepository,
                 workerID: session.workerID
             ),
-            sapDataStore: productionSAPDataStore(for: session),
-            meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+            sapDataStore: sapDataStore,
+            meterReferenceProvider: SAPMeterReferenceProvider(sapDataStore: sapDataStore),
             photoAttachmentStore: productionPhotoAttachmentStore,
             workerDisplayName: session.displayName,
             workerRole: session.role

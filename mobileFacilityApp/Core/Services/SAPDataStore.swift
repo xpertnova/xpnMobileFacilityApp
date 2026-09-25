@@ -122,10 +122,15 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         try await repository.loadTechnicalObjectDetail(for: localWorkerID, reference: reference)
     }
 
+    func technicalObjectCounts() async throws -> TechnicalObjectCounts {
+        TechnicalObjectCounts(
+            functionalLocations: try await repository.technicalObjectCount(for: localWorkerID, kind: .functionalLocation),
+            equipment: try await repository.technicalObjectCount(for: localWorkerID, kind: .equipment)
+        )
+    }
+
     func technicalObjectCount() async throws -> Int {
-        let locations = try await repository.technicalObjectCount(for: localWorkerID, kind: .functionalLocation)
-        let equipment = try await repository.technicalObjectCount(for: localWorkerID, kind: .equipment)
-        return locations + equipment
+        try await technicalObjectCounts().total
     }
 
     func resolveQRCode(_ payload: LegacyQRCodePayload) async throws -> [SAPNotificationSummary] {
@@ -144,6 +149,13 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     /// The downloaded I2 notifications of the notification's technical
     /// object. Empty when the repository has none or cannot read them; the
     /// per-position lookup is informational and never blocks a form.
+    /// The open I1s a defect can be reported under; empty when the cache
+    /// holds none or cannot read them.
+    func loadDefectParentNotifications() async -> [DefectParentNotification] {
+        guard let provider = repository as? any DefectParentNotificationProviding else { return [] }
+        return (try? await provider.loadDefectParentNotifications(for: localWorkerID)) ?? []
+    }
+
     func loadI2Notifications(for detail: SAPNotificationDetail) async -> [SAPI2NotificationSummary] {
         guard let reader = repository as? any I2NotificationReading else { return [] }
         let notification = detail.summary
@@ -160,6 +172,27 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             functionalLocationID: locationID
         )
         return (try? await reader.loadI2Notifications(for: object)) ?? []
+    }
+
+    /// The measuring points of the notification's technical place, as the
+    /// legacy screen reads them for `T0281.STRNO`. `nil` when they cannot be
+    /// read, which is different from a place that has none.
+    func loadMeasuringPoints(for detail: SAPNotificationDetail) async -> [SAPMeasuringPoint]? {
+        guard let provider = repository as? any MeasuringPointProviding else { return nil }
+        let notification = detail.summary
+        let payload = notification.rawPayloadJSON.data(using: .utf8)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        let locationID = (payload["STRNO"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? notification.functionalLocationID
+        return try? await provider.loadMeasuringPoints(functionalLocationID: locationID)
+    }
+
+    /// Every measuring point the SAP package delivered, keyed by `STRNO`.
+    func loadAllMeasuringPoints() async throws -> [String: [SAPMeasuringPoint]] {
+        guard let provider = repository as? any MeasuringPointProviding else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try await provider.loadAllMeasuringPoints()
     }
 
     func loadElevatorAssetData(for notification: SAPNotificationSummary) async throws -> ElevatorAssetData {
@@ -181,28 +214,38 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         guard !cacheLoadIsInFlight, !initialCacheLoadCompleted else { return }
         cacheLoadIsInFlight = true
         defer { cacheLoadIsInFlight = false }
-        state = .loadingCache
+        setCacheLoadState(.loadingCache)
         do {
             cachedData = try await repository.load(for: localWorkerID)
             guard cachedData.metadata != nil else {
                 resetNotificationPage()
                 // No cache yet: zero notifications is the actual answer.
                 hasLoadedNotificationCount = true
-                state = .noData
+                setCacheLoadState(.noData)
                 initialCacheLoadCompleted = true
                 return
             }
             try await loadTotalNotificationCount()
             try await loadNotificationFilterMetadata()
             try await loadFirstNotificationPage()
-            state = .ready
+            setCacheLoadState(.ready)
             initialCacheLoadCompleted = true
         } catch is CancellationError {
             return
         } catch {
+            guard activeRefreshID == nil else { return }
             refreshError = .serviceUnavailable
             state = .failed
         }
+    }
+
+    /// The cache is read at launch while a synchronization may already have
+    /// started from the dialog. The synchronization owns `state` until it
+    /// ends; letting the cache load overwrite `.refreshing` dropped the busy
+    /// dialog back to the password form while SAP was still being called.
+    private func setCacheLoadState(_ newState: State) {
+        guard activeRefreshID == nil else { return }
+        state = newState
     }
 
     func updateNotificationSearch(_ searchText: String) async {
