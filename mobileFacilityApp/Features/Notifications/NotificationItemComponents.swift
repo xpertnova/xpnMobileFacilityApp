@@ -27,7 +27,7 @@ struct NotificationPhotoButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("notifications.detail.photo"))
-        .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), count)))
+        .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count", bundle: .appLanguage), count)))
     }
 }
 

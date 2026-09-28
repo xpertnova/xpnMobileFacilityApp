@@ -108,7 +108,7 @@ enum BriefingPDFRenderingError: LocalizedError {
     case emptyDocument
 
     var errorDescription: String? {
-        String(localized: "briefing.pdf.createFailed")
+        String(localized: "briefing.pdf.createFailed", bundle: .appLanguage)
     }
 }
 

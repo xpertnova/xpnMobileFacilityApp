@@ -14,6 +14,7 @@ enum OfflineWorkType: String, Codable, CaseIterable, Sendable {
     case subdistribution
     case elevatorInspection
     case firePermit
+    case documentCollection
 }
 
 extension OfflineWorkType {
@@ -22,7 +23,7 @@ extension OfflineWorkType {
     /// takes it.
     var staysLocal: Bool {
         switch self {
-        case .manualCapture, .technicalObjectEdit: true
+        case .manualCapture, .technicalObjectEdit, .documentCollection: true
         default: false
         }
     }
@@ -146,6 +147,25 @@ struct LocalPhotoAttachment: Codable, Equatable, Identifiable, Sendable {
 struct PhotoCollectionDraftPayload: Codable, Equatable, Sendable {
     let scope: LocalPhotoScope
     var attachments: [LocalPhotoAttachment]
+}
+
+/// A file (for example a PDF) picked from the Files app. Neither reference
+/// app links documents to a technical place in SAP, so these stay on the
+/// device (`OfflineWorkType.staysLocal`).
+struct LocalDocumentAttachment: Codable, Equatable, Identifiable, Sendable {
+    let localAttachmentID: String
+    let fileName: String
+    /// Uniform type identifier, e.g. `com.adobe.pdf`.
+    let contentType: String
+    let byteCount: Int
+    let addedAt: Date
+
+    var id: String { localAttachmentID }
+}
+
+struct DocumentCollectionPayload: Codable, Equatable, Sendable {
+    let scope: LocalPhotoScope
+    var documents: [LocalDocumentAttachment]
 }
 
 enum DefectPriority: String, Codable, CaseIterable, Identifiable, Sendable {
@@ -675,6 +695,7 @@ enum OfflineWorkPayload: Equatable, Sendable {
     case subdistribution(SubdistributionDraftPayload)
     case elevatorInspection(ElevatorInspectionDraftPayload)
     case firePermit(FirePermitDraftPayload)
+    case documentCollection(DocumentCollectionPayload)
 
     var manualCapture: ManualCaptureDraftPayload? {
         guard case let .manualCapture(payload) = self else { return nil }
@@ -738,6 +759,11 @@ enum OfflineWorkPayload: Equatable, Sendable {
 
     var firePermit: FirePermitDraftPayload? {
         guard case let .firePermit(payload) = self else { return nil }
+        return payload
+    }
+
+    var documentCollection: DocumentCollectionPayload? {
+        guard case let .documentCollection(payload) = self else { return nil }
         return payload
     }
 }

@@ -719,7 +719,7 @@ struct SafetyFormPartnerField: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Text(partner?.selectionLabel ?? String(localized: "electricalSafety.partner.select"))
+                Text(partner?.selectionLabel ?? String(localized: "electricalSafety.partner.select", bundle: .appLanguage))
                     .foregroundStyle(partner == nil ? .secondary : .primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)

@@ -221,7 +221,7 @@ struct SubdistributionCreationView: View {
                 SafetyFormField("subdistribution.context.we", required: true) {
                     Button { isShowingBusinessEntityEditor = true } label: {
                         HStack(spacing: 12) {
-                            Text(model.selectedBusinessEntity ?? String(localized: "subdistribution.context.choose"))
+                            Text(model.selectedBusinessEntity ?? String(localized: "subdistribution.context.choose", bundle: .appLanguage))
                                 .foregroundStyle(model.selectedBusinessEntity == nil ? .secondary : FacilityTheme.ink)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
@@ -359,9 +359,13 @@ struct SubdistributionCreationView: View {
                         }
                     }
                     .labelsHidden().pickerStyle(.menu).frame(maxWidth: .infinity, alignment: .leading)
+                } else if characteristic.kind == .numeric {
+                    DigitsOnlyTextField(
+                        text: value,
+                        maxLength: characteristic.maximumLength > 0 ? characteristic.maximumLength : nil
+                    )
                 } else {
                     TextField("", text: value)
-                        .keyboardType(characteristic.kind == .numeric ? .numberPad : .default)
                         .textInputAutocapitalization(.words)
                 }
                 if !characteristic.unit.isEmpty { Text(verbatim: characteristic.unit).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary) }

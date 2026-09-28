@@ -13,7 +13,7 @@ enum MeterReferenceError: LocalizedError {
     case unavailable
 
     var errorDescription: String? {
-        String(localized: "manual.meter.unavailable.message")
+        String(localized: "manual.meter.unavailable.message", bundle: .appLanguage)
     }
 }
 

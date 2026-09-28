@@ -365,9 +365,9 @@ private enum SAPOnboardingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            String(localized: "sap.onboarding.error.configuration")
+            String(localized: "sap.onboarding.error.configuration", bundle: .appLanguage)
         case .unknownResult:
-            String(localized: "sap.onboarding.error.unknown")
+            String(localized: "sap.onboarding.error.unknown", bundle: .appLanguage)
         }
     }
 }

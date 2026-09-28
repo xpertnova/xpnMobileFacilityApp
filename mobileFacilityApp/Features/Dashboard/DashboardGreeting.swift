@@ -29,11 +29,7 @@ public enum DashboardGreeting: String, CaseIterable, Equatable, Sendable {
     }
 
     public func localizedTemplate(bundle: Bundle? = nil) -> String {
-        if let bundle {
-            return String(localized: String.LocalizationValue(localizationKey), bundle: bundle)
-        } else {
-            return String(localized: String.LocalizationValue(localizationKey))
-        }
+        String(localized: String.LocalizationValue(localizationKey), bundle: bundle ?? .appLanguage)
     }
 
     public func formatted(workerName: String, bundle: Bundle? = nil) -> String {

@@ -293,9 +293,9 @@ private struct MeasuringPointRow: View {
     private func issueMessage(_ issue: MeasuringPointValidationIssue) -> String {
         switch issue {
         case .belowLastReading:
-            String(localized: "measuringPoints.issue.belowLastReading \(MeterReadingViewModel.displayString(point.minimumValue))")
+            String(localized: "measuringPoints.issue.belowLastReading \(MeterReadingViewModel.displayString(point.minimumValue))", bundle: .appLanguage)
         case .tooManyDecimals:
-            String(localized: "measuringPoints.issue.tooManyDecimals \(point.decimals)")
+            String(localized: "measuringPoints.issue.tooManyDecimals \(point.decimals)", bundle: .appLanguage)
         }
     }
 

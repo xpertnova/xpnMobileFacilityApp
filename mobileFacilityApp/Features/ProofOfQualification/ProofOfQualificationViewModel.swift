@@ -248,7 +248,7 @@ final class ProofOfQualificationViewModel {
       itemStatus = item.status
       return true
     } catch {
-      validationMessage = String(localized: "qualification.completed.saveFailed")
+      validationMessage = String(localized: "qualification.completed.saveFailed", bundle: .appLanguage)
       return false
     }
   }
@@ -258,12 +258,12 @@ final class ProofOfQualificationViewModel {
     guard validationIssues.isEmpty else {
       validationMessage =
         template == nil
-        ? String(localized: "qualification.masterData.unavailable.message")
-        : String(localized: "qualification.validation.message")
+        ? String(localized: "qualification.masterData.unavailable.message", bundle: .appLanguage)
+        : String(localized: "qualification.validation.message", bundle: .appLanguage)
       return
     }
     guard let payload = makePDFPayload() else {
-      validationMessage = String(localized: "qualification.pdf.failure")
+      validationMessage = String(localized: "qualification.pdf.failure", bundle: .appLanguage)
       return
     }
 
@@ -274,7 +274,7 @@ final class ProofOfQualificationViewModel {
       }.value
       isRenderingPDF = false
       guard let artifact else {
-        validationMessage = String(localized: "qualification.pdf.failure")
+        validationMessage = String(localized: "qualification.pdf.failure", bundle: .appLanguage)
         return
       }
       pdfArtifact = artifact

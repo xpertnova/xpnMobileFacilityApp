@@ -129,7 +129,7 @@ struct NotificationDetailView: View {
     private func photoWorkspace(for item: SAPNotificationDetail.InspectionItem) -> some View {
         let attachments = model.attachments(for: item.id)
         return PhotoWorkspace(
-            title: String(localized: "photos.workspace.title"),
+            title: String(localized: "photos.workspace.title", bundle: .appLanguage),
             subtitle: item.title,
             entries: attachments.map {
                 PhotoWorkspaceEntry(

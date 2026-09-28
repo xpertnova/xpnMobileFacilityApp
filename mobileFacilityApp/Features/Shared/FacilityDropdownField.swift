@@ -78,7 +78,7 @@ struct FacilityDropdownField: View {
                 isPresented = true
             } label: {
                 HStack(spacing: 12) {
-                    Text(selectedTitle ?? String(localized: String.LocalizationValue(placeholder)))
+                    Text(selectedTitle ?? String(localized: String.LocalizationValue(placeholder), bundle: .appLanguage))
                         .foregroundStyle(selectedTitle == nil ? .secondary : FacilityTheme.ink)
                         .lineLimit(1)
                     Spacer(minLength: 0)

@@ -115,7 +115,7 @@ struct EquipmentMasterDataFields: View {
                 isPresented.wrappedValue = true
             } label: {
                 HStack(spacing: 12) {
-                    Text(displayValue.isEmpty ? String(localized: "inspection.masterData.datePlaceholder") : displayValue)
+                    Text(displayValue.isEmpty ? String(localized: "inspection.masterData.datePlaceholder", bundle: .appLanguage) : displayValue)
                         .foregroundStyle(displayValue.isEmpty ? .secondary : FacilityTheme.ink)
                     Spacer(minLength: 0)
                     Image(systemName: "calendar")

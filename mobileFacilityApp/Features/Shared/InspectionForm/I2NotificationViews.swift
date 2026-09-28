@@ -159,7 +159,7 @@ private struct I2DefectSelectionTable: View {
             InspectionCodePicker(
                 picker: candidate.id,
                 expandedPicker: $expandedCandidateID,
-                selection: "\(category.code) · \(String(localized: String.LocalizationValue(category.titleKey)))",
+                selection: "\(category.code) · \(String(localized: String.LocalizationValue(category.titleKey), bundle: .appLanguage))",
                 options: I2NotificationCategory.allCases.map {
                     InspectionCodeOption(code: $0.code, titleKey: $0.titleKey)
                 },
@@ -180,9 +180,9 @@ private struct I2DefectSelectionTable: View {
     /// when the form has one.
     private func resultText(for candidate: I2DefectCandidate) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(verbatim: "\(String(localized: "inspection.column.result")): \(codeAndText(candidate.resultCode, candidate.resultText))")
+            Text(verbatim: "\(String(localized: "inspection.column.result", bundle: .appLanguage)): \(codeAndText(candidate.resultCode, candidate.resultText))")
             if !candidate.actionCode.isEmpty {
-                Text(verbatim: "\(String(localized: "inspection.column.action")): \(codeAndText(candidate.actionCode, candidate.actionText))")
+                Text(verbatim: "\(String(localized: "inspection.column.action", bundle: .appLanguage)): \(codeAndText(candidate.actionCode, candidate.actionText))")
             }
         }
         .font(.subheadline)
@@ -440,7 +440,7 @@ struct I2NotificationListPopoverContent: View {
                 Group {
                     if let selectedNotification {
                         let text = I2NotificationRules.displayLongText(selectedNotification.longText)
-                        Text(text.isEmpty ? String(localized: "i2.existing.longText.empty") : text)
+                        Text(text.isEmpty ? String(localized: "i2.existing.longText.empty", bundle: .appLanguage) : text)
                             .foregroundStyle(text.isEmpty ? .secondary : FacilityTheme.ink)
                             .textSelection(.enabled)
                     } else {

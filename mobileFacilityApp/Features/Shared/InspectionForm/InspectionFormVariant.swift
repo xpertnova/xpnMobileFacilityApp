@@ -39,7 +39,7 @@ struct InspectionFormOption: Identifiable, Equatable, Sendable {
         self.init(
             id: id,
             code: code,
-            title: String(localized: String.LocalizationValue(titleKey)),
+            title: String(localized: String.LocalizationValue(titleKey), bundle: .appLanguage),
             tint: tint
         )
     }

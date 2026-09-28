@@ -111,7 +111,7 @@ enum I2NotificationRules {
                 number: index + 1,
                 title: item.title,
                 resultCode: InspectionFormRules.segmentedDefectCode,
-                resultText: String(localized: "notifications.detail.result.yes"),
+                resultText: String(localized: "notifications.detail.result.yes", bundle: .appLanguage),
                 note: note(comment: comments[item.id, default: ""], headerText: header),
                 noteElementID: item.commentElementID
             )

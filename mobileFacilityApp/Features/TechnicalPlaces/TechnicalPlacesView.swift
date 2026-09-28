@@ -4,6 +4,7 @@ struct TechnicalPlacesView: View {
     let demo: FacilityDemoViewModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var photoWorkspaceScope: LocalPhotoScope?
+    @State private var documentWorkspaceScope: LocalPhotoScope?
 
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
@@ -29,6 +30,15 @@ struct TechnicalPlacesView: View {
                 )
                 .transition(PhotoWorkspaceMotion.destination)
                 .zIndex(1)
+            } else if let documentWorkspaceScope {
+                LocalDocumentWorkspace(
+                    scope: documentWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    documentStore: demo.documentAttachmentStore,
+                    close: { self.documentWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
             } else {
                 Group {
                     if let detail = model.selectedDetail {
@@ -38,6 +48,8 @@ struct TechnicalPlacesView: View {
                             offlineWorkStore: demo.offlineWorkStore,
                             photoCount: photoCount(for: detail),
                             openPhotos: { photoWorkspaceScope = photoScope(for: detail) },
+                            documentCount: documentCount(for: detail),
+                            openDocuments: { documentWorkspaceScope = documentScope(for: detail) },
                             openNotification: demo.openLinkedNotification,
                             openDefect: { demo.openManualDefect($0) },
                             createDefect: {
@@ -68,6 +80,10 @@ struct TechnicalPlacesView: View {
             accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
             value: photoWorkspaceScope
         )
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: documentWorkspaceScope
+        )
         .task { if model.state == .idle { await model.load() } }
         .task(id: model.query) {
             do { try await Task.sleep(for: .milliseconds(350)); await model.updateSearch() } catch { }
@@ -84,7 +100,7 @@ struct TechnicalPlacesView: View {
         LocalPhotoScope(
             workflow: .technicalObject,
             ownerID: detail.object.reference.objectID,
-            displayTitle: String(localized: "photos.workspace.title"),
+            displayTitle: String(localized: "photos.workspace.title", bundle: .appLanguage),
             displaySubtitle: detail.object.displayName
         )
     }
@@ -92,6 +108,20 @@ struct TechnicalPlacesView: View {
     private func photoCount(for detail: TechnicalObjectDetail) -> Int {
         demo.offlineWorkStore.photoCollection(for: photoScope(for: detail))?
             .payload.photoCollection?.attachments.count ?? 0
+    }
+
+    private func documentScope(for detail: TechnicalObjectDetail) -> LocalPhotoScope {
+        LocalPhotoScope(
+            workflow: .technicalObject,
+            ownerID: detail.object.reference.objectID,
+            displayTitle: String(localized: "documents.workspace.title", bundle: .appLanguage),
+            displaySubtitle: detail.object.displayName
+        )
+    }
+
+    private func documentCount(for detail: TechnicalObjectDetail) -> Int {
+        demo.offlineWorkStore.documentCollection(for: documentScope(for: detail))?
+            .payload.documentCollection?.documents.count ?? 0
     }
 
     private func hierarchy(_ model: TechnicalPlacesViewModel) -> some View {
@@ -131,7 +161,7 @@ struct TechnicalPlacesView: View {
                 // The bar wraps instead of scrolling sideways so every cost
                 // group stays visible in a narrow window.
                 FacilityWrapLayout(horizontalSpacing: 8, verticalSpacing: 8) {
-                    DINChip(title: String(localized: "places.filter.all"), selected: model.selectedDINGroup == nil) {
+                    DINChip(title: String(localized: "places.filter.all", bundle: .appLanguage), selected: model.selectedDINGroup == nil) {
                         Task { await model.selectDIN(nil) }
                     }
                     ForEach(model.dinCounts) { item in
@@ -204,14 +234,14 @@ struct TechnicalPlacesView: View {
                     .foregroundStyle(FacilityTheme.ink)
                 if !hint.structureIndicators.isEmpty {
                     Text(verbatim: String(
-                        format: String(localized: "places.namingSchema.structureIndicator"),
+                        format: String(localized: "places.namingSchema.structureIndicator", bundle: .appLanguage),
                         hint.structureIndicators.joined(separator: ", ")
                     ))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
                 Text(verbatim: String(
-                    format: String(localized: "places.namingSchema.example.label"),
+                    format: String(localized: "places.namingSchema.example.label", bundle: .appLanguage),
                     hint.exampleID
                 ))
                 .font(.footnote.monospaced())
@@ -257,10 +287,10 @@ struct TechnicalPlacesView: View {
     }
 
     private func subtitle(_ model: TechnicalPlacesViewModel) -> String {
-        let base = String(localized: "places.subtitle")
+        let base = String(localized: "places.subtitle", bundle: .appLanguage)
         guard model.hasLoadedTotalCount else { return base }
         let counts = String(
-            format: String(localized: "places.subtitle.counts"),
+            format: String(localized: "places.subtitle.counts", bundle: .appLanguage),
             model.counts.functionalLocations,
             model.counts.equipment
         )
@@ -379,7 +409,7 @@ private struct TechnicalObjectRow: View {
                         .background(level.tile, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                         .accessibilityLabel(LocalizedStringKey(level.nameKey))
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
-                        Text(row.node.isUnassignedGroup ? String(localized: "places.unassigned") : displayName)
+                        Text(row.node.isUnassignedGroup ? String(localized: "places.unassigned", bundle: .appLanguage) : displayName)
                             .font(.subheadline.weight(level.nameWeight))
                             .foregroundStyle(FacilityTheme.ink)
                             .lineLimit(2)
@@ -396,12 +426,12 @@ private struct TechnicalObjectRow: View {
                     }
                     Spacer(minLength: 10)
                     if let din = row.node.dinGroup { ObjectBadge("KG \(din)", color: FacilityTheme.purple) }
-                    if row.node.isCityGroup { ObjectBadge(String(localized: "places.badge.city"), color: FacilityTheme.accent) }
+                    if row.node.isCityGroup { ObjectBadge(String(localized: "places.badge.city", bundle: .appLanguage), color: FacilityTheme.accent) }
                     if row.node.directEquipmentCount > 0 { ObjectBadge("\(row.node.directEquipmentCount) EQ", color: .gray) }
-                    if pendingStatus == .conflict { ObjectBadge(String(localized: "places.badge.conflict"), color: .red) }
-                    else if pendingStatus != nil { ObjectBadge(String(localized: "offline.status.localOnly"), color: .orange) }
+                    if pendingStatus == .conflict { ObjectBadge(String(localized: "places.badge.conflict", bundle: .appLanguage), color: .red) }
+                    else if pendingStatus != nil { ObjectBadge(String(localized: "offline.status.localOnly", bundle: .appLanguage), color: .orange) }
                     if row.node.reference.kind == .equipment {
-                        ObjectBadge(String(localized: "places.badge.equipment"), color: .blue)
+                        ObjectBadge(String(localized: "places.badge.equipment", bundle: .appLanguage), color: .blue)
                     }
                     if canOpenDetail {
                         Image(systemName: "chevron.right").font(.caption.bold()).foregroundStyle(.tertiary)
@@ -513,6 +543,8 @@ private struct TechnicalObjectDetailView: View {
     let offlineWorkStore: OfflineWorkStore
     let photoCount: Int
     let openPhotos: () -> Void
+    let documentCount: Int
+    let openDocuments: () -> Void
     let openNotification: (SAPNotificationSummary) -> Void
     let openDefect: (UUID) -> Void
     let createDefect: () -> Void
@@ -544,7 +576,12 @@ private struct TechnicalObjectDetailView: View {
                 Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
                 Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
                 if !detail.object.displayStatus.isEmpty { ObjectBadge(detail.object.displayStatus, color: FacilityTheme.accent) }
-                PhotoWorkspaceButton(count: photoCount, action: openPhotos)
+                // Photos and documents share a row until the window is too
+                // narrow for both, then stack.
+                FacilityColumnsLayout(columnCounts: [2, 1], minimumColumnWidth: 280, spacing: 12) {
+                    PhotoWorkspaceButton(count: photoCount, action: openPhotos)
+                    DocumentWorkspaceButton(count: documentCount, action: openDocuments)
+                }
                 // The equipment fields keep their focus when the side cards
                 // move under them as the window or sidebar changes width.
                 FacilitySideColumnLayout(sideWidth: 405, minimumMainWidth: 420, spacing: 16) {
@@ -724,7 +761,7 @@ private struct TechnicalObjectDetailView: View {
                 symbol: "exclamationmark.triangle.fill",
                 tint: FacilityTheme.red,
                 title: defect.shortText.isEmpty ? defect.technicalObjectName : defect.shortText,
-                meta: String(localized: String.LocalizationValue(defect.priority.titleKey)),
+                meta: String(localized: String.LocalizationValue(defect.priority.titleKey), bundle: .appLanguage),
                 status: item.status,
                 open: { openDefect(item.id) }
             )
@@ -795,8 +832,8 @@ private struct TechnicalObjectDetailView: View {
                 if canReportDefect == false {
                     TechnicalPlaceInstallNotice(
                         symbol: "exclamationmark.bubble",
-                        title: String(localized: "places.detail.action.defect.unavailable"),
-                        message: String(localized: "manual.defect.object.noParent")
+                        title: String(localized: "places.detail.action.defect.unavailable", bundle: .appLanguage),
+                        message: String(localized: "manual.defect.object.noParent", bundle: .appLanguage)
                     )
                     .transition(.opacity)
                 }
@@ -850,21 +887,21 @@ private struct TechnicalObjectDetailView: View {
                 if installOptions.mobileLadder == .noBusinessEntity {
                     TechnicalPlaceInstallNotice(
                         symbol: "shippingbox",
-                        title: String(localized: "places.install.unavailable"),
-                        message: String(localized: "places.install.noBusinessEntity")
+                        title: String(localized: "places.install.unavailable", bundle: .appLanguage),
+                        message: String(localized: "places.install.noBusinessEntity", bundle: .appLanguage)
                     )
                 } else {
                     if let message = Self.installReason(installOptions.mobileLadder, form: .mobileLadder) {
                         TechnicalPlaceInstallNotice(
                             symbol: "figure.climbing",
-                            title: String(localized: "places.install.mobileLadder.unavailable"),
+                            title: String(localized: "places.install.mobileLadder.unavailable", bundle: .appLanguage),
                             message: message
                         )
                     }
                     if let message = Self.installReason(installOptions.subdistribution, form: .subdistribution) {
                         TechnicalPlaceInstallNotice(
                             symbol: "bolt.square",
-                            title: String(localized: "places.install.subdistribution.unavailable"),
+                            title: String(localized: "places.install.subdistribution.unavailable", bundle: .appLanguage),
                             message: message
                         )
                     }
@@ -884,13 +921,13 @@ private struct TechnicalObjectDetailView: View {
         case (.available, _):
             nil
         case let (.noContext(trade), .mobileLadder):
-            String(localized: "places.install.mobileLadder.noContext \(trade)")
+            String(localized: "places.install.mobileLadder.noContext \(trade)", bundle: .appLanguage)
         case (.noContext, .subdistribution):
-            String(localized: "places.install.subdistribution.noContext")
+            String(localized: "places.install.subdistribution.noContext", bundle: .appLanguage)
         case (.noData, _):
-            String(localized: "places.install.noData")
+            String(localized: "places.install.noData", bundle: .appLanguage)
         case (.noBusinessEntity, _):
-            String(localized: "places.install.noBusinessEntity")
+            String(localized: "places.install.noBusinessEntity", bundle: .appLanguage)
         }
     }
 

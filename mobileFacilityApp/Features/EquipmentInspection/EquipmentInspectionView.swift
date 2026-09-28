@@ -205,10 +205,10 @@ struct EquipmentInspectionView: View {
         let item = model.items.first { $0.id == rowID }
         let attachments = model.attachments(for: rowID)
         let subtitle = isOutOfServiceRow
-            ? String(localized: "inspection.outOfService")
+            ? String(localized: "inspection.outOfService", bundle: .appLanguage)
             : (item?.title ?? "")
         return PhotoWorkspace(
-            title: String(localized: "photos.workspace.title"),
+            title: String(localized: "photos.workspace.title", bundle: .appLanguage),
             subtitle: subtitle,
             entries: attachments.map {
                 PhotoWorkspaceEntry(

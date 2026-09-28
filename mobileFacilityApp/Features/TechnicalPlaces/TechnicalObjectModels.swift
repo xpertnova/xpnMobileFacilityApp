@@ -382,7 +382,7 @@ enum TechnicalDIN276 {
     /// in both catalog languages, so only the name is localized.
     static func chipLabel(for code: String, count: Int) -> String {
         let key = shortNameKey(for: code)
-        let name = String(localized: String.LocalizationValue(stringLiteral: key))
+        let name = String(localized: String.LocalizationValue(stringLiteral: key), bundle: .appLanguage)
         // A code without a short name in the catalog keeps the bare KG label
         // instead of printing the missing key.
         guard name != key else { return "KG \(code) (\(count))" }

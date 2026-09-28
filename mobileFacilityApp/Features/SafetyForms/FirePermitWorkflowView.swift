@@ -440,7 +440,7 @@ struct FirePermitWorkflowView: View {
             isInvalid: viewModel.isInvalid(.signature(slot)),
             inputRequirement: SignatureInputRequirement(
                 signerName: signerName,
-                requiredNameField: String(localized: String.LocalizationValue(slot.signerNameFieldKey))
+                requiredNameField: String(localized: String.LocalizationValue(slot.signerNameFieldKey), bundle: .appLanguage)
             )
         )
         .id(FirePermitValidationIssue.signature(slot))

@@ -398,7 +398,7 @@ struct ManualCaptureView: View {
                 titleKey: "manual.defect.category",
                 iconName: "tag",
                 options: I2NotificationCategory.allCases.filter(\.createsNotification).map {
-                    FacilityDropdownOption(id: $0.id, title: String(localized: String.LocalizationValue($0.titleKey)))
+                    FacilityDropdownOption(id: $0.id, title: String(localized: String.LocalizationValue($0.titleKey), bundle: .appLanguage))
                 },
                 selectedID: defectModel.category?.id,
                 isPresented: $isCategoryPickerPresented
@@ -609,9 +609,9 @@ struct ManualCaptureView: View {
         LocalPhotoScope(
             workflow: .defect,
             ownerID: defectModel.editingID?.uuidString ?? "new-defect",
-            displayTitle: String(localized: "photos.workspace.title"),
+            displayTitle: String(localized: "photos.workspace.title", bundle: .appLanguage),
             displaySubtitle: defectModel.shortText.isEmpty
-                ? String(localized: "manual.defect.form.title")
+                ? String(localized: "manual.defect.form.title", bundle: .appLanguage)
                 : defectModel.shortText
         )
     }
@@ -620,9 +620,9 @@ struct ManualCaptureView: View {
         LocalPhotoScope(
             workflow: .meterReading,
             ownerID: meterModel.editingID?.uuidString ?? "new-meter-reading",
-            displayTitle: String(localized: "photos.workspace.title"),
+            displayTitle: String(localized: "photos.workspace.title", bundle: .appLanguage),
             displaySubtitle: meterModel.selectedReference.map { "\($0.id) · \($0.technicalPlaceName)" }
-                ?? String(localized: "manual.meter.form.title")
+                ?? String(localized: "manual.meter.form.title", bundle: .appLanguage)
         )
     }
 
@@ -729,7 +729,7 @@ struct ManualCaptureView: View {
         fieldLabel("manual.meter.value") {
             MeterReadingNumberTextField(
                 text: $meterModel.valueText,
-                placeholder: String(localized: "manual.meter.value.placeholder"),
+                placeholder: String(localized: "manual.meter.value.placeholder", bundle: .appLanguage),
                 isFocused: $isMeterValueFocused
             )
             .frame(height: 24)

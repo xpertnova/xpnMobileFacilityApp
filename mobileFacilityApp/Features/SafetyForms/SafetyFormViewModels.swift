@@ -151,7 +151,7 @@ final class FirePermitViewModel {
         guard !isRenderingPDF else { return }
         hasAttemptedCompletion = true
         guard validationIssues.isEmpty else {
-            validationMessage = String(localized: "safetyForms.validation.message")
+            validationMessage = String(localized: "safetyForms.validation.message", bundle: .appLanguage)
             return
         }
         guard !isRenderingPDF else { return }
@@ -163,7 +163,7 @@ final class FirePermitViewModel {
             }.value
             isRenderingPDF = false
             guard let artifact else {
-                validationMessage = String(localized: "firePermit.pdf.failure.message")
+                validationMessage = String(localized: "firePermit.pdf.failure.message", bundle: .appLanguage)
                 return
             }
             pdfArtifact = artifact
@@ -191,7 +191,7 @@ final class FirePermitViewModel {
             _ = try await store.saveClosedFirePermit(payload)
             return true
         } catch {
-            validationMessage = String(localized: "firePermit.saveFailed.message")
+            validationMessage = String(localized: "firePermit.saveFailed.message", bundle: .appLanguage)
             return false
         }
     }
@@ -205,7 +205,7 @@ final class ElectricalSafetyViewModel {
     var hasAttemptedCompletion = false
     var isSaving = false
     var validationMessage: String?
-    var alertTitle = String(localized: "electricalSafety.form.title")
+    var alertTitle = String(localized: "electricalSafety.form.title", bundle: .appLanguage)
     var validationIssueToReveal: ElectricalSafetyValidationIssue?
     var pdfArtifact: BriefingPDFArtifact?
     var selectedBusinessEntityID: String?
@@ -350,8 +350,8 @@ final class ElectricalSafetyViewModel {
         hasAttemptedCompletion = true
         guard validationIssues.isEmpty else {
             validationIssueToReveal = firstValidationIssue
-            alertTitle = String(localized: "electricalSafety.form.title")
-            validationMessage = String(localized: "safetyForms.validation.message")
+            alertTitle = String(localized: "electricalSafety.form.title", bundle: .appLanguage)
+            validationMessage = String(localized: "safetyForms.validation.message", bundle: .appLanguage)
             return
         }
         let snapshot = draft
@@ -359,8 +359,8 @@ final class ElectricalSafetyViewModel {
             try? LegacyElectricalSafetyPDFRenderer().render(snapshot)
         }.value
         guard let artifact else {
-            alertTitle = String(localized: "electricalSafety.form.title")
-            validationMessage = String(localized: "safetyForms.pdf.failure")
+            alertTitle = String(localized: "electricalSafety.form.title", bundle: .appLanguage)
+            validationMessage = String(localized: "safetyForms.pdf.failure", bundle: .appLanguage)
             return
         }
         pdfArtifact = artifact
@@ -397,13 +397,13 @@ final class ElectricalSafetyViewModel {
             itemStatus = item.status
             draft = payload
             if !isCompletion {
-                alertTitle = String(localized: "electricalSafety.temporarySaved.title")
-                validationMessage = String(localized: "electricalSafety.temporarySaved.message")
+                alertTitle = String(localized: "electricalSafety.temporarySaved.title", bundle: .appLanguage)
+                validationMessage = String(localized: "electricalSafety.temporarySaved.message", bundle: .appLanguage)
             }
             return true
         } catch {
-            alertTitle = String(localized: "electricalSafety.saveFailed.title")
-            validationMessage = String(localized: "electricalSafety.saveFailed.message")
+            alertTitle = String(localized: "electricalSafety.saveFailed.title", bundle: .appLanguage)
+            validationMessage = String(localized: "electricalSafety.saveFailed.message", bundle: .appLanguage)
             return false
         }
     }
