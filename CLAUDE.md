@@ -91,7 +91,7 @@ Dependency direction: Views → ViewModels/Stores → Repositories/Services → 
 
 ### Adaptive layout
 
-The app runs in any window size from an iPad Pro 13" down to a 700 × 500 pt window (iPad mini, Split View, Stage Manager); `UIRequiresFullScreen` is deprecated and must not be added. `facilityLayoutRoot()` in `AppRootView` measures the window, sets that minimum window size and publishes `FacilityLayoutMetrics` as `@Environment(\.facilityLayout)`: `regular` keeps the original 13" values, `compact` applies below 1180 × 800 pt.
+The app runs in any window size from an iPad Pro 13" down to a 700 × 500 pt window (iPad mini, Split View, Stage Manager). `UIRequiresFullScreen = YES` is set only because App Store validation (ITMS-90474) rejects a landscape-only iPad app that allows multitasking; iPadOS 26+ ignores it, so layouts must still adapt to any window size. Remove it once portrait orientations are supported. `facilityLayoutRoot()` in `AppRootView` measures the window, sets that minimum window size and publishes `FacilityLayoutMetrics` as `@Environment(\.facilityLayout)`: `regular` keeps the original 13" values, `compact` applies below 1180 × 800 pt.
 
 - Put sizes that depend on the window into `FacilityLayoutMetrics`, not inline numbers. Screens use `facilityPageContent()` for their content column, `facilityPageHorizontalPadding()` for pinned headers and action bars, and `facilityPageTitleFont()` for titles.
 - Centered dialogs use `facilityDialogFrame(width:padding:)`, which caps them to the available space and scrolls when the keyboard leaves too little height.
