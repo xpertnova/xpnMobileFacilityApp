@@ -10,6 +10,7 @@ final class FacilityDemoViewModel {
     let technicalPlacesStore: TechnicalPlacesViewModel
     let meterReferenceProvider: any MeterReferenceProviding
     let photoAttachmentStore: any PhotoAttachmentStore
+    let documentAttachmentStore: any DocumentAttachmentStore
     let mobileLadderCreationProvider: any MobileLadderCreationProviding
     let elevatorAssetDataProvider: any ElevatorAssetDataProviding
     let subdistributionCreationProvider: any SubdistributionCreationProviding
@@ -85,6 +86,7 @@ final class FacilityDemoViewModel {
         sapDataStore: SAPDataStore,
         meterReferenceProvider: any MeterReferenceProviding,
         photoAttachmentStore: any PhotoAttachmentStore,
+        documentAttachmentStore: any DocumentAttachmentStore = InMemoryDocumentAttachmentStore(),
         mobileLadderCreationProvider: (any MobileLadderCreationProviding)? = nil,
         elevatorAssetDataProvider: (any ElevatorAssetDataProviding)? = nil,
         subdistributionCreationProvider: (any SubdistributionCreationProviding)? = nil,
@@ -96,6 +98,7 @@ final class FacilityDemoViewModel {
         self.sapDataStore = sapDataStore
         self.meterReferenceProvider = meterReferenceProvider
         self.photoAttachmentStore = photoAttachmentStore
+        self.documentAttachmentStore = documentAttachmentStore
         if let mobileLadderCreationProvider {
             self.mobileLadderCreationProvider = mobileLadderCreationProvider
         } else if isDemoMode {
@@ -703,6 +706,7 @@ final class FacilityDemoViewModel {
         Task {
             await offlineWorkStore.reset()
             try? await photoAttachmentStore.reset()
+            try? await documentAttachmentStore.reset()
         }
         selection = .overview
     }

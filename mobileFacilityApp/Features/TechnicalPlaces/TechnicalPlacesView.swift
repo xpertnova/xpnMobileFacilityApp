@@ -4,6 +4,7 @@ struct TechnicalPlacesView: View {
     let demo: FacilityDemoViewModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var photoWorkspaceScope: LocalPhotoScope?
+    @State private var documentWorkspaceScope: LocalPhotoScope?
 
     var body: some View {
         @Bindable var model = demo.technicalPlacesStore
@@ -29,6 +30,15 @@ struct TechnicalPlacesView: View {
                 )
                 .transition(PhotoWorkspaceMotion.destination)
                 .zIndex(1)
+            } else if let documentWorkspaceScope {
+                LocalDocumentWorkspace(
+                    scope: documentWorkspaceScope,
+                    offlineWorkStore: demo.offlineWorkStore,
+                    documentStore: demo.documentAttachmentStore,
+                    close: { self.documentWorkspaceScope = nil }
+                )
+                .transition(PhotoWorkspaceMotion.destination)
+                .zIndex(1)
             } else {
                 Group {
                     if let detail = model.selectedDetail {
@@ -38,6 +48,8 @@ struct TechnicalPlacesView: View {
                             offlineWorkStore: demo.offlineWorkStore,
                             photoCount: photoCount(for: detail),
                             openPhotos: { photoWorkspaceScope = photoScope(for: detail) },
+                            documentCount: documentCount(for: detail),
+                            openDocuments: { documentWorkspaceScope = documentScope(for: detail) },
                             openNotification: demo.openLinkedNotification,
                             openDefect: { demo.openManualDefect($0) },
                             createDefect: {
@@ -68,6 +80,10 @@ struct TechnicalPlacesView: View {
             accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
             value: photoWorkspaceScope
         )
+        .animation(
+            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
+            value: documentWorkspaceScope
+        )
         .task { if model.state == .idle { await model.load() } }
         .task(id: model.query) {
             do { try await Task.sleep(for: .milliseconds(350)); await model.updateSearch() } catch { }
@@ -92,6 +108,20 @@ struct TechnicalPlacesView: View {
     private func photoCount(for detail: TechnicalObjectDetail) -> Int {
         demo.offlineWorkStore.photoCollection(for: photoScope(for: detail))?
             .payload.photoCollection?.attachments.count ?? 0
+    }
+
+    private func documentScope(for detail: TechnicalObjectDetail) -> LocalPhotoScope {
+        LocalPhotoScope(
+            workflow: .technicalObject,
+            ownerID: detail.object.reference.objectID,
+            displayTitle: String(localized: "documents.workspace.title", bundle: .appLanguage),
+            displaySubtitle: detail.object.displayName
+        )
+    }
+
+    private func documentCount(for detail: TechnicalObjectDetail) -> Int {
+        demo.offlineWorkStore.documentCollection(for: documentScope(for: detail))?
+            .payload.documentCollection?.documents.count ?? 0
     }
 
     private func hierarchy(_ model: TechnicalPlacesViewModel) -> some View {
@@ -513,6 +543,8 @@ private struct TechnicalObjectDetailView: View {
     let offlineWorkStore: OfflineWorkStore
     let photoCount: Int
     let openPhotos: () -> Void
+    let documentCount: Int
+    let openDocuments: () -> Void
     let openNotification: (SAPNotificationSummary) -> Void
     let openDefect: (UUID) -> Void
     let createDefect: () -> Void
@@ -544,7 +576,12 @@ private struct TechnicalObjectDetailView: View {
                 Text(detail.object.displayName).font(.system(size: 30, weight: .bold, design: .rounded))
                 Text(breadcrumbLabels.joined(separator: " › ")).font(.subheadline).foregroundStyle(.secondary).lineLimit(3)
                 if !detail.object.displayStatus.isEmpty { ObjectBadge(detail.object.displayStatus, color: FacilityTheme.accent) }
-                PhotoWorkspaceButton(count: photoCount, action: openPhotos)
+                // Photos and documents share a row until the window is too
+                // narrow for both, then stack.
+                FacilityColumnsLayout(columnCounts: [2, 1], minimumColumnWidth: 280, spacing: 12) {
+                    PhotoWorkspaceButton(count: photoCount, action: openPhotos)
+                    DocumentWorkspaceButton(count: documentCount, action: openDocuments)
+                }
                 // The equipment fields keep their focus when the side cards
                 // move under them as the window or sidebar changes width.
                 FacilitySideColumnLayout(sideWidth: 405, minimumMainWidth: 420, spacing: 16) {

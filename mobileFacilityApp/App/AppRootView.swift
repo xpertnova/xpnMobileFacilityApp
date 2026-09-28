@@ -145,6 +145,7 @@ struct AppRootView: View {
                 sapDataStore: sapDataStore,
                 meterReferenceProvider: SAPMeterReferenceProvider(sapDataStore: sapDataStore),
                 photoAttachmentStore: storage.photoAttachmentStore,
+                documentAttachmentStore: storage.documentAttachmentStore,
                 workerDisplayName: session.displayName,
                 workerRole: session.role
             )
@@ -269,6 +270,7 @@ struct AppRootView: View {
 private struct ProductionStorage: Sendable {
     let offlineWorkRepository: any OfflineWorkRepository
     let photoAttachmentStore: any PhotoAttachmentStore
+    let documentAttachmentStore: any DocumentAttachmentStore
     let cacheRepository: SQLiteSAPDataCacheRepository?
 
     init(workerID: String) {
@@ -281,6 +283,11 @@ private struct ProductionStorage: Sendable {
             photoAttachmentStore = store
         } else {
             photoAttachmentStore = UnavailablePhotoAttachmentStore()
+        }
+        if let store = try? FileDocumentAttachmentStore() {
+            documentAttachmentStore = store
+        } else {
+            documentAttachmentStore = UnavailableDocumentAttachmentStore()
         }
         cacheRepository = try? SQLiteSAPDataCacheRepository.production(workerID: workerID)
     }

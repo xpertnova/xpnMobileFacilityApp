@@ -177,6 +177,42 @@ final class OfflineWorkStore {
         photoCollectionItems.first { $0.payload.photoCollection?.scope == scope }
     }
 
+    /// Files kept for a technical place or equipment. They are local-only and
+    /// deliberately left out of `localWorkCount`: nothing is waiting to sync.
+    func documentCollection(for scope: LocalPhotoScope) -> OfflineWorkItem? {
+        activeQueueItems.first {
+            $0.type == .documentCollection && $0.payload.documentCollection?.scope == scope
+        }
+    }
+
+    func saveDocumentCollection(
+        scope: LocalPhotoScope,
+        documents: [LocalDocumentAttachment]
+    ) async throws {
+        let existing = documentCollection(for: scope)
+        if documents.isEmpty {
+            if let existing {
+                try await repository.delete(ids: [existing.id])
+                await load()
+            }
+            return
+        }
+
+        let now = Date()
+        let item = OfflineWorkItem(
+            id: existing?.id ?? UUID(),
+            workerID: workerID,
+            type: .documentCollection,
+            status: .draft,
+            payload: .documentCollection(.init(scope: scope, documents: documents)),
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+            syncError: nil
+        )
+        try await repository.save(item)
+        await load()
+    }
+
     func savePhotoCollection(
         scope: LocalPhotoScope,
         attachments: [LocalPhotoAttachment],
