@@ -129,8 +129,8 @@ struct DraftsView: View {
             if let ladder = item.payload.mobileLadder {
                 LocalWorkTemplateRow(
                     icon: "🪜",
-                    title: Text(ladder.designation.isEmpty ? String(localized: "mobileLadder.title") : ladder.designation),
-                    subtitle: Text(ladder.context?.legacyContext.functionalLocation ?? String(localized: "mobileLadder.address.notSelected")),
+                    title: Text(ladder.designation.isEmpty ? String(localized: "mobileLadder.title", bundle: .appLanguage) : ladder.designation),
+                    subtitle: Text(ladder.context?.legacyContext.functionalLocation ?? String(localized: "mobileLadder.address.notSelected", bundle: .appLanguage)),
                     status: demo.isDemoMode ? .demoLocal : .offline(item.status),
                     syncError: item.syncError,
                     action: { demo.openMobileLadder(item.id) }
@@ -148,8 +148,8 @@ struct DraftsView: View {
                     ?? ""
                 LocalWorkTemplateRow(
                     icon: "⚡",
-                    title: Text(name.isEmpty ? String(localized: "subdistribution.title") : name),
-                    subtitle: Text(subdistribution.context?.legacyContext.functionalLocation ?? String(localized: "subdistribution.context.notSelected")),
+                    title: Text(name.isEmpty ? String(localized: "subdistribution.title", bundle: .appLanguage) : name),
+                    subtitle: Text(subdistribution.context?.legacyContext.functionalLocation ?? String(localized: "subdistribution.context.notSelected", bundle: .appLanguage)),
                     status: demo.isDemoMode ? .demoLocal : .offline(item.status),
                     syncError: item.syncError,
                     action: { demo.openSubdistribution(item.id) }
@@ -168,7 +168,7 @@ struct DraftsView: View {
                 LocalWorkTemplateRow(
                     icon: "📷",
                     title: Text(collection.scope.displayTitle.isEmpty
-                        ? String(localized: "photos.workspace.title")
+                        ? String(localized: "photos.workspace.title", bundle: .appLanguage)
                         : collection.scope.displayTitle),
                     subtitle: Text(photoCollectionSubtitle(collection)),
                     status: demo.isDemoMode ? .demoLocal : .offline(.draft),
@@ -180,7 +180,7 @@ struct DraftsView: View {
     }
 
     private func photoCollectionSubtitle(_ collection: PhotoCollectionDraftPayload) -> String {
-        let count = String(format: String(localized: "photos.workspace.count"), collection.attachments.count)
+        let count = String(format: String(localized: "photos.workspace.count", bundle: .appLanguage), collection.attachments.count)
         return [collection.scope.displaySubtitle, count]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
@@ -360,7 +360,7 @@ private struct SavedEquipmentInspectionRow: View {
     private var title: String {
         let savedTitle = inspection.notificationSnapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return savedTitle.isEmpty
-            ? String(localized: String.LocalizationValue(inspection.form.titleKey))
+            ? String(localized: String.LocalizationValue(inspection.form.titleKey), bundle: .appLanguage)
             : savedTitle
     }
 
@@ -374,7 +374,7 @@ private struct SavedEquipmentInspectionRow: View {
         LocalWorkTemplateRow(
             icon: inspection.form.draftIcon,
             title: Text(title),
-            subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks"))"),
+            subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks", bundle: .appLanguage))"),
             status: inspection.isClosedLocally ? .closedLocally : .offline(item.status),
             syncError: item.syncError,
             report: report,
@@ -391,7 +391,7 @@ private struct SavedNotificationRow: View {
 
     private var title: String {
         let savedTitle = review.notificationSnapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return savedTitle.isEmpty ? String(localized: "drafts.notification.title") : savedTitle
+        return savedTitle.isEmpty ? String(localized: "drafts.notification.title", bundle: .appLanguage) : savedTitle
     }
 
     /// The stored report, offered only once the review is closed.
@@ -404,7 +404,7 @@ private struct SavedNotificationRow: View {
         LocalWorkTemplateRow(
             icon: "📋",
             title: Text(title),
-            subtitle: Text("\(review.notificationID) · \(review.results.count) \(String(localized: "drafts.notification.checks"))"),
+            subtitle: Text("\(review.notificationID) · \(review.results.count) \(String(localized: "drafts.notification.checks", bundle: .appLanguage))"),
             status: review.isClosedLocally ? .closedLocally : .offline(item.status),
             syncError: item.syncError,
             report: report,

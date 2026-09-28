@@ -506,9 +506,9 @@ struct BriefingPartnerSelectionTable: View {
     private var partnerResultsText: String {
         let count = displayedPartners.count
         if count == 1 {
-            return String(localized: "briefing.partnerPicker.partnerFound")
+            return String(localized: "briefing.partnerPicker.partnerFound", bundle: .appLanguage)
         } else {
-            return String(format: String(localized: "briefing.partnerPicker.partnersFound"), count)
+            return String(format: String(localized: "briefing.partnerPicker.partnersFound", bundle: .appLanguage), count)
         }
     }
 

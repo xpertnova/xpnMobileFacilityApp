@@ -243,7 +243,7 @@ private struct BriefingFormScreen: View {
                         isBuildingPickerPresented = true
                     } label: {
                         HStack(spacing: 12) {
-                            Text(viewModel.selectedContext?.buildingTitle ?? String(localized: "briefing.building.placeholder"))
+                            Text(viewModel.selectedContext?.buildingTitle ?? String(localized: "briefing.building.placeholder", bundle: .appLanguage))
                                 .foregroundStyle(viewModel.selectedContext == nil ? .secondary : .primary)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
@@ -533,7 +533,7 @@ private struct BriefingFormScreen: View {
         isEnabled: Bool
     ) -> some View {
         HStack(spacing: 12) {
-            Text(value ?? String(localized: String.LocalizationValue(placeholder)))
+            Text(value ?? String(localized: String.LocalizationValue(placeholder), bundle: .appLanguage))
                 .foregroundStyle(value == nil ? .secondary : .primary)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -556,7 +556,7 @@ struct SignatureInputRequirement: Equatable {
     var lockedMessage: String? {
         guard !isSigningEnabled else { return nil }
         return String(
-            format: String(localized: "signature.prerequisite.prompt"),
+            format: String(localized: "signature.prerequisite.prompt", bundle: .appLanguage),
             locale: .current,
             requiredNameField
         )
@@ -632,7 +632,7 @@ struct BriefingInlineSignatureField: View {
                         .allowsHitTesting(isSigningEnabled)
 
                     if drawing.bounds.isEmpty {
-                        Text(inputRequirement?.lockedMessage ?? String(localized: "briefing.signature.placeholder"))
+                        Text(inputRequirement?.lockedMessage ?? String(localized: "briefing.signature.placeholder", bundle: .appLanguage))
                             .font(.subheadline)
                             .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
@@ -849,8 +849,8 @@ extension SAPBriefingAnswerOption {
     /// source value rather than a translated display value.
     var localizedControlTitle: String {
         isNegativeBriefingAnswer
-            ? String(localized: "notifications.detail.result.no")
-            : String(localized: "notifications.detail.result.yes")
+            ? String(localized: "notifications.detail.result.no", bundle: .appLanguage)
+            : String(localized: "notifications.detail.result.yes", bundle: .appLanguage)
     }
 
     var normalizedBriefingAnswer: String {
@@ -1259,7 +1259,7 @@ final class BriefingWorkflowViewModel {
             guard let artifact else {
                 instructorSignature = nil
                 instructedPersonSignature = nil
-                validationMessage = String(localized: "briefing.pdf.createFailed")
+                validationMessage = String(localized: "briefing.pdf.createFailed", bundle: .appLanguage)
                 return
             }
             pdfArtifact = artifact
@@ -1268,16 +1268,16 @@ final class BriefingWorkflowViewModel {
     func saveDraft(using store: OfflineWorkStore) async {
         guard !isReadOnly else { return }
         guard let payload = draftPayload() else {
-            validationMessage = String(localized: "briefing.draft.contextRequired")
+            validationMessage = String(localized: "briefing.draft.contextRequired", bundle: .appLanguage)
             return
         }
         do {
             let item = try await store.saveBriefing(id: savedWorkID, payload: payload, status: .draft)
             savedWorkID = item.id
             itemStatus = item.status
-            validationMessage = String(localized: "briefing.draft.saved")
+            validationMessage = String(localized: "briefing.draft.saved", bundle: .appLanguage)
         } catch {
-            validationMessage = String(localized: "briefing.draft.saveFailed")
+            validationMessage = String(localized: "briefing.draft.saveFailed", bundle: .appLanguage)
         }
     }
     func markPendingSynchronization(using store: OfflineWorkStore) async -> Bool {
@@ -1300,7 +1300,7 @@ final class BriefingWorkflowViewModel {
             itemStatus = item.status
             return true
         } catch {
-            validationMessage = String(localized: "briefing.completed.saveFailed")
+            validationMessage = String(localized: "briefing.completed.saveFailed", bundle: .appLanguage)
             return false
         }
     }
@@ -1309,7 +1309,7 @@ final class BriefingWorkflowViewModel {
         hasAttemptedCompletion = true
         let isValid = validationIssues.isEmpty
         if !isValid {
-            validationMessage = String(localized: "briefing.validation.message")
+            validationMessage = String(localized: "briefing.validation.message", bundle: .appLanguage)
         }
         return isValid
     }
@@ -1322,7 +1322,7 @@ final class BriefingWorkflowViewModel {
             let instructorSignature,
             let instructedPersonSignature
         else {
-            validationMessage = String(localized: "briefing.pdf.createFailed")
+            validationMessage = String(localized: "briefing.pdf.createFailed", bundle: .appLanguage)
             return nil
         }
 

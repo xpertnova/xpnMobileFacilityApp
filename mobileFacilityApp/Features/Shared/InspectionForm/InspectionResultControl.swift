@@ -125,7 +125,7 @@ struct InspectionMeasuringPointButton: View {
     var body: some View {
         Button(action: open) {
             Label {
-                Text(title.isEmpty ? String(localized: "measuringPoints.button.fallback") : title)
+                Text(title.isEmpty ? String(localized: "measuringPoints.button.fallback", bundle: .appLanguage) : title)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             } icon: {

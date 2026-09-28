@@ -231,7 +231,7 @@ private struct ClosedDefectNotificationCard: View {
 
     private var title: String {
         let title = snapshot?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return title.isEmpty ? String(localized: String.LocalizationValue(fallbackTitleKey)) : title
+        return title.isEmpty ? String(localized: String.LocalizationValue(fallbackTitleKey), bundle: .appLanguage) : title
     }
 
     private var technicalPlace: String {

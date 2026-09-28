@@ -272,19 +272,19 @@ private struct NotificationSearchBar: UIViewRepresentable {
         symbol.contentMode = .scaleAspectFit
 
         let textField = UITextField()
-        textField.placeholder = String(localized: "notifications.search")
+        textField.placeholder = String(localized: "notifications.search", bundle: .appLanguage)
         textField.font = .preferredFont(forTextStyle: .body)
         textField.textColor = .label
         textField.autocorrectionType = .no
         textField.autocapitalizationType = .none
         textField.returnKeyType = .search
         textField.delegate = context.coordinator
-        textField.accessibilityLabel = String(localized: "notifications.search")
+        textField.accessibilityLabel = String(localized: "notifications.search", bundle: .appLanguage)
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let button = UIButton(type: .system)
-        button.setTitle(String(localized: "notifications.search.action"), for: .normal)
+        button.setTitle(String(localized: "notifications.search.action", bundle: .appLanguage), for: .normal)
         button.setImage(UIImage(systemName: "magnifyingglass"), for: .normal)
         button.tintColor = .white
         button.setTitleColor(.white, for: .normal)
@@ -295,7 +295,7 @@ private struct NotificationSearchBar: UIViewRepresentable {
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
         button.backgroundColor = UIColor(FacilityTheme.accent)
         button.layer.cornerRadius = 12
-        button.accessibilityLabel = String(localized: "notifications.search.action")
+        button.accessibilityLabel = String(localized: "notifications.search.action", bundle: .appLanguage)
         button.addTarget(context.coordinator, action: #selector(Coordinator.submitSearch), for: .touchUpInside)
 
         [symbol, textField, button].forEach {
@@ -917,7 +917,7 @@ struct NotificationStructuralFilterOverlay: View {
 
     private func formLabel(for code: String) -> String {
         guard let formType = NotificationFormType(formCode: code) else { return code }
-        return "\(code) — \(String(localized: String.LocalizationValue(formType.titleKey)))"
+        return "\(code) — \(String(localized: String.LocalizationValue(formType.titleKey), bundle: .appLanguage))"
     }
 
     private func dismiss() {

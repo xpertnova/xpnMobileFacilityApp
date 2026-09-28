@@ -88,7 +88,7 @@ final class FixedLadderInspectionTests: XCTestCase {
         XCTAssertEqual(model.outOfServiceRowID, "TFM4-0000")
         XCTAssertEqual(model.outOfServiceValueElementID, "TFM4-0000-1")
         XCTAssertEqual(model.outOfServiceCommentElementID, "TFM4-0000-9B")
-        XCTAssertEqual(model.reportTitle, String(localized: "fixedLadder.inspection.title"))
+        XCTAssertEqual(model.reportTitle, String(localized: "fixedLadder.inspection.title", bundle: .appLanguage))
     }
 
     @MainActor

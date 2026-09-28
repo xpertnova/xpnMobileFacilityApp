@@ -269,7 +269,7 @@ struct ElectricalSafetyWorkflowView: View {
                         action: { isEditingInstructionNotes = true }
                     )
                     Text(viewModel.draft.instructionNotes.isEmpty
-                         ? String(localized: "notifications.detail.commentEditor.placeholder")
+                         ? String(localized: "notifications.detail.commentEditor.placeholder", bundle: .appLanguage)
                          : viewModel.draft.instructionNotes)
                         .foregroundStyle(viewModel.draft.instructionNotes.isEmpty ? .secondary : .primary)
                         .lineLimit(3)
@@ -348,7 +348,7 @@ struct ElectricalSafetyWorkflowView: View {
             isInvalid: viewModel.isInvalid(.signature(slot)),
             inputRequirement: SignatureInputRequirement(
                 signerName: signerName,
-                requiredNameField: String(localized: String.LocalizationValue(slot.signerNameFieldKey))
+                requiredNameField: String(localized: String.LocalizationValue(slot.signerNameFieldKey), bundle: .appLanguage)
             )
         )
         .frame(maxWidth: .infinity)

@@ -96,55 +96,55 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
         case .subdistribution: return Self.subdistributionData
         case .elevator, nil: break
         }
-        let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes"))
+        let yes = ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes", bundle: .appLanguage))
         let passengerLift = ElevatorInspectionValueOption(
             code: "PERS",
-            text: String(localized: "elevator.assetData.demo.passengerLift")
+            text: String(localized: "elevator.assetData.demo.passengerLift", bundle: .appLanguage)
         )
         let characteristics = [
             ElevatorAssetCharacteristic(
                 position: 1, name: "DEMO_ELEVATOR_STOPS",
-                title: String(localized: "elevator.assetData.field.stops"), unit: "ST",
+                title: String(localized: "elevator.assetData.field.stops", bundle: .appLanguage), unit: "ST",
                 isRequired: false, isNumeric: true, allowsMultipleValues: false, options: []
             ),
             ElevatorAssetCharacteristic(
                 position: 2, name: "DEMO_ELEVATOR_ACCESS_POINTS",
-                title: String(localized: "elevator.assetData.field.accessPoints"), unit: "ST",
+                title: String(localized: "elevator.assetData.field.accessPoints", bundle: .appLanguage), unit: "ST",
                 isRequired: false, isNumeric: true, allowsMultipleValues: false, options: []
             ),
             ElevatorAssetCharacteristic(
                 position: 3, name: "DEMO_ELEVATOR_FIRE_CONTROL",
-                title: String(localized: "elevator.assetData.field.fireControl"), unit: "",
+                title: String(localized: "elevator.assetData.field.fireControl", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [yes]
             ),
             ElevatorAssetCharacteristic(
                 position: 4, name: "DEMO_ELEVATOR_USAGE",
-                title: String(localized: "elevator.assetData.field.usage"), unit: "",
+                title: String(localized: "elevator.assetData.field.usage", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []
             ),
             ElevatorAssetCharacteristic(
                 position: 5, name: "DEMO_ELEVATOR_NUMBER",
-                title: String(localized: "elevator.assetData.field.number"), unit: "",
+                title: String(localized: "elevator.assetData.field.number", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []
             ),
             ElevatorAssetCharacteristic(
                 position: 6, name: "DEMO_ELEVATOR_EMERGENCY_CALL",
-                title: String(localized: "elevator.assetData.field.emergencyCall"), unit: "",
+                title: String(localized: "elevator.assetData.field.emergencyCall", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [yes]
             ),
             ElevatorAssetCharacteristic(
                 position: 7, name: "DEMO_ELEVATOR_TYPE",
-                title: String(localized: "elevator.assetData.field.type"), unit: "",
+                title: String(localized: "elevator.assetData.field.type", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [passengerLift]
             ),
             ElevatorAssetCharacteristic(
                 position: 8, name: "DEMO_ELEVATOR_CAPACITY",
-                title: String(localized: "elevator.assetData.field.capacity"), unit: "kg",
+                title: String(localized: "elevator.assetData.field.capacity", bundle: .appLanguage), unit: "kg",
                 isRequired: false, isNumeric: true, allowsMultipleValues: false, options: []
             ),
             ElevatorAssetCharacteristic(
                 position: 9, name: "DEMO_ELEVATOR_TRAVEL_HEIGHT",
-                title: String(localized: "elevator.assetData.field.travelHeight"), unit: "m",
+                title: String(localized: "elevator.assetData.field.travelHeight", bundle: .appLanguage), unit: "m",
                 isRequired: false, isNumeric: true, allowsMultipleValues: false, options: []
             )
         ]
@@ -156,7 +156,7 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
                 "DEMO_ELEVATOR_STOPS": "5",
                 "DEMO_ELEVATOR_ACCESS_POINTS": "5",
                 "DEMO_ELEVATOR_FIRE_CONTROL": "X",
-                "DEMO_ELEVATOR_USAGE": String(localized: "elevator.assetData.demo.passengerTransport"),
+                "DEMO_ELEVATOR_USAGE": String(localized: "elevator.assetData.demo.passengerTransport", bundle: .appLanguage),
                 "DEMO_ELEVATOR_NUMBER": "?",
                 "DEMO_ELEVATOR_EMERGENCY_CALL": "X",
                 "DEMO_ELEVATOR_TYPE": "PERS",
@@ -168,31 +168,31 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
 
     private static var fixedLadderData: ElevatorAssetData {
         let yesNo = [
-            ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes")),
-            ElevatorInspectionValueOption(code: "N", text: String(localized: "holdOpenSystem.masterData.demo.no"))
+            ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes", bundle: .appLanguage)),
+            ElevatorInspectionValueOption(code: "N", text: String(localized: "holdOpenSystem.masterData.demo.no", bundle: .appLanguage))
         ]
         let characteristics = [
             ElevatorAssetCharacteristic(
                 position: 1, name: "DEMO_LADDER_HEIGHT",
-                title: String(localized: "fixedLadder.masterData.demo.height"), unit: "m",
+                title: String(localized: "fixedLadder.masterData.demo.height", bundle: .appLanguage), unit: "m",
                 isRequired: true, isNumeric: true, allowsMultipleValues: false, options: [],
                 format: "NUM", digits: 5, decimals: 2, template: "___.__"
             ),
             ElevatorAssetCharacteristic(
                 position: 2, name: "DEMO_LADDER_MATERIAL",
-                title: String(localized: "fixedLadder.masterData.demo.material"), unit: "",
+                title: String(localized: "fixedLadder.masterData.demo.material", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [],
                 format: "CHAR", digits: 30
             ),
             ElevatorAssetCharacteristic(
                 position: 3, name: "DEMO_LADDER_FALL_PROTECTION",
-                title: String(localized: "fixedLadder.masterData.demo.fallProtection"), unit: "",
+                title: String(localized: "fixedLadder.masterData.demo.fallProtection", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: yesNo,
                 selectableOptions: yesNo, format: "CHAR"
             ),
             ElevatorAssetCharacteristic(
                 position: 4, name: "DEMO_LADDER_BACK_PROTECTION",
-                title: String(localized: "fixedLadder.masterData.demo.backProtection"), unit: "",
+                title: String(localized: "fixedLadder.masterData.demo.backProtection", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: yesNo,
                 selectableOptions: yesNo, format: "CHAR"
             )
@@ -200,11 +200,11 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
         return ElevatorAssetData(
             equipmentType: "TFMLEITER",
             className: "TFMLEITER",
-            classTitle: String(localized: "fixedLadder.inspection.title"),
+            classTitle: String(localized: "fixedLadder.inspection.title", bundle: .appLanguage),
             characteristics: characteristics,
             values: [
                 "DEMO_LADDER_HEIGHT": "12.5",
-                "DEMO_LADDER_MATERIAL": String(localized: "fixedLadder.masterData.demo.steel"),
+                "DEMO_LADDER_MATERIAL": String(localized: "fixedLadder.masterData.demo.steel", bundle: .appLanguage),
                 "DEMO_LADDER_FALL_PROTECTION": "X",
                 "DEMO_LADDER_BACK_PROTECTION": "X"
             ]
@@ -213,13 +213,13 @@ struct DemoElevatorAssetDataProvider: ElevatorAssetDataProviding {
 
     private static var subdistributionData: ElevatorAssetData {
         let characteristics = [
-            ElevatorAssetCharacteristic(position: 1, name: "DEMO_SUBDISTRIBUTION_NAME", title: String(localized: "subdistribution.masterData.demo.name"), unit: "", isRequired: true, isNumeric: false, allowsMultipleValues: false, options: []),
-            ElevatorAssetCharacteristic(position: 2, name: "DEMO_SUBDISTRIBUTION_RCD", title: String(localized: "subdistribution.masterData.demo.rcd"), unit: "", isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []),
-            ElevatorAssetCharacteristic(position: 3, name: "DEMO_SUBDISTRIBUTION_CIRCUITS", title: String(localized: "subdistribution.masterData.demo.circuits"), unit: "ST", isRequired: false, isNumeric: true, allowsMultipleValues: false, options: [])
+            ElevatorAssetCharacteristic(position: 1, name: "DEMO_SUBDISTRIBUTION_NAME", title: String(localized: "subdistribution.masterData.demo.name", bundle: .appLanguage), unit: "", isRequired: true, isNumeric: false, allowsMultipleValues: false, options: []),
+            ElevatorAssetCharacteristic(position: 2, name: "DEMO_SUBDISTRIBUTION_RCD", title: String(localized: "subdistribution.masterData.demo.rcd", bundle: .appLanguage), unit: "", isRequired: false, isNumeric: false, allowsMultipleValues: false, options: []),
+            ElevatorAssetCharacteristic(position: 3, name: "DEMO_SUBDISTRIBUTION_CIRCUITS", title: String(localized: "subdistribution.masterData.demo.circuits", bundle: .appLanguage), unit: "ST", isRequired: false, isNumeric: true, allowsMultipleValues: false, options: [])
         ]
         return ElevatorAssetData(
             equipmentType: "TFMNSPV", className: "TFMNSPV",
-            classTitle: String(localized: "subdistribution.title"),
+            classTitle: String(localized: "subdistribution.title", bundle: .appLanguage),
             characteristics: characteristics,
             values: [
                 "DEMO_SUBDISTRIBUTION_NAME": "UV Bürotrakt 1. OG",
@@ -247,37 +247,37 @@ extension DemoElevatorAssetDataProvider {
         let types = list([("RSZ1", "RSZ1"), ("RSZ2", "RSZ2")])
         let approvals = list([("Z-6.5-1001", "Z-6.5-1001"), ("Z-6.5-1002", "Z-6.5-1002")])
         let yesNo = [
-            ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes")),
-            ElevatorInspectionValueOption(code: "N", text: String(localized: "holdOpenSystem.masterData.demo.no"))
+            ElevatorInspectionValueOption(code: "X", text: String(localized: "elevator.assetData.demo.yes", bundle: .appLanguage)),
+            ElevatorInspectionValueOption(code: "N", text: String(localized: "holdOpenSystem.masterData.demo.no", bundle: .appLanguage))
         ]
         let characteristics = [
             ElevatorAssetCharacteristic(
                 position: 1, name: "DEMO_FSA_BUILD_DATE",
-                title: String(localized: "holdOpenSystem.masterData.demo.buildDate"), unit: "",
+                title: String(localized: "holdOpenSystem.masterData.demo.buildDate", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [],
                 format: "DATE", digits: 8
             ),
             ElevatorAssetCharacteristic(
                 position: 2, name: "DEMO_FSA_MANUFACTURER",
-                title: String(localized: "holdOpenSystem.masterData.demo.manufacturer"), unit: "",
+                title: String(localized: "holdOpenSystem.masterData.demo.manufacturer", bundle: .appLanguage), unit: "",
                 isRequired: true, isNumeric: false, allowsMultipleValues: false, options: manufacturers,
                 selectableOptions: manufacturers, format: "CHAR", digits: 30
             ),
             ElevatorAssetCharacteristic(
                 position: 3, name: "DEMO_FSA_MANUAL_RELEASE",
-                title: String(localized: "holdOpenSystem.masterData.demo.manualRelease"), unit: "",
+                title: String(localized: "holdOpenSystem.masterData.demo.manualRelease", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: yesNo,
                 selectableOptions: yesNo, format: "CHAR", digits: 1
             ),
             ElevatorAssetCharacteristic(
                 position: 4, name: "DEMO_FSA_TYPE",
-                title: String(localized: "holdOpenSystem.masterData.demo.type"), unit: "",
+                title: String(localized: "holdOpenSystem.masterData.demo.type", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: types,
                 selectableOptions: types, format: "CHAR", digits: 30
             ),
             ElevatorAssetCharacteristic(
                 position: 5, name: "DEMO_FSA_APPROVAL",
-                title: String(localized: "holdOpenSystem.masterData.demo.approval"), unit: "",
+                title: String(localized: "holdOpenSystem.masterData.demo.approval", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: approvals,
                 selectableOptions: approvals, format: "CHAR", digits: 30
             )
@@ -302,7 +302,7 @@ extension DemoElevatorAssetDataProvider {
         return ElevatorAssetData(
             equipmentType: "TFMFSA",
             className: "TFMFSA",
-            classTitle: String(localized: "holdOpenSystem.inspection.title"),
+            classTitle: String(localized: "holdOpenSystem.inspection.title", bundle: .appLanguage),
             characteristics: characteristics,
             values: values,
             masterRecord: EquipmentMasterRecord(
@@ -325,25 +325,25 @@ extension DemoElevatorAssetDataProvider {
             text: MasterDataProposalRules.adminText
         )
         let anchorTypes = [admin, unknown] + [
-            ElevatorInspectionValueOption(code: "EINZEL", text: String(localized: "roofSystem.masterData.demo.singleAnchor")),
-            ElevatorInspectionValueOption(code: "SEIL", text: String(localized: "roofSystem.masterData.demo.cableSystem"))
+            ElevatorInspectionValueOption(code: "EINZEL", text: String(localized: "roofSystem.masterData.demo.singleAnchor", bundle: .appLanguage)),
+            ElevatorInspectionValueOption(code: "SEIL", text: String(localized: "roofSystem.masterData.demo.cableSystem", bundle: .appLanguage))
         ]
         let characteristics = [
             ElevatorAssetCharacteristic(
                 position: 1, name: "DEMO_DACH_ANCHOR_TYPE",
-                title: String(localized: "roofSystem.masterData.demo.anchorType"), unit: "",
+                title: String(localized: "roofSystem.masterData.demo.anchorType", bundle: .appLanguage), unit: "",
                 isRequired: true, isNumeric: false, allowsMultipleValues: false, options: anchorTypes,
                 selectableOptions: anchorTypes, format: "CHAR", digits: 30
             ),
             ElevatorAssetCharacteristic(
                 position: 2, name: "DEMO_DACH_ANCHOR_COUNT",
-                title: String(localized: "roofSystem.masterData.demo.anchorCount"), unit: "ST",
+                title: String(localized: "roofSystem.masterData.demo.anchorCount", bundle: .appLanguage), unit: "ST",
                 isRequired: false, isNumeric: true, allowsMultipleValues: false, options: [],
                 format: "NUM", digits: 3, decimals: 0, template: "___"
             ),
             ElevatorAssetCharacteristic(
                 position: 3, name: "DEMO_DACH_INSTALLED_ON",
-                title: String(localized: "roofSystem.masterData.demo.installedOn"), unit: "",
+                title: String(localized: "roofSystem.masterData.demo.installedOn", bundle: .appLanguage), unit: "",
                 isRequired: false, isNumeric: false, allowsMultipleValues: false, options: [],
                 format: "DATE", digits: 8
             )
@@ -366,7 +366,7 @@ extension DemoElevatorAssetDataProvider {
         return ElevatorAssetData(
             equipmentType: "TFMDACH",
             className: "TFMDACH",
-            classTitle: String(localized: "roofSystem.inspection.title"),
+            classTitle: String(localized: "roofSystem.inspection.title", bundle: .appLanguage),
             characteristics: characteristics,
             values: values,
             masterRecord: EquipmentMasterRecord(

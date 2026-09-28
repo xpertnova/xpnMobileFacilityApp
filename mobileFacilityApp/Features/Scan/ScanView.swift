@@ -450,14 +450,14 @@ private struct ScanResultRow: View {
     }
 
     private var titleLine: String {
-        "\(notification.title) · \(String(localized: "notifications.detail.number")) \(notification.id)"
+        "\(notification.title) · \(String(localized: "notifications.detail.number", bundle: .appLanguage)) \(notification.id)"
     }
 
     private var technicalObjectLine: String {
         guard !summary.equipmentID.isEmpty else { return summary.functionalLocationID }
         return [
             summary.functionalLocationID,
-            "\(String(localized: "notifications.detail.equipment")) \(summary.equipmentID.withoutSAPLeadingZeros)"
+            "\(String(localized: "notifications.detail.equipment", bundle: .appLanguage)) \(summary.equipmentID.withoutSAPLeadingZeros)"
         ]
         .filter { !$0.isEmpty }
         .joined(separator: " · ")
@@ -475,7 +475,7 @@ private extension LegacyQRCodePayload {
         switch self {
         case let .mtfm(_, functionalLocationID, equipmentID):
             guard let equipmentID else { return functionalLocationID }
-            return "\(functionalLocationID) · \(String(localized: "notifications.detail.equipment")) \(equipmentID.withoutSAPLeadingZeros)"
+            return "\(functionalLocationID) · \(String(localized: "notifications.detail.equipment", bundle: .appLanguage)) \(equipmentID.withoutSAPLeadingZeros)"
         case let .mihm(objectNumber, technicalReference):
             return "\(objectNumber) · \(technicalReference)"
         }

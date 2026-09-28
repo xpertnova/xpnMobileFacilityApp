@@ -103,7 +103,7 @@ private struct SAPRefreshFailureDetailsView: View {
                 detailRow(
                     "sap.refresh.details.response",
                     value: String.localizedStringWithFormat(
-                        String(localized: "sap.refresh.details.httpStatus"),
+                        String(localized: "sap.refresh.details.httpStatus", bundle: .appLanguage),
                         status
                     )
                 )
@@ -182,31 +182,31 @@ private extension SAPReadRefreshStage {
     var messageText: String {
         switch self {
         case .authenticating:
-            String(localized: "sap.refresh.stage.authenticating")
+            String(localized: "sap.refresh.stage.authenticating", bundle: .appLanguage)
         case .resumingInterruptedSynchronization:
-            String(localized: "sap.refresh.stage.resuming")
+            String(localized: "sap.refresh.stage.resuming", bundle: .appLanguage)
         case .uploadingOutgoingMetadata:
-            String(localized: "sap.refresh.stage.uploading")
+            String(localized: "sap.refresh.stage.uploading", bundle: .appLanguage)
         case let .uploadingOutgoingDocuments(current, total):
             String(
-                format: String(localized: "sap.refresh.stage.uploadingDocuments"),
+                format: String(localized: "sap.refresh.stage.uploadingDocuments", bundle: .appLanguage),
                 current,
                 total
             )
         case .postingOutgoingData:
-            String(localized: "sap.refresh.stage.posting")
+            String(localized: "sap.refresh.stage.posting", bundle: .appLanguage)
         case .waitingForOutgoingAcknowledgement:
-            String(localized: "sap.refresh.stage.waitingForPost")
+            String(localized: "sap.refresh.stage.waitingForPost", bundle: .appLanguage)
         case .checkingAppVersion:
-            String(localized: "sap.refresh.stage.version")
+            String(localized: "sap.refresh.stage.version", bundle: .appLanguage)
         case .preparingIncomingData:
-            String(localized: "sap.refresh.stage.preparing")
+            String(localized: "sap.refresh.stage.preparing", bundle: .appLanguage)
         case .waitingForIncomingData:
-            String(localized: "sap.refresh.stage.waiting")
+            String(localized: "sap.refresh.stage.waiting", bundle: .appLanguage)
         case .receivingIncomingPackages(let packageNumber):
-            String(format: String(localized: "sap.refresh.stage.receivingPackage"), packageNumber)
+            String(format: String(localized: "sap.refresh.stage.receivingPackage", bundle: .appLanguage), packageNumber)
         case .savingSnapshot:
-            String(localized: "sap.refresh.stage.saving")
+            String(localized: "sap.refresh.stage.saving", bundle: .appLanguage)
         }
     }
 
@@ -227,30 +227,30 @@ private extension SAPRefreshFailureContext {
         case .authenticating:
             switch authenticationMethod {
             case .password:
-                String(localized: "sap.refresh.details.passwordOperation")
+                String(localized: "sap.refresh.details.passwordOperation", bundle: .appLanguage)
             case .savedToken:
-                String(localized: "sap.refresh.details.savedTokenOperation")
+                String(localized: "sap.refresh.details.savedTokenOperation", bundle: .appLanguage)
             }
         case .resumingInterruptedSynchronization:
-            String(localized: "sap.refresh.details.resumeOperation")
+            String(localized: "sap.refresh.details.resumeOperation", bundle: .appLanguage)
         case .uploadingOutgoingMetadata:
-            String(localized: "sap.refresh.details.uploadMetadataOperation")
+            String(localized: "sap.refresh.details.uploadMetadataOperation", bundle: .appLanguage)
         case .uploadingOutgoingDocuments:
-            String(localized: "sap.refresh.details.uploadDocumentOperation")
+            String(localized: "sap.refresh.details.uploadDocumentOperation", bundle: .appLanguage)
         case .postingOutgoingData:
-            String(localized: "sap.refresh.details.postOperation")
+            String(localized: "sap.refresh.details.postOperation", bundle: .appLanguage)
         case .waitingForOutgoingAcknowledgement:
-            String(localized: "sap.refresh.details.postAcknowledgementOperation")
+            String(localized: "sap.refresh.details.postAcknowledgementOperation", bundle: .appLanguage)
         case .checkingAppVersion:
-            String(localized: "sap.refresh.details.versionOperation")
+            String(localized: "sap.refresh.details.versionOperation", bundle: .appLanguage)
         case .preparingIncomingData:
-            String(localized: "sap.refresh.details.prepareIncomingOperation")
+            String(localized: "sap.refresh.details.prepareIncomingOperation", bundle: .appLanguage)
         case .waitingForIncomingData:
-            String(localized: "sap.refresh.details.incomingAcknowledgementOperation")
+            String(localized: "sap.refresh.details.incomingAcknowledgementOperation", bundle: .appLanguage)
         case .receivingIncomingPackages:
-            String(localized: "sap.refresh.details.receivePackageOperation")
+            String(localized: "sap.refresh.details.receivePackageOperation", bundle: .appLanguage)
         case .savingSnapshot:
-            String(localized: "sap.refresh.details.saveSnapshotOperation")
+            String(localized: "sap.refresh.details.saveSnapshotOperation", bundle: .appLanguage)
         }
     }
 
@@ -265,33 +265,33 @@ private extension SAPRefreshFailureContext {
 func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
     switch error {
     case .configurationUnavailable:
-        String(localized: "sap.refresh.error.configuration")
+        String(localized: "sap.refresh.error.configuration", bundle: .appLanguage)
     case .authenticatedConnectionUnavailable:
-        String(localized: "sap.refresh.error.connection")
+        String(localized: "sap.refresh.error.connection", bundle: .appLanguage)
     case .passwordRequired:
-        String(localized: "sap.refresh.error.password")
+        String(localized: "sap.refresh.error.password", bundle: .appLanguage)
     case .invalidCredentials:
-        String(localized: "sap.refresh.error.credentials")
+        String(localized: "sap.refresh.error.credentials", bundle: .appLanguage)
     case .initialPasswordChangeRequired:
-        String(localized: "sap.refresh.error.initialPassword")
+        String(localized: "sap.refresh.error.initialPassword", bundle: .appLanguage)
     case .tokenInvalidOrExpired:
-        String(localized: "The SAP session token is invalid or has expired on another device.")
+        String(localized: "The SAP session token is invalid or has expired on another device.", bundle: .appLanguage)
     case .preparationTimedOut:
-        String(localized: "sap.refresh.error.timeout")
+        String(localized: "sap.refresh.error.timeout", bundle: .appLanguage)
     case .networkUnavailable:
-        String(localized: "sap.refresh.error.network")
+        String(localized: "sap.refresh.error.network", bundle: .appLanguage)
     case .requestTimedOut:
-        String(localized: "sap.refresh.error.requestTimeout")
+        String(localized: "sap.refresh.error.requestTimeout", bundle: .appLanguage)
     case let .httpStatus(status):
-        String.localizedStringWithFormat(String(localized: "sap.refresh.error.httpStatus"), status)
+        String.localizedStringWithFormat(String(localized: "sap.refresh.error.httpStatus", bundle: .appLanguage), status)
     case .malformedPayload:
-        String(localized: "sap.refresh.error.malformed")
+        String(localized: "sap.refresh.error.malformed", bundle: .appLanguage)
     case .serviceUnavailable:
-        String(localized: "sap.refresh.error.service")
+        String(localized: "sap.refresh.error.service", bundle: .appLanguage)
     case let .backendMessage(message):
         message
     case .none:
-        String(localized: "sap.refresh.error.generic")
+        String(localized: "sap.refresh.error.generic", bundle: .appLanguage)
     }
 }
 

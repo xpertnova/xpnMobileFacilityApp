@@ -369,7 +369,7 @@ struct PhotoWorkspace: View {
             .disabled(isImportingPhotos)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(title.isEmpty ? String(localized: "photos.workspace.title") : title)
+                Text(title.isEmpty ? String(localized: "photos.workspace.title", bundle: .appLanguage) : title)
                     .font(.title2.bold())
                     .foregroundStyle(FacilityTheme.ink)
                 if !subtitle.isEmpty {
@@ -387,7 +387,7 @@ struct PhotoWorkspace: View {
                     .accessibilityLabel(Text("photos.workspace.importing"))
             }
 
-            Text(String(format: String(localized: "photos.workspace.count"), entries.count))
+            Text(String(format: String(localized: "photos.workspace.count", bundle: .appLanguage), entries.count))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isAtAttachmentLimit ? FacilityTheme.red : Color.secondary)
 
@@ -488,11 +488,11 @@ struct PhotoWorkspace: View {
                 .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(entry.name.isEmpty ? String(localized: "photos.workspace.untitled") : entry.name)
+                    Text(entry.name.isEmpty ? String(localized: "photos.workspace.untitled", bundle: .appLanguage) : entry.name)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(FacilityTheme.ink)
                         .lineLimit(1)
-                    Text(entry.description.isEmpty ? String(localized: "photos.workspace.noDescription") : entry.description)
+                    Text(entry.description.isEmpty ? String(localized: "photos.workspace.noDescription", bundle: .appLanguage) : entry.description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -511,7 +511,7 @@ struct PhotoWorkspace: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(entry.name.isEmpty ? String(localized: "photos.workspace.untitled") : entry.name))
+        .accessibilityLabel(Text(entry.name.isEmpty ? String(localized: "photos.workspace.untitled", bundle: .appLanguage) : entry.name))
     }
 
     private var preview: some View {
@@ -774,7 +774,7 @@ struct PhotoWorkspaceButton: View {
                     Text("photos.workspace.open")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(FacilityTheme.ink)
-                    Text(String(format: String(localized: "photos.workspace.count"), count))
+                    Text(String(format: String(localized: "photos.workspace.count", bundle: .appLanguage), count))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -50,7 +50,7 @@ struct SAPPreSyncDraftWarningDialog: View {
                         .foregroundStyle(FacilityTheme.orange)
                     Text(
                         String.localizedStringWithFormat(
-                            String(localized: "sap.refresh.draftWarning.draftCountBadge"),
+                            String(localized: "sap.refresh.draftWarning.draftCountBadge", bundle: .appLanguage),
                             draftCount
                         )
                     )
@@ -63,7 +63,7 @@ struct SAPPreSyncDraftWarningDialog: View {
 
                 Text(
                     String.localizedStringWithFormat(
-                        String(localized: "sap.refresh.draftWarning.message"),
+                        String(localized: "sap.refresh.draftWarning.message", bundle: .appLanguage),
                         draftCount
                     )
                 )

@@ -161,7 +161,7 @@ struct InspectionCodeOptionRow: View {
 
     private var accessibilityLabelText: Text {
         if option.isTitleKey {
-            return Text(verbatim: "\(option.code), \(String(localized: String.LocalizationValue(option.title)))")
+            return Text(verbatim: "\(option.code), \(String(localized: String.LocalizationValue(option.title), bundle: .appLanguage))")
         } else {
             return Text(verbatim: "\(option.code), \(option.title)")
         }

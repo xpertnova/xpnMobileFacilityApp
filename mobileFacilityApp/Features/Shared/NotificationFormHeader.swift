@@ -49,7 +49,7 @@ struct NotificationFormHeaderInfo: Equatable {
     var subtitle: String {
         let identifier = notificationID.isEmpty
             ? ""
-            : "\(String(localized: "notifications.detail.number")) \(notificationID)"
+            : "\(String(localized: "notifications.detail.number", bundle: .appLanguage)) \(notificationID)"
         return [identifier, dateRange]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")

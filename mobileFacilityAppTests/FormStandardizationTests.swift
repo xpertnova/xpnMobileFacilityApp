@@ -154,7 +154,7 @@ final class FormStandardizationTests: XCTestCase {
         XCTAssertEqual(
             requirement.lockedMessage,
             String(
-                format: String(localized: "signature.prerequisite.prompt"),
+                format: String(localized: "signature.prerequisite.prompt", bundle: .appLanguage),
                 locale: .current,
                 "System responsible person"
             )

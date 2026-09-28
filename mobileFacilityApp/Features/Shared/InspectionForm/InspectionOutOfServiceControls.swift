@@ -80,7 +80,7 @@ struct InspectionOutOfServiceControls: View {
             // status documentation is only reachable while the status is set.
             .disabled(!isActive || !isEnabled)
             .accessibilityLabel(Text("notifications.detail.photo"))
-            .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count"), photoCount)))
+            .accessibilityValue(Text(String(format: String(localized: "notifications.detail.photo.count", bundle: .appLanguage), photoCount)))
 
             Button(action: editComment) {
                 Image(systemName: hasComment ? "note.text" : "pencil")

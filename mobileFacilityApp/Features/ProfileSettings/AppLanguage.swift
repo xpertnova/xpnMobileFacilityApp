@@ -6,10 +6,22 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
     static let storageKey = "mobileFacilityApp.settings.language"
 
+    /// The language picked in the profile settings, or the German default.
+    static var current: AppLanguage {
+        resolved(from: UserDefaults.standard.string(forKey: storageKey))
+    }
+
     var id: String { rawValue }
 
     var locale: Locale {
         Locale(identifier: rawValue)
+    }
+
+    /// The app's `<language>.lproj` bundle. `String(localized:)` against
+    /// `Bundle.main` follows the device language, and its `locale:` argument
+    /// only affects formatting, so code-built strings read from this bundle.
+    var bundle: Bundle {
+        Bundle.main.path(forResource: rawValue, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
     }
 
     var titleKey: String {
@@ -19,19 +31,18 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         }
     }
 
-    static func resolved(
-        from storedValue: String?,
-        preferredLanguages: [String] = Locale.preferredLanguages
-    ) -> AppLanguage {
-        if let storedValue, let language = AppLanguage(rawValue: storedValue) {
-            return language
-        }
+    /// German is the product default, independent of the device language;
+    /// English applies only once the user picks it in the profile settings.
+    static func resolved(from storedValue: String?) -> AppLanguage {
+        storedValue.flatMap(AppLanguage.init(rawValue:)) ?? .german
+    }
+}
 
-        guard let preferredLanguage = preferredLanguages.first else {
-            return .english
-        }
-
-        let languageCode = Locale(identifier: preferredLanguage).language.languageCode?.identifier
-        return languageCode == AppLanguage.german.rawValue ? .german : .english
+extension Bundle {
+    /// Pass as `bundle:` to every `String(localized:)`, so strings built in
+    /// code use the in-app language like SwiftUI `Text` (which follows the
+    /// `\.locale` environment set in `MobileFacilityApp`).
+    static var appLanguage: Bundle {
+        AppLanguage.current.bundle
     }
 }

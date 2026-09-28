@@ -246,8 +246,8 @@ struct BriefingPartnerSelectionEditor: View {
     private var salutationOptions: [FacilityDropdownOption] {
         [
             FacilityDropdownOption(id: "", title: "—"),
-            FacilityDropdownOption(id: "0001", title: String(localized: "addUser.title.frau")),
-            FacilityDropdownOption(id: "0002", title: String(localized: "addUser.title.herr"))
+            FacilityDropdownOption(id: "0001", title: String(localized: "addUser.title.frau", bundle: .appLanguage)),
+            FacilityDropdownOption(id: "0002", title: String(localized: "addUser.title.herr", bundle: .appLanguage))
         ]
     }
 
@@ -268,7 +268,7 @@ struct BriefingPartnerSelectionEditor: View {
         onSelect: @escaping (String) -> Void
     ) -> some View {
         let selectedTitle = options.first { $0.id == selection && !selection.isEmpty }?.title
-        let placeholderTitle = String(localized: String.LocalizationValue(placeholder))
+        let placeholderTitle = String(localized: String.LocalizationValue(placeholder), bundle: .appLanguage)
         return Button {
             focusedPartnerField = nil
             presentedPartnerDropdown = field

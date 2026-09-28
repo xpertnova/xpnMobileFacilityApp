@@ -9,32 +9,16 @@ final class AppLanguageTests: XCTestCase {
         XCTAssertEqual(AppLanguage.german.locale.language.languageCode?.identifier, "de")
     }
 
-    func testStoredLanguageTakesPrecedenceOverSystemLanguage() {
-        XCTAssertEqual(
-            AppLanguage.resolved(from: "en", preferredLanguages: ["de-DE"]),
-            .english
-        )
-        XCTAssertEqual(
-            AppLanguage.resolved(from: "de", preferredLanguages: ["en-US"]),
-            .german
-        )
+    func testStoredLanguageIsUsed() {
+        XCTAssertEqual(AppLanguage.resolved(from: "en"), .english)
+        XCTAssertEqual(AppLanguage.resolved(from: "de"), .german)
     }
 
-    func testGermanSystemLanguageIsTheDefault() {
-        XCTAssertEqual(
-            AppLanguage.resolved(from: nil, preferredLanguages: ["de-DE"]),
-            .german
-        )
+    func testGermanIsTheDefault() {
+        XCTAssertEqual(AppLanguage.resolved(from: nil), .german)
     }
 
-    func testUnsupportedOrInvalidLanguageFallsBackToEnglish() {
-        XCTAssertEqual(
-            AppLanguage.resolved(from: nil, preferredLanguages: ["uk-UA"]),
-            .english
-        )
-        XCTAssertEqual(
-            AppLanguage.resolved(from: "invalid", preferredLanguages: ["en-GB"]),
-            .english
-        )
+    func testInvalidStoredLanguageFallsBackToGerman() {
+        XCTAssertEqual(AppLanguage.resolved(from: "invalid"), .german)
     }
 }
