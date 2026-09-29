@@ -232,10 +232,13 @@ private struct MeasuringPointRow: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    TextField("measuringPoints.value.placeholder", text: valueText)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .font(.body.monospacedDigit())
+                    MeterReadingNumberTextField(
+                        text: $draft.valueText,
+                        placeholder: String(localized: "measuringPoints.value.placeholder", bundle: .appLanguage),
+                        maximumFractionDigits: point.decimals,
+                        textAlignment: .right,
+                        usesMonospacedDigits: true
+                    )
                     Text(verbatim: point.unit)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -260,13 +263,6 @@ private struct MeasuringPointRow: View {
     private var issue: MeasuringPointValidationIssue? {
         if case let .invalid(issue) = draft.state(for: point) { return issue }
         return nil
-    }
-
-    private var valueText: Binding<String> {
-        Binding(
-            get: { draft.valueText },
-            set: { draft.valueText = MeterReadingViewModel.sanitizeInput($0) }
-        )
     }
 
     private var noteText: Binding<String> {
