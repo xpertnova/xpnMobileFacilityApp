@@ -39,6 +39,16 @@ enum TechnicalObjectDemoData {
         )
     ]
 
+    /// The demo reader's tag, attached to the object the demo QR code names.
+    static let rfidTagAssignments = [
+        RFIDTagAssignment(
+            tag: DemoRFIDReaderDriver.demoTag,
+            functionalLocationID: "UN01-ST01-BG01-TECH-420-Z",
+            equipmentID: "EQ-100040",
+            controlKey: ""
+        )
+    ]
+
     /// `TPWEH` / `TPGEB` as `DemoMobileLadderCreationProvider` declares them:
     /// the company is the business entity and the third segment the building.
     /// Kept in step with that provider so the demo behaves like production.

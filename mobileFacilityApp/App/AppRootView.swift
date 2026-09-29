@@ -197,7 +197,8 @@ struct AppRootView: View {
             sapDataStore: SAPDataStore(
                 repository: InMemorySAPDataCacheRepository(
                     seed: TechnicalObjectDemoData.cachedData,
-                    i2NotificationsByObjectID: I2NotificationDemoData.notificationsByObjectID
+                    i2NotificationsByObjectID: I2NotificationDemoData.notificationsByObjectID,
+                    rfidTagAssignments: TechnicalObjectDemoData.rfidTagAssignments
                 ),
                 refreshService: nil,
                 localWorkerID: "demo"

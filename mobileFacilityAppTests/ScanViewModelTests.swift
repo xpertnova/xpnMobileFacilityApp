@@ -89,6 +89,11 @@ final class ScanViewModelTests: XCTestCase {
         )
         await store.loadCachedData()
         XCTAssertTrue(store.hasCache)
-        return ScanViewModel(sapDataStore: store, isDemoMode: false, openSingleMatch: openSingleMatch)
+        return ScanViewModel(
+            sapDataStore: store,
+            rfidReader: RFIDReaderService(unavailableReason: "tests"),
+            isDemoMode: false,
+            openSingleMatch: openSingleMatch
+        )
     }
 }

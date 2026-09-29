@@ -14,6 +14,8 @@ final class FacilityDemoViewModel {
     let mobileLadderCreationProvider: any MobileLadderCreationProviding
     let elevatorAssetDataProvider: any ElevatorAssetDataProviding
     let subdistributionCreationProvider: any SubdistributionCreationProviding
+    /// The paired RFID reader. Demo mode only ever gets a simulated one.
+    let rfidReader: RFIDReaderService
     let workerDisplayName: String
     let workerRole: FacilityUserRole
     private(set) var profileSettingsReturnDestination: AppDestination = .overview
@@ -90,6 +92,7 @@ final class FacilityDemoViewModel {
         mobileLadderCreationProvider: (any MobileLadderCreationProviding)? = nil,
         elevatorAssetDataProvider: (any ElevatorAssetDataProviding)? = nil,
         subdistributionCreationProvider: (any SubdistributionCreationProviding)? = nil,
+        rfidReader: RFIDReaderService? = nil,
         workerDisplayName: String = "Alex Morgan",
         workerRole: FacilityUserRole = .technician
     ) {
@@ -99,6 +102,7 @@ final class FacilityDemoViewModel {
         self.meterReferenceProvider = meterReferenceProvider
         self.photoAttachmentStore = photoAttachmentStore
         self.documentAttachmentStore = documentAttachmentStore
+        self.rfidReader = rfidReader ?? (isDemoMode ? .demo() : .production())
         if let mobileLadderCreationProvider {
             self.mobileLadderCreationProvider = mobileLadderCreationProvider
         } else if isDemoMode {

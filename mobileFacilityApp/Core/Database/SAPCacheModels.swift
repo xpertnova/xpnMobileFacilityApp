@@ -756,7 +756,7 @@ extension OfflineNotificationSnapshot {
     }
 }
 
-protocol SAPDataCacheRepository: TechnicalObjectRepository, QRCodeNotificationResolving {
+protocol SAPDataCacheRepository: TechnicalObjectRepository, QRCodeNotificationResolving, RFIDTagNotificationResolving {
     func load(for localWorkerID: String) async throws -> SAPCachedData
     func loadNotifications(
         for localWorkerID: String,
@@ -1096,13 +1096,16 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
     private let functionalLocationDirectory: FunctionalLocationDirectory
     /// Measuring points keyed by `STRNO`.
     private let measuringPointsByLocationID: [String: [SAPMeasuringPoint]]
+    /// `FROM_T0212` rows, in stored order.
+    private let rfidTagAssignments: [RFIDTagAssignment]
 
     init(
         seed: SAPCachedData? = nil,
         workerID: String = "demo",
         i2NotificationsByObjectID: [String: [SAPI2NotificationSummary]] = [:],
         functionalLocationDirectory: FunctionalLocationDirectory = .empty,
-        measuringPointsByLocationID: [String: [SAPMeasuringPoint]] = [:]
+        measuringPointsByLocationID: [String: [SAPMeasuringPoint]] = [:],
+        rfidTagAssignments: [RFIDTagAssignment] = []
     ) {
         if let seed {
             dataByWorkerID[workerID] = seed
@@ -1110,6 +1113,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
         self.i2NotificationsByObjectID = i2NotificationsByObjectID
         self.functionalLocationDirectory = functionalLocationDirectory
         self.measuringPointsByLocationID = measuringPointsByLocationID
+        self.rfidTagAssignments = rfidTagAssignments
     }
 
     func loadMeasuringPoints(functionalLocationID: String) async throws -> [SAPMeasuringPoint] {
@@ -1213,6 +1217,11 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
             uniqueMatches[match.id] = match
         }
         return uniqueMatches.values.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
+    }
+
+    func resolveRFIDTag(_ tag: String, for localWorkerID: String) async throws -> RFIDTagResolution? {
+        guard let notifications = dataByWorkerID[localWorkerID]?.notifications else { return nil }
+        return RFIDTagLookup.resolve(tag, assignments: rfidTagAssignments, notifications: notifications)
     }
 
     func loadUserProfile(for workerID: String) async throws -> SAPUserProfile? {
@@ -1413,6 +1422,10 @@ struct UnavailableSAPDataCacheRepository: SAPDataCacheRepository {
         _ payload: LegacyQRCodePayload,
         for localWorkerID: String
     ) async throws -> [SAPNotificationSummary] {
+        throw SAPReadError.serviceUnavailable
+    }
+
+    func resolveRFIDTag(_ tag: String, for localWorkerID: String) async throws -> RFIDTagResolution? {
         throw SAPReadError.serviceUnavailable
     }
 
