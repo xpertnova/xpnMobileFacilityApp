@@ -413,20 +413,20 @@ final class MeterReadingViewModel {
         }
     }
 
-    /// The most digits, integer and fraction together, a reading may have.
-    /// SAP keeps a reading as `FLTP` (`RECDV`) and the legacy screen sent it
-    /// as a JavaScript number; both are doubles, which hold 15 significant
-    /// decimal digits exactly. The legacy input itself had no limit
-    /// (`maxIntegerDigits: 99`), so longer values were silently rounded.
-    /// `MEASURMENT_POINT` carries no digit count for the integer part.
-    nonisolated static let maximumDigitCount = 15
+    /// The most digits, integer and fraction together, a reading may have:
+    /// "Number of Chars" of the SAP meter characteristics (`TFM_ZAEHLER_*`,
+    /// `ANZST` 10 with 2 decimal places). `MEASURMENT_POINT` carries only
+    /// `DECIM`, so the total is fixed here for every meter type.
+    nonisolated static let maximumDigitCount = 10
 
     /// Keeps digits and one decimal comma. `maximumFractionDigits` is the
     /// point's `DECIM`, the `maxFractionDigits` of the legacy input; `0`
-    /// drops the comma, `nil` leaves the fraction open.
+    /// drops the comma, `nil` leaves the fraction open. The integer part
+    /// takes what the fraction leaves of `maximumDigitCount`.
     nonisolated static func sanitizeInput(_ input: String, maximumFractionDigits: Int? = nil) -> String {
         let normalized = input.replacingOccurrences(of: ".", with: ",")
-        let fractionLimit = maximumFractionDigits.map { max($0, 0) }
+        let fractionLimit = maximumFractionDigits.map { min(max($0, 0), maximumDigitCount) }
+        let integerLimit = maximumDigitCount - (fractionLimit ?? 0)
         var filtered = ""
         var hasComma = false
         var digitCount = 0
@@ -437,6 +437,8 @@ final class MeterReadingViewModel {
                 if hasComma {
                     if let fractionLimit, fractionDigitCount >= fractionLimit { continue }
                     fractionDigitCount += 1
+                } else if digitCount >= integerLimit {
+                    continue
                 }
                 digitCount += 1
                 filtered.append(char)
