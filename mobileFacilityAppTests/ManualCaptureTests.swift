@@ -16,6 +16,18 @@ final class ManualCaptureTests: XCTestCase {
         XCTAssertNil(MeterReadingViewModel.parseDecimal(""))
     }
 
+    func testMeterReadingInputKeepsAtMostFifteenDigits() {
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12345678901234567890"), "123456789012345")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234567890123,4567"), "1234567890123,45")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12.5a"), "12,5")
+    }
+
+    func testMeterReadingInputKeepsAtMostDecimFractionDigits() {
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234,5678", maximumFractionDigits: 2), "1234,56")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234,5", maximumFractionDigits: 0), "1234")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234,5678", maximumFractionDigits: nil), "1234,5678")
+    }
+
     @MainActor
     func testMeterReadingAllowsAnyValidValueAndSaves() async {
         let store = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "worker")

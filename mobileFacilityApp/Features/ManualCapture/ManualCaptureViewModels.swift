@@ -413,16 +413,40 @@ final class MeterReadingViewModel {
         }
     }
 
-    nonisolated static func sanitizeInput(_ input: String) -> String {
+    /// The most digits, integer and fraction together, a reading may have.
+    /// SAP keeps a reading as `FLTP` (`RECDV`) and the legacy screen sent it
+    /// as a JavaScript number; both are doubles, which hold 15 significant
+    /// decimal digits exactly. The legacy input itself had no limit
+    /// (`maxIntegerDigits: 99`), so longer values were silently rounded.
+    /// `MEASURMENT_POINT` carries no digit count for the integer part.
+    nonisolated static let maximumDigitCount = 15
+
+    /// Keeps digits and one decimal comma. `maximumFractionDigits` is the
+    /// point's `DECIM`, the `maxFractionDigits` of the legacy input; `0`
+    /// drops the comma, `nil` leaves the fraction open.
+    nonisolated static func sanitizeInput(_ input: String, maximumFractionDigits: Int? = nil) -> String {
         let normalized = input.replacingOccurrences(of: ".", with: ",")
+        let fractionLimit = maximumFractionDigits.map { max($0, 0) }
         var filtered = ""
         var hasComma = false
+        var digitCount = 0
+        var fractionDigitCount = 0
         for char in normalized {
             if char.isNumber {
+                guard digitCount < maximumDigitCount else { continue }
+                if hasComma {
+                    if let fractionLimit, fractionDigitCount >= fractionLimit { continue }
+                    fractionDigitCount += 1
+                }
+                digitCount += 1
                 filtered.append(char)
             } else if char == "," && !hasComma {
+                // With `DECIM` 0 the comma is dropped, and so are the
+                // digits after it, rather than joined to the integer part.
                 hasComma = true
-                filtered.append(char)
+                if fractionLimit != 0 {
+                    filtered.append(char)
+                }
             }
         }
         return filtered
