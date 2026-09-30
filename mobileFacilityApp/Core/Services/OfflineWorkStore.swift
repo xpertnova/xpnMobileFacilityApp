@@ -609,3 +609,21 @@ final class OfflineWorkStore {
         return items.first { $0.id == id }
     }
 }
+
+#if DEBUG
+/// Load test panel only. The regular `save…` methods reload the whole queue
+/// after every item, which makes writing thousands of them quadratic; the
+/// seeder writes its items here and calls `load()` once at the end.
+extension OfflineWorkStore {
+    func saveLoadTestItems(_ items: [OfflineWorkItem]) async throws {
+        for item in items {
+            try await repository.save(item)
+        }
+    }
+
+    func deleteLoadTestItems(ids: [UUID]) async throws {
+        guard !ids.isEmpty else { return }
+        try await repository.delete(ids: ids)
+    }
+}
+#endif

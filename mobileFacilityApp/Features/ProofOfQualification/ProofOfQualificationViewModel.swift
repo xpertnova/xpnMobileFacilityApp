@@ -307,7 +307,7 @@ final class ProofOfQualificationViewModel {
     )
   }
 
-  private func makePDFPayload() -> ProofOfQualificationPDFPayload? {
+  func makePDFPayload() -> ProofOfQualificationPDFPayload? {
     guard let template,
       let selectedContext,
       let partner = selectedPartner,

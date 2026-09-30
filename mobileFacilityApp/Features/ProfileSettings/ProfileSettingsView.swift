@@ -19,13 +19,27 @@ struct ProfileSettingsView: View {
             backDestination: demo.profileSettingsReturnDestination,
             onBack: { demo.closeProfileSettings() }
         )
+        #if DEBUG
+        // Demo keeps its work in memory and never synchronizes, so there is
+        // nothing to load-test there.
+        loadTestWorkspace = demo.isDemoMode ? nil : demo
+        #endif
     }
+
+    #if DEBUG
+    private var loadTestWorkspace: FacilityDemoViewModel?
+    #endif
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 languageCard
+                #if DEBUG
+                if let loadTestWorkspace {
+                    LoadTestPanelView(workspace: loadTestWorkspace)
+                }
+                #endif
             }
             .facilityPageContent()
         }
