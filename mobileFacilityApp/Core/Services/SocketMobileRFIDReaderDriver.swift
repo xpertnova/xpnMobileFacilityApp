@@ -121,16 +121,6 @@ final class SocketMobileRFIDReaderDriver: RFIDReaderDriver {
         }
     }
 
-    func addClassicReader() {
-        // Shows the iOS accessory picker. Readers must be in Application Mode.
-        captureHelper.addBluetoothDevice(.bluetoothClassic) { [weak self] result in
-            Self.onMain {
-                guard result != .E_NOERROR else { return }
-                self?.onEvent?(.error("Bluetooth Classic picker failed: \(result.rawValue)"))
-            }
-        }
-    }
-
     func connect(_ reader: RFIDDiscoveredReader) {
         guard let info = discoveredByID[reader.id] else {
             onEvent?(.connectionEnded(id: reader.id, error: "Reader is no longer discovered"))
@@ -147,14 +137,32 @@ final class SocketMobileRFIDReaderDriver: RFIDReaderDriver {
     }
 
     func remove(_ device: RFIDReaderDevice) {
-        captureHelper.removeBluetoothDevice(device.id) { [weak self] result in
+        // `removeBluetoothDevice` takes the reader's unique identifier, not the
+        // GUID that CaptureSDK assigns to a connected device.
+        captureHelper.getDeviceUniqueIdentifierFromDeviceGuid(device.id) { [weak self] result, identifier in
+            Self.onMain {
+                guard let self else { return }
+                guard result == .E_NOERROR, let identifier, !identifier.isEmpty else {
+                    self.onEvent?(.removalFailed(
+                        id: device.id,
+                        error: "getDeviceUniqueIdentifierFromDeviceGuid: \(result.rawValue)"
+                    ))
+                    return
+                }
+                self.removeBluetoothDevice(identifier, deviceID: device.id)
+            }
+        }
+    }
+
+    private func removeBluetoothDevice(_ identifier: String, deviceID: String) {
+        captureHelper.removeBluetoothDevice(identifier) { [weak self] result in
             Self.onMain {
                 guard let self else { return }
                 if result == .E_NOERROR {
-                    self.devicesByID[device.id] = nil
-                    self.onEvent?(.deviceDisconnected(id: device.id))
+                    self.devicesByID[deviceID] = nil
+                    self.onEvent?(.deviceDisconnected(id: deviceID))
                 } else {
-                    self.onEvent?(.removalFailed(id: device.id, error: "removeBluetoothDevice: \(result.rawValue)"))
+                    self.onEvent?(.removalFailed(id: deviceID, error: "removeBluetoothDevice: \(result.rawValue)"))
                 }
             }
         }

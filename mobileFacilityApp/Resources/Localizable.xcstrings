@@ -15140,17 +15140,35 @@
       }
     },
     "profile.settings.rfid.add.hint" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bluetooth-Classic-Scanner wie der DuraScan D600 werden im iOS-Dialog ausgewählt und müssen im Application Mode sein."
+            "value" : "Schalte den Scanner ein und halte ihn in die Nähe des iPads."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bluetooth Classic scanners such as the DuraScan D600 are selected in the iOS dialog and must be in Application Mode."
+            "value" : "Switch the scanner on and keep it near the iPad."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.add.limit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es kann nur ein Scanner verbunden sein. Entferne den verbundenen Scanner, um einen anderen zu koppeln."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only one scanner can be connected. Remove the connected scanner to pair another one."
           }
         }
       }
@@ -15226,23 +15244,6 @@
         }
       }
     },
-    "profile.settings.rfid.classic.action" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bluetooth-Classic-Scanner koppeln"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pair Bluetooth Classic scanner"
-          }
-        }
-      }
-    },
     "profile.settings.rfid.connect.action" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15283,13 +15284,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verbundene Scanner"
+            "value" : "Verbundener Scanner"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connected scanners"
+            "value" : "Connected scanner"
           }
         }
       }
@@ -15299,13 +15300,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Socket-Mobile-Scanner koppeln. Gekoppelte Scanner verbinden sich automatisch wieder, sobald sie in der Nähe eingeschaltet werden."
+            "value" : "Einen Socket-Mobile-Scanner koppeln. Der gekoppelte Scanner verbindet sich automatisch wieder, sobald er in der Nähe eingeschaltet wird."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pair Socket Mobile scanners. Paired scanners reconnect automatically when they are switched on nearby."
+            "value" : "Pair a Socket Mobile scanner. The paired scanner reconnects automatically when it is switched on nearby."
           }
         }
       }
@@ -15360,6 +15361,23 @@
         }
       }
     },
+    "profile.settings.rfid.remove.failed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Scanner konnte nicht entfernt werden. Versuche es erneut oder entkopple ihn in den Bluetooth-Einstellungen des iPads."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The scanner could not be removed. Try again or unpair it in the iPad's Bluetooth settings."
+          }
+        }
+      }
+    },
     "profile.settings.rfid.remove.message" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -15400,13 +15418,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nach Bluetooth-LE-Scannern suchen"
+            "value" : "RFID-Scanner suchen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Search for Bluetooth LE scanners"
+            "value" : "Search RFID scanner"
           }
         }
       }

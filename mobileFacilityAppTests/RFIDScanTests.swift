@@ -227,7 +227,6 @@ final class RFIDScanViewModelTests: XCTestCase {
         XCTAssertFalse(driver.didStartDiscovery, "Nothing happens before the reader is set up")
 
         reader.start()
-        driver.pair()
         reader.startDiscovery()
         XCTAssertTrue(reader.isDiscovering)
         XCTAssertTrue(driver.didStartDiscovery)
@@ -235,8 +234,7 @@ final class RFIDScanViewModelTests: XCTestCase {
         let found = RFIDDiscoveredReader(id: "ble-1", name: "S370")
         driver.onEvent?(.discovered(found))
         driver.onEvent?(.discovered(found))
-        driver.onEvent?(.discovered(RFIDDiscoveredReader(id: "ble-2", name: "Fake reader")))
-        XCTAssertEqual(reader.discoveredReaders, [found], "Duplicates and connected readers are not listed")
+        XCTAssertEqual(reader.discoveredReaders, [found], "Duplicates are not listed")
         driver.onEvent?(.discoveryEnded)
         XCTAssertFalse(reader.isDiscovering)
 
@@ -246,19 +244,30 @@ final class RFIDScanViewModelTests: XCTestCase {
         driver.pair(id: "ble-1", name: "S370")
         XCTAssertEqual(reader.connectingReaderIDs, [])
         XCTAssertEqual(reader.discoveredReaders, [])
-        XCTAssertEqual(reader.devices.map(\.name), ["Fake reader", "S370"])
-
-        let first = reader.devices[0]
-        reader.remove(first)
-        XCTAssertEqual(reader.removingDeviceIDs, ["fake-1"])
-        driver.onEvent?(.removalFailed(id: "fake-1", error: "test"))
-        XCTAssertEqual(reader.removingDeviceIDs, [])
-        XCTAssertEqual(reader.devices.count, 2)
-
-        reader.remove(first)
-        driver.onEvent?(.deviceDisconnected(id: "fake-1"))
         XCTAssertEqual(reader.devices.map(\.name), ["S370"])
-        XCTAssertEqual(reader.status, .connected)
+
+        XCTAssertFalse(reader.canAddReader, "Only one reader is connected at a time")
+        reader.startDiscovery()
+        XCTAssertFalse(reader.isDiscovering)
+        driver.onEvent?(.discovered(RFIDDiscoveredReader(id: "ble-2", name: "D600")))
+        XCTAssertEqual(reader.discoveredReaders, [])
+        reader.connect(RFIDDiscoveredReader(id: "ble-2", name: "D600"))
+        XCTAssertEqual(driver.connected, [found])
+
+        let device = reader.devices[0]
+        reader.remove(device)
+        XCTAssertEqual(reader.removingDeviceIDs, ["ble-1"])
+        driver.onEvent?(.removalFailed(id: "ble-1", error: "test"))
+        XCTAssertEqual(reader.removingDeviceIDs, [])
+        XCTAssertTrue(reader.didFailRemoval)
+        XCTAssertEqual(reader.devices.count, 1)
+
+        reader.remove(device)
+        XCTAssertFalse(reader.didFailRemoval)
+        driver.onEvent?(.deviceDisconnected(id: "ble-1"))
+        XCTAssertEqual(reader.devices, [])
+        XCTAssertEqual(reader.status, .notConnected)
+        XCTAssertTrue(reader.canAddReader)
     }
 
     private func waitForLookup(_ viewModel: ScanViewModel) async throws {
@@ -337,8 +346,6 @@ private final class FakeRFIDReaderDriver: RFIDReaderDriver {
     func startDiscovery() {
         didStartDiscovery = true
     }
-
-    func addClassicReader() {}
 
     func connect(_ reader: RFIDDiscoveredReader) {
         connected.append(reader)

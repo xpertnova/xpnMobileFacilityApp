@@ -54,9 +54,6 @@ protocol RFIDReaderDriver: AnyObject {
     func requestBatteryLevels()
     /// Searches for Bluetooth LE readers; results arrive as `.discovered`.
     func startDiscovery()
-    /// Shows the system picker for Bluetooth Classic readers (e.g. DuraScan
-    /// D600). A chosen reader arrives as `.deviceConnected`.
-    func addClassicReader()
     func connect(_ reader: RFIDDiscoveredReader)
     /// Unpairs the reader so it no longer reconnects.
     func remove(_ device: RFIDReaderDevice)
@@ -96,6 +93,8 @@ final class RFIDReaderService {
     private(set) var isDiscovering = false
     private(set) var connectingReaderIDs: Set<String> = []
     private(set) var removingDeviceIDs: Set<String> = []
+    /// The last removal failed and the reader is still connected.
+    private(set) var didFailRemoval = false
     private(set) var isReading = false
     /// Newest first.
     private(set) var diagnostics: [RFIDDiagnosticEntry] = []
@@ -150,6 +149,12 @@ final class RFIDReaderService {
         isStarted && hasOpenedDriver && status != .bluetoothOff && status != .bluetoothDenied
     }
 
+    /// Only one reader is used at a time: the connected one has to be removed
+    /// before another can be searched for and connected.
+    var canAddReader: Bool {
+        canManageReaders && devices.isEmpty
+    }
+
     /// Asks for Bluetooth access, which shows the system prompt the first
     /// time, and then opens the reader SDK once. Call it when the technician
     /// turns to RFID, not before. Later calls only refresh battery levels.
@@ -174,21 +179,15 @@ final class RFIDReaderService {
     // MARK: - Managing readers
 
     func startDiscovery() {
-        guard canManageReaders, !isDiscovering, let driver else { return }
+        guard canAddReader, !isDiscovering, let driver else { return }
         discoveredReaders = []
         isDiscovering = true
         record("Searching for Bluetooth LE readers")
         driver.startDiscovery()
     }
 
-    func addClassicReader() {
-        guard canManageReaders, let driver else { return }
-        record("Opening the Bluetooth Classic reader picker")
-        driver.addClassicReader()
-    }
-
     func connect(_ reader: RFIDDiscoveredReader) {
-        guard canManageReaders, !connectingReaderIDs.contains(reader.id), let driver else { return }
+        guard canAddReader, connectingReaderIDs.isEmpty, let driver else { return }
         connectingReaderIDs.insert(reader.id)
         record("Connecting to \(reader.name)")
         driver.connect(reader)
@@ -197,6 +196,7 @@ final class RFIDReaderService {
     func remove(_ device: RFIDReaderDevice) {
         guard canManageReaders, !removingDeviceIDs.contains(device.id), let driver else { return }
         removingDeviceIDs.insert(device.id)
+        didFailRemoval = false
         record("Removing \(device.name)")
         driver.remove(device)
     }
@@ -287,9 +287,12 @@ final class RFIDReaderService {
             } else {
                 devices.append(RFIDReaderDevice(id: id, name: name))
             }
+            discoveredReaders = []
+            isDiscovering = false
             driver?.requestBatteryLevels()
         case let .deviceDisconnected(id):
             removingDeviceIDs.remove(id)
+            didFailRemoval = false
             guard let index = devices.firstIndex(where: { $0.id == id }) else { return }
             record("Reader disconnected: \(devices[index].name)", isError: true)
             devices.remove(at: index)
@@ -299,8 +302,7 @@ final class RFIDReaderService {
             devices[index].batteryPercent = percent
             record("Battery \(devices[index].name): \(percent) %")
         case let .discovered(reader):
-            guard !discoveredReaders.contains(where: { $0.id == reader.id }),
-                  !devices.contains(where: { $0.name == reader.name }) else { return }
+            guard devices.isEmpty, !discoveredReaders.contains(where: { $0.id == reader.id }) else { return }
             record("Found \(reader.name)")
             discoveredReaders.append(reader)
         case .discoveryEnded:
@@ -315,6 +317,7 @@ final class RFIDReaderService {
             }
         case let .removalFailed(id, error):
             removingDeviceIDs.remove(id)
+            didFailRemoval = true
             record("Removing failed: \(error)", isError: true)
         case let .tagRead(rawTag):
             let tag = RFIDTagLookup.normalizedTag(rawTag)
@@ -351,8 +354,8 @@ extension RFIDReaderService {
     }
 }
 
-/// Demo mode's readers: one paired reader, one more to find by searching and
-/// one from the Classic picker. Returns the demo tag after a short delay.
+/// Demo mode's readers: one paired reader and, once it is removed, another
+/// to find by searching. Returns the demo tag after a short delay.
 /// Never used in production.
 @MainActor
 final class DemoRFIDReaderDriver: RFIDReaderDriver {
@@ -387,13 +390,6 @@ final class DemoRFIDReaderDriver: RFIDReaderDriver {
     func startDiscovery() {
         after(milliseconds: 900) { $0.onEvent?(.discovered(RFIDDiscoveredReader(id: "demo-s370", name: "Socket Mobile S370 (Demo)"))) }
         after(milliseconds: 2_500) { $0.onEvent?(.discoveryEnded) }
-    }
-
-    func addClassicReader() {
-        after(milliseconds: 700) { driver in
-            driver.batteryByID["demo-d600-2"] = 45
-            driver.onEvent?(.deviceConnected(id: "demo-d600-2", name: "DuraScan D600 #2 (Demo)"))
-        }
     }
 
     func connect(_ reader: RFIDDiscoveredReader) {

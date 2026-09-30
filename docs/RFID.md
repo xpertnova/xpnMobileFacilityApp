@@ -30,8 +30,8 @@ Tag assignment (`RfidTagging.controller.js`) and QR label printing (Bixolon) are
   connected and discovered readers, Bluetooth state, one-shot tag callback, diagnostic log
   (also written to OSLog, category `RFID`).
 - `RFIDReaderDriver`: the only code that touches an SDK.
-  - `DemoRFIDReaderDriver`: demo mode only. One paired reader, one to find by searching, one from
-    the Classic picker; returns tag `5E68688B29DB11`.
+  - `DemoRFIDReaderDriver`: demo mode only. One paired reader and, once it is removed, one to find by
+    searching; returns tag `5E68688B29DB11`.
   - `SocketMobileRFIDReaderDriver`: CaptureSDK's `CaptureHelper`.
   - Without `SocketMobileCapture.plist` the reader shows as unavailable and scanning explains why.
 - `CoreBluetoothAccess`: the Bluetooth prompt appears only when the technician turns to RFID
@@ -39,10 +39,12 @@ Tag assignment (`RfidTagging.controller.js`) and QR label printing (Bixolon) are
 
 Readers are managed under **Einstellungen → RFID-Scanner**:
 
-- Connected readers with battery level and *Entfernen* (unpairs, stops automatic reconnection).
-- *Nach Bluetooth-LE-Scannern suchen* → found readers → *Verbinden*.
-- *Bluetooth-Classic-Scanner koppeln* opens the iOS accessory picker. Classic readers (DuraScan D600)
-  must be in Application Mode.
+- Only Bluetooth LE readers are used, and only one at a time: the search and *Verbinden* are disabled
+  while a reader is connected, with a hint to remove it first.
+- The connected reader with battery level and *Entfernen* (unpairs, stops automatic reconnection).
+  `removeBluetoothDevice` gets the identifier from `getDeviceUniqueIdentifierFromDeviceGuid`; a failed
+  removal is shown in the card and logged as `Removing failed: …`.
+- *RFID-Scanner suchen* → found readers → *Verbinden*.
 
 ## Setup
 
@@ -72,10 +74,11 @@ and a manual tag field that runs the same lookup without the reader.
 
 - [ ] Settings → *RFID-Scanner einrichten* → iOS Bluetooth prompt. Declined → "Bluetooth-Zugriff nicht erlaubt"
       + *Einstellungen öffnen*; Bluetooth off → "Bluetooth ist ausgeschaltet".
-- [ ] *Bluetooth-Classic-Scanner koppeln* → iOS picker → D600 appears under *Verbundene Scanner* with battery.
-- [ ] *Nach Bluetooth-LE-Scannern suchen* → BLE reader listed → *Verbinden* → moves to *Verbundene Scanner*.
+- [ ] *RFID-Scanner suchen* → BLE reader listed → *Verbinden* → moves to *Verbundener Scanner* with battery.
+- [ ] With a reader connected, *RFID-Scanner suchen* is disabled and the hint says to remove the reader first.
 - [ ] Reader switched off and on → disappears and reconnects by itself.
-- [ ] *Entfernen* → reader unpaired, does not reconnect.
+- [ ] *Entfernen* → reader unpaired, does not reconnect, search is enabled again. If it fails, the card says so:
+      send the log line `Removing failed: …`.
 - [ ] Scan screen device card shows the reader and battery, badge *bereit*; *RFID-Scanner verwalten* opens Settings.
 - [ ] Tag of a technical place with one notification → notification opens.
 - [ ] Tag with several notifications → result list.

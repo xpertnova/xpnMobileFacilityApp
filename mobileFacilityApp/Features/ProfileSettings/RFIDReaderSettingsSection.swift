@@ -1,9 +1,9 @@
 import SwiftUI
 import UIKit
 
-/// Settings card for the Socket Mobile RFID readers: connected readers with
-/// battery and removal, a Bluetooth LE search with the readers it finds, and
-/// the system picker for Bluetooth Classic readers such as the DuraScan D600.
+/// Settings card for the Socket Mobile RFID reader: the connected reader with
+/// battery and removal, and a Bluetooth LE search with the readers it finds.
+/// Only one reader is connected at a time.
 struct RFIDReaderSettingsSection: View {
     let reader: RFIDReaderService
 
@@ -118,6 +118,9 @@ struct RFIDReaderSettingsSection: View {
                     }
                 }
             }
+            if reader.didFailRemoval {
+                notice("profile.settings.rfid.remove.failed", symbol: "exclamationmark.triangle.fill")
+            }
         }
     }
 
@@ -131,30 +134,21 @@ struct RFIDReaderSettingsSection: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("profile.settings.rfid.add.title")
 
-            FacilityWrapLayout(horizontalSpacing: 10, verticalSpacing: 10) {
-                Button(action: reader.startDiscovery) {
-                    HStack(spacing: 8) {
-                        if reader.isDiscovering {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "magnifyingglass")
-                        }
-                        Text(reader.isDiscovering ? "profile.settings.rfid.search.running" : "profile.settings.rfid.search.action")
+            Button(action: reader.startDiscovery) {
+                HStack(spacing: 8) {
+                    if reader.isDiscovering {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "magnifyingglass")
                     }
-                    .frame(minHeight: 36)
+                    Text(reader.isDiscovering ? "profile.settings.rfid.search.running" : "profile.settings.rfid.search.action")
                 }
-                .buttonStyle(.bordered)
-                .disabled(reader.isDiscovering || !reader.canManageReaders)
-
-                Button(action: reader.addClassicReader) {
-                    Label("profile.settings.rfid.classic.action", systemImage: "plus")
-                        .frame(minHeight: 36)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!reader.canManageReaders)
+                .frame(minHeight: 36)
             }
+            .buttonStyle(.bordered)
+            .disabled(reader.isDiscovering || !reader.canAddReader)
 
-            Text("profile.settings.rfid.add.hint")
+            Text(reader.devices.isEmpty ? "profile.settings.rfid.add.hint" : "profile.settings.rfid.add.limit")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -173,7 +167,7 @@ struct RFIDReaderSettingsSection: View {
                             Button("profile.settings.rfid.connect.action") { reader.connect(discovered) }
                                 .buttonStyle(.borderedProminent)
                                 .tint(FacilityTheme.accent)
-                                .disabled(!reader.canManageReaders)
+                                .disabled(!reader.canAddReader || !reader.connectingReaderIDs.isEmpty)
                         }
                     }
                 }
