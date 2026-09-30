@@ -1015,11 +1015,6 @@ enum SAPReadRefreshStage: Equatable, Sendable {
     case waitingForIncomingData(statusText: String? = nil)
     case receivingIncomingPackages(packageNumber: Int = 1)
     case savingSnapshot
-
-    /// Every step before the cache is saved can be stopped: what SAP may
-    /// already hold stays in `TBL_REQUEST`, and the next synchronization
-    /// settles it first. Saving is one short transaction.
-    var canCancel: Bool { self != .savingSnapshot }
 }
 
 enum SAPRefreshAuthenticationMethod: Equatable, Sendable {
