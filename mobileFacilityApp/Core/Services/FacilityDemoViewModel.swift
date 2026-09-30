@@ -638,14 +638,6 @@ final class FacilityDemoViewModel {
         proceedWithSAPRefresh()
     }
 
-    /// Cancels the synchronization and closes the dialog. A request SAP may
-    /// already hold is settled by the next synchronization.
-    func cancelSAPRefresh() {
-        sapDataStore.cancelRefresh()
-        shouldPresentSAPRefresh = false
-        Task { await offlineWorkStore.load() }
-    }
-
     func confirmDiscardDraftsAndSync() {
         shouldPresentDraftWarningBeforeSync = false
         proceedWithSAPRefresh()

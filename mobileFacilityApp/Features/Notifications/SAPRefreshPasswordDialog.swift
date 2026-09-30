@@ -8,14 +8,12 @@ struct SAPRefreshPasswordDialog: View {
     let failureContext: SAPRefreshFailureContext?
     let refresh: () -> Void
     let cancel: () -> Void
-    /// Cancels the running synchronization.
-    let cancelRefresh: () -> Void
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
         Group {
             if isRefreshing {
-                SAPRefreshProgressDialog(stage: stage ?? .authenticating, cancel: cancelRefresh)
+                SAPRefreshProgressDialog(stage: stage ?? .authenticating)
             } else {
                 passwordEntry
             }
@@ -136,37 +134,29 @@ private struct SAPRefreshFailureDetailsView: View {
 
 private struct SAPRefreshProgressDialog: View {
     let stage: SAPReadRefreshStage
-    let cancel: () -> Void
 
     var body: some View {
         VStack(spacing: 24) {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Text(stage.messageText)
-                        .font(.title3)
+            VStack(spacing: 8) {
+                Text(stage.messageText)
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .contentTransition(.opacity)
+                if let statusText = stage.sapStatusText {
+                    Text(statusText)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                        .contentTransition(.opacity)
-                    if let statusText = stage.sapStatusText {
-                        Text(statusText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(FacilityTheme.accent)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.updatesFrequently)
-
-            if stage.canCancel {
-                Button("common.cancel", action: cancel)
-                    .buttonStyle(.bordered)
-            }
+            ProgressView()
+                .controlSize(.large)
+                .tint(FacilityTheme.accent)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
         .frame(maxWidth: .infinity, minHeight: 150)
         .facilityDialogFrame(width: 476, padding: 28, alignment: .center)
         .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -307,8 +297,7 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
             error: .invalidCredentials,
             failureContext: nil,
             refresh: {},
-            cancel: {},
-            cancelRefresh: {}
+            cancel: {}
         )
     }
     .facilityLayoutRoot()
