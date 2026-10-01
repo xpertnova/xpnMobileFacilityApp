@@ -100,7 +100,7 @@ struct TechnicalPlacesView: View {
         LocalPhotoScope(
             workflow: .technicalObject,
             ownerID: detail.object.reference.objectID,
-            displayTitle: String(localized: "photos.workspace.title", bundle: .appLanguage),
+            displayTitleKey: "photos.workspace.title",
             displaySubtitle: detail.object.displayName
         )
     }
@@ -114,7 +114,7 @@ struct TechnicalPlacesView: View {
         LocalPhotoScope(
             workflow: .technicalObject,
             ownerID: detail.object.reference.objectID,
-            displayTitle: String(localized: "documents.workspace.title", bundle: .appLanguage),
+            displayTitleKey: "documents.workspace.title",
             displaySubtitle: detail.object.displayName
         )
     }

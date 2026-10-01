@@ -296,7 +296,7 @@ final class MobileLadderCreationViewModel {
     func photoScope(for item: MobileLadderInspectionItem) -> LocalPhotoScope {
         LocalPhotoScope(
             workflow: .mobileLadder, ownerID: draft.localDraftID, rowID: item.id,
-            displayTitle: String(localized: "mobileLadder.photos.title", bundle: .appLanguage),
+            displayTitleKey: "mobileLadder.photos.title",
             displaySubtitle: item.title
         )
     }
@@ -306,8 +306,8 @@ final class MobileLadderCreationViewModel {
             workflow: .mobileLadder,
             ownerID: draft.localDraftID,
             rowID: MobileLadderDraftPayload.disassembledStatusRowID,
-            displayTitle: String(localized: "mobileLadder.photos.title", bundle: .appLanguage),
-            displaySubtitle: String(localized: "mobileLadder.field.disassembled", bundle: .appLanguage)
+            displayTitleKey: "mobileLadder.photos.title",
+            displaySubtitleKey: "mobileLadder.field.disassembled"
         )
     }
 

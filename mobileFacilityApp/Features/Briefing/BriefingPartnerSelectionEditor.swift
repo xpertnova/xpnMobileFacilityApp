@@ -420,7 +420,7 @@ struct BriefingPartnerSelectionEditor: View {
     }
 
     private func countryName(for countryCode: String) -> String {
-        Locale.current.localizedString(forRegionCode: countryCode) ?? countryCode
+        AppLanguage.current.locale.localizedString(forRegionCode: countryCode) ?? countryCode
     }
 
     private var partnerTable: some View {

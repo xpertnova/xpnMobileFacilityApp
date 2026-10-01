@@ -232,7 +232,7 @@ final class SubdistributionCreationViewModel {
     func photoScope(for item: SubdistributionInspectionItem) -> LocalPhotoScope {
         LocalPhotoScope(
             workflow: .subdistribution, ownerID: draft.localDraftID, rowID: item.id,
-            displayTitle: String(localized: "subdistribution.photos.title", bundle: .appLanguage), displaySubtitle: item.title
+            displayTitleKey: "subdistribution.photos.title", displaySubtitle: item.title
         )
     }
 
@@ -241,8 +241,8 @@ final class SubdistributionCreationViewModel {
             workflow: .subdistribution,
             ownerID: draft.localDraftID,
             rowID: SubdistributionDraftPayload.statusRowID,
-            displayTitle: String(localized: "subdistribution.photos.title", bundle: .appLanguage),
-            displaySubtitle: String(localized: "subdistribution.outOfOperation", bundle: .appLanguage)
+            displayTitleKey: "subdistribution.photos.title",
+            displaySubtitleKey: "subdistribution.outOfOperation"
         )
     }
 

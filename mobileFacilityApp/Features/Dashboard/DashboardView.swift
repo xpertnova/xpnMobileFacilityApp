@@ -3,6 +3,8 @@ import SwiftUI
 struct DashboardView: View {
     let demo: FacilityDemoViewModel
     let networkStatus: NetworkReachabilityStatus
+    /// The in-app language; `Date.formatted` alone follows the device language.
+    @Environment(\.locale) private var locale
 
     /// A metric card needs about 230 pt to keep its longest German label,
     /// "Zwischengespeichert", on one line beside the icon.
@@ -60,7 +62,7 @@ struct DashboardView: View {
 
     private func dashboardContext(for date: Date = .now) -> String {
         let currentDate = date.formatted(
-            .dateTime.weekday(.wide).day().month(.wide).year()
+            .dateTime.weekday(.wide).day().month(.wide).year().locale(locale)
         )
         let organizationUnit = demo.sapDataStore.workerProfile?.organizationUnit
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

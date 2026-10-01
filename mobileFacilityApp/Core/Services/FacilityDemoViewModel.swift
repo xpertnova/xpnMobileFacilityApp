@@ -58,7 +58,12 @@ final class FacilityDemoViewModel {
     /// from a technical place. Read once by that form's load task, like
     /// `pendingDefectObject`.
     var shouldPresentSAPRefresh = false
-    var shouldPresentDraftWarningBeforeSync = false
+    /// Set while the worker confirms a synchronization that deletes local
+    /// work, like the legacy `DialogBeforeSync`.
+    var shouldConfirmSynchronization = false
+    /// Set when the temporarily saved forms could not be deleted; the
+    /// synchronization then does not start, as in the legacy app.
+    var synchronizationCleanupFailed = false
     var notifications = MockFacilityData.notifications {
         didSet { demoNotificationRevision &+= 1 }
     }
@@ -644,28 +649,52 @@ final class FacilityDemoViewModel {
         isDemoMode ? !isResettingDemo : sapDataStore.isRefreshAvailable && !sapDataStore.isRefreshing
     }
 
+    /// The local work a synchronization deletes: in production the forms
+    /// saved with "Zwischenspeichern" (legacy `REQID = 'X'`), in the demo
+    /// everything the reset clears. Completed work is sent, not deleted.
+    var synchronizationDeletionCount: Int {
+        isDemoMode ? offlineWorkStore.activeQueueCount : offlineWorkStore.temporarilySavedFormItems.count
+    }
+
+    /// Like the legacy `check4TempMeldungen`: asks first when the
+    /// synchronization would delete local work, and starts at once otherwise.
     func requestSAPRefresh() {
+        guard canSync else { return }
+        if synchronizationDeletionCount > 0 {
+            shouldConfirmSynchronization = true
+        } else {
+            startSynchronization()
+        }
+    }
+
+    /// "Ja" of the legacy dialog: the temporarily saved forms are deleted
+    /// first, and the synchronization starts only once they are gone.
+    func confirmSynchronization() {
+        shouldConfirmSynchronization = false
         if isDemoMode {
             simulateDemoSync()
             return
         }
-        guard sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
-        sapDataStore.dismissError()
-        proceedWithSAPRefresh()
+        Task {
+            do {
+                try await offlineWorkStore.deleteTemporarilySavedForms(photoStore: photoAttachmentStore)
+                proceedWithSAPRefresh()
+            } catch {
+                synchronizationCleanupFailed = true
+            }
+        }
     }
 
-    func confirmDiscardDraftsAndSync() {
-        shouldPresentDraftWarningBeforeSync = false
-        proceedWithSAPRefresh()
+    func cancelSynchronization() {
+        shouldConfirmSynchronization = false
     }
 
-    func dismissDraftWarning() {
-        shouldPresentDraftWarningBeforeSync = false
-    }
-
-    func keepDraftsAndNavigate() {
-        shouldPresentDraftWarningBeforeSync = false
-        open(.drafts)
+    private func startSynchronization() {
+        if isDemoMode {
+            simulateDemoSync()
+        } else {
+            proceedWithSAPRefresh()
+        }
     }
 
     private func proceedWithSAPRefresh() {
