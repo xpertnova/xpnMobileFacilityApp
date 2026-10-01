@@ -8,6 +8,9 @@ struct MobileFacilityApp: App {
         WindowGroup {
             AppRootView()
             .environment(\.locale, AppLanguage.resolved(from: languageCode).locale)
+            .onChange(of: languageCode) {
+                AppLanguageObservation.shared.languageDidChange()
+            }
         }
     }
 }

@@ -29,9 +29,9 @@ struct FacilityDialogAction: Identifiable {
 
 /// A centered, framed confirmation dialog.
 ///
-/// The inspection forms use this in place of a system alert so a warning like
-/// "Meldung abschließen?" looks the same on every form and matches the app's
-/// own dialog chrome (`SAPPreSyncDraftWarningDialog`) rather than the OS.
+/// The inspection forms, the synchronization and the log out use this in
+/// place of a system alert so a warning like "Meldung abschließen?" looks the
+/// same everywhere and matches the app's own chrome rather than the OS.
 ///
 /// A dialog that needs more than a message, such as the I2 defect selection,
 /// passes its own content and a wider frame; it keeps the same header,

@@ -198,8 +198,8 @@ struct LocalPhotoWorkspace: View {
 
     var body: some View {
         PhotoWorkspace(
-            title: model.scope.displayTitle,
-            subtitle: model.scope.displaySubtitle,
+            title: model.scope.localizedTitle,
+            subtitle: model.scope.localizedSubtitle,
             entries: model.entries,
             photoData: model.photoData,
             isLoading: model.isLoading,

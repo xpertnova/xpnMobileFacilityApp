@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 @testable import mobileFacilityApp
 
@@ -20,5 +21,20 @@ final class AppLanguageTests: XCTestCase {
 
     func testInvalidStoredLanguageFallsBackToGerman() {
         XCTAssertEqual(AppLanguage.resolved(from: "invalid"), .german)
+    }
+
+    /// Views that only show strings built with `bundle: .appLanguage` are
+    /// redrawn through this, not through `\.locale`.
+    func testLanguageChangeNotifiesReadersOfCurrentLanguage() {
+        var didNotify = false
+        withObservationTracking {
+            _ = AppLanguage.current
+        } onChange: {
+            didNotify = true
+        }
+
+        AppLanguageObservation.shared.languageDidChange()
+
+        XCTAssertTrue(didNotify)
     }
 }

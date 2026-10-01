@@ -538,14 +538,95 @@ final class SAPSyncTokenTests: XCTestCase {
 
         viewModel.requestSAPRefresh()
 
-        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
+        XCTAssertFalse(viewModel.shouldConfirmSynchronization)
         XCTAssertTrue(viewModel.shouldPresentSAPRefresh)
         XCTAssertFalse(dataStore.isRefreshing)
         XCTAssertEqual(offlineWorkStore.localWorkCount, 1)
     }
 
+    /// Like the legacy `DialogBeforeSync`: temporarily saved forms are deleted
+    /// with their photos only after the worker confirms, then the
+    /// synchronization starts. Other local work is left alone.
     @MainActor
-    func testLegacyConfirmActionPreservesDraftsAndProceedsWithSync() async throws {
+    func testSynchronizationDeletesTemporarilySavedFormsOnlyAfterConfirmation() async throws {
+        let workerID = "TEST_WORKER"
+        let repo = InMemoryOfflineWorkRepository()
+        let offlineWorkStore = OfflineWorkStore(repository: repo, workerID: workerID)
+        let photoStore = InMemoryPhotoAttachmentStore()
+
+        func defect(_ status: OfflineWorkStatus) -> OfflineWorkItem {
+            OfflineWorkItem(
+                id: UUID(), workerID: workerID, type: .defect, status: status,
+                payload: .defect(DefectDraftPayload(
+                    technicalObject: .init(kind: .equipment, objectID: "EQ-1"),
+                    technicalObjectName: "Door",
+                    dinGroup: nil,
+                    priority: .medium,
+                    shortText: "Defect",
+                    longText: "",
+                    attachmentIDs: []
+                )),
+                createdAt: Date(), updatedAt: Date(), syncError: nil
+            )
+        }
+        let reportedDefect = defect(.pendingSynchronization)
+        let draftDefect = defect(.draft)
+        try await repo.save(reportedDefect)
+        try await repo.save(draftDefect)
+
+        let ladder = MobileLadderDraftPayload()
+        let ladderItem = try await offlineWorkStore.saveMobileLadder(payload: ladder, status: .draft)
+        let photoID = try await photoStore.saveJPEG(Data([1]))
+        let photoCollection = try await offlineWorkStore.savePhotoCollection(
+            scope: LocalPhotoScope(workflow: .mobileLadder, ownerID: ladder.localDraftID, rowID: "1"),
+            attachments: [LocalPhotoAttachment(localAttachmentID: photoID, capturedAt: Date())]
+        )
+        XCTAssertEqual(offlineWorkStore.temporarilySavedFormItems.map(\.id), [ladderItem.id])
+
+        let tokenStore = InMemorySAPSyncTokenStore()
+        try tokenStore.save(token: "SAVED_TOKEN", for: workerID)
+        let mockService = MockTokenRefreshService()
+        let viewModel = FacilityDemoViewModel(
+            isDemoMode: false,
+            offlineWorkStore: offlineWorkStore,
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(workerID: workerID),
+                refreshService: mockService,
+                tokenStore: tokenStore,
+                localWorkerID: workerID,
+                synchronizationUserID: workerID
+            ),
+            meterReferenceProvider: DemoMeterReferenceProvider(),
+            photoAttachmentStore: photoStore,
+            workerDisplayName: "Test User",
+            workerRole: .technician
+        )
+
+        viewModel.requestSAPRefresh()
+        XCTAssertTrue(viewModel.shouldConfirmSynchronization)
+        XCTAssertEqual(viewModel.synchronizationDeletionCount, 1)
+
+        viewModel.cancelSynchronization()
+        try await Task.sleep(for: .milliseconds(60))
+        XCTAssertFalse(viewModel.shouldConfirmSynchronization)
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 0)
+        XCTAssertNotNil(offlineWorkStore.item(id: ladderItem.id))
+
+        viewModel.requestSAPRefresh()
+        viewModel.confirmSynchronization()
+        try await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertNil(offlineWorkStore.item(id: ladderItem.id))
+        XCTAssertNil(offlineWorkStore.item(id: photoCollection?.id))
+        let photoAfterSync = try? await photoStore.loadJPEG(id: photoID)
+        XCTAssertNil(photoAfterSync)
+        XCTAssertNotNil(offlineWorkStore.item(id: reportedDefect.id))
+        XCTAssertNotNil(offlineWorkStore.item(id: draftDefect.id))
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+    }
+
+    @MainActor
+    func testConfirmedSynchronizationPreservesDraftsAndProceedsWithSync() async throws {
         let workerID = "TEST_WORKER"
         let repo = InMemoryOfflineWorkRepository()
         let offlineWorkStore = OfflineWorkStore(repository: repo, workerID: workerID)
@@ -591,8 +672,8 @@ final class SAPSyncTokenTests: XCTestCase {
             workerRole: .technician
         )
 
-        viewModel.confirmDiscardDraftsAndSync()
-        XCTAssertFalse(viewModel.shouldPresentDraftWarningBeforeSync)
+        viewModel.confirmSynchronization()
+        XCTAssertFalse(viewModel.shouldConfirmSynchronization)
 
         // Allow async Task (reset and refresh) to complete
         try await Task.sleep(for: .milliseconds(60))

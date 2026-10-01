@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import os
 
 enum AppLanguage: String, CaseIterable, Identifiable {
     case english = "en"
@@ -7,8 +9,13 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     static let storageKey = "mobileFacilityApp.settings.language"
 
     /// The language picked in the profile settings, or the German default.
+    ///
+    /// Read inside a SwiftUI `body`, this also subscribes the view to
+    /// language changes, so strings built with `bundle: .appLanguage` are
+    /// redrawn like `Text` keys are when `\.locale` changes.
     static var current: AppLanguage {
-        resolved(from: UserDefaults.standard.string(forKey: storageKey))
+        AppLanguageObservation.shared.trackChanges()
+        return resolved(from: UserDefaults.standard.string(forKey: storageKey))
     }
 
     var id: String { rawValue }
@@ -44,5 +51,35 @@ extension Bundle {
     /// `\.locale` environment set in `MobileFacilityApp`).
     static var appLanguage: Bundle {
         AppLanguage.current.bundle
+    }
+}
+
+/// Lets SwiftUI track `AppLanguage.current`, which reads `UserDefaults` and so
+/// is invisible to view updates on its own. A view that only shows strings
+/// built in code would otherwise keep the old language until something else
+/// redraws it.
+final class AppLanguageObservation: Observable, Sendable {
+    static let shared = AppLanguageObservation()
+
+    private let registrar = ObservationRegistrar()
+    private let revision = OSAllocatedUnfairLock(initialState: 0)
+
+    private init() {}
+
+    /// Registers the calling view (or other observation scope) for changes.
+    func trackChanges() {
+        registrar.access(self, keyPath: \.currentRevision)
+    }
+
+    /// Called once the stored language has changed, to redraw every view
+    /// that read `AppLanguage.current` while building its body.
+    func languageDidChange() {
+        registrar.withMutation(of: self, keyPath: \.currentRevision) {
+            revision.withLock { $0 += 1 }
+        }
+    }
+
+    private var currentRevision: Int {
+        revision.withLock { $0 }
     }
 }

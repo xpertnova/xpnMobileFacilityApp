@@ -304,7 +304,7 @@ private struct MeasuringPointRow: View {
         for format in ["yyyyMMdd", "yyyy-MM-dd"] {
             parser.dateFormat = format
             if let date = parser.date(from: raw) {
-                return date.formatted(Date.FormatStyle(date: .numeric, time: .omitted, timeZone: TimeZone(identifier: "UTC")!))
+                return date.formatted(Date.FormatStyle(date: .numeric, time: .omitted, locale: AppLanguage.current.locale, timeZone: TimeZone(identifier: "UTC")!))
             }
         }
         return raw

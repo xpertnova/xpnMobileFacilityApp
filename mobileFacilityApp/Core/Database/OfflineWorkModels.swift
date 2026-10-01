@@ -30,6 +30,54 @@ extension OfflineWorkType {
 }
 
 extension OfflineWorkItem {
+    /// Whether the next synchronization sends this item to SAP. A sent item
+    /// is removed from the device once SAP confirms it; drafts stay.
+    var isReadyForSynchronization: Bool {
+        guard [.pendingSynchronization, .failed, .synchronizing].contains(status) else {
+            return false
+        }
+        if let review = payload.notificationReview { return review.isClosedLocally }
+        if let inspection = payload.elevatorInspection { return inspection.isClosedLocally }
+        if let ladder = payload.mobileLadder { return ladder.isClosedLocally == true }
+        if let subdistribution = payload.subdistribution { return subdistribution.isClosedLocally }
+        if let briefing = payload.briefing { return briefing.completedAt != nil }
+        if let qualification = payload.proofOfQualification { return qualification.completedAt != nil }
+        if let electricalSafety = payload.electricalSafety { return electricalSafety.completedAt != nil }
+        if payload.firePermit != nil { return true }
+        // A defect is saved as pending only when it is reported.
+        if payload.defect != nil { return true }
+        // `MeasurePoints.onPressSave` writes `TO_T0286` straight away;
+        // a reading is sent with the next synchronization.
+        if payload.meterReading != nil { return true }
+        return false
+    }
+
+    /// A form saved with "Zwischenspeichern": the legacy `TO_T0281` process
+    /// with `REQID = 'X'`. Like `deleteTempMeldung`, a synchronization deletes
+    /// these once the worker confirms. Defects, meter readings, technical
+    /// object edits and photos of a place are not forms and stay.
+    var isTemporarilySavedForm: Bool {
+        guard status == .draft else { return false }
+        switch type {
+        case .notificationReview, .elevatorInspection, .briefing, .electricalSafety,
+             .proofOfQualification, .firePermit, .mobileLadder, .subdistribution:
+            return true
+        case .manualCapture, .defect, .meterReading, .technicalObjectEdit,
+             .photoCollection, .documentCollection:
+            return false
+        }
+    }
+
+    /// Photo files that belong to this item alone.
+    var ownPhotoAttachmentIDs: [String] {
+        if let review = payload.notificationReview { return review.photoAttachments.map(\.localAttachmentID) }
+        if let inspection = payload.elevatorInspection { return inspection.photoAttachments.map(\.localAttachmentID) }
+        if let ladder = payload.mobileLadder { return ladder.photoAttachments.map(\.localAttachmentID) }
+        if let subdistribution = payload.subdistribution { return subdistribution.photoAttachments.map(\.localAttachmentID) }
+        if let collection = payload.photoCollection { return collection.attachments.map(\.localAttachmentID) }
+        return []
+    }
+
     /// The status shown for the item.
     var statusTitleKey: String {
         type.staysLocal && status != .draft ? "offline.status.localOnly" : status.titleKey
@@ -71,21 +119,38 @@ struct LocalPhotoScope: Codable, Equatable, Hashable, Sendable {
     let workflow: LocalPhotoWorkflow
     let ownerID: String
     let rowID: String?
+    /// Free text, such as a place or checklist name. Empty when the matching
+    /// catalog key is set.
     let displayTitle: String
     let displaySubtitle: String
+    /// Catalog keys for app text, stored instead of the translated text so a
+    /// saved collection follows a later language change. Absent in records
+    /// saved before the keys existed.
+    let displayTitleKey: String?
+    let displaySubtitleKey: String?
 
     init(
         workflow: LocalPhotoWorkflow,
         ownerID: String,
         rowID: String? = nil,
-        displayTitle: String,
-        displaySubtitle: String = ""
+        displayTitle: String = "",
+        displayTitleKey: String? = nil,
+        displaySubtitle: String = "",
+        displaySubtitleKey: String? = nil
     ) {
         self.workflow = workflow
         self.ownerID = ownerID
         self.rowID = rowID
         self.displayTitle = displayTitle
+        self.displayTitleKey = displayTitleKey
         self.displaySubtitle = displaySubtitle
+        self.displaySubtitleKey = displaySubtitleKey
+    }
+
+    /// The draft or object the photos belong to, across all of its rows.
+    struct Owner: Hashable {
+        let workflow: LocalPhotoWorkflow
+        let ownerID: String
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool {

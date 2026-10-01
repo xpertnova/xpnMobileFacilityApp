@@ -11,6 +11,7 @@ struct FacilityShellView: View {
     @State private var networkReachability = NetworkReachabilityMonitor(startMonitoring: false)
     @State private var hasStartedNetworkMonitoring = false
     @State private var isShowingUserMenu = false
+    @State private var isLogoutConfirmationPresented = false
 
     private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
     private let workDestinations: [AppDestination] = [
@@ -179,20 +180,10 @@ struct FacilityShellView: View {
                 presentation: notificationFilterPresentation
             )
 
-            if !demo.isDemoMode, demo.shouldPresentDraftWarningBeforeSync {
-                Color.black.opacity(0.42)
-                    .ignoresSafeArea()
+            if demo.shouldConfirmSynchronization {
+                synchronizationConfirmation
                     .transition(.opacity)
                     .zIndex(5)
-                SAPPreSyncDraftWarningDialog(
-                    draftCount: demo.offlineWorkStore.localWorkCount,
-                    confirm: demo.confirmDiscardDraftsAndSync,
-                    keepDrafts: demo.keepDraftsAndNavigate,
-                    cancel: demo.dismissDraftWarning
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
-                .zIndex(6)
             }
 
             if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
@@ -216,6 +207,27 @@ struct FacilityShellView: View {
         }
         .background(FacilityTheme.canvas)
         .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.18), value: demo.shouldConfirmSynchronization)
+        .facilityConfirmationDialog(
+            isPresented: $isLogoutConfirmationPresented,
+            titleKey: demo.isDemoMode ? "logout.confirm.demo.title" : "logout.confirm.title",
+            messageKey: demo.isDemoMode ? "logout.confirm.demo.message" : "logout.confirm.message",
+            confirmTitleKey: "profile.menu.logout",
+            symbol: "rectangle.portrait.and.arrow.right",
+            tint: FacilityTheme.red,
+            isDestructive: true
+        ) {
+            onLogout?()
+        }
+        .facilityConfirmationDialog(
+            isPresented: $demo.synchronizationCleanupFailed,
+            titleKey: "sync.cleanupFailed.title",
+            messageKey: "sync.cleanupFailed.message",
+            symbol: "exclamationmark.circle",
+            tint: FacilityTheme.red,
+            cancelTitleKey: nil,
+            actions: [FacilityDialogAction(titleKey: "common.ok", emphasis: .primary) {}]
+        )
         .task(id: demo.offlineWorkStore.workerID) {
             let restoredFilter = NotificationStructuralFilterPreferences.load(
                 workerID: demo.sapDataStore.localWorkerID,
@@ -559,6 +571,40 @@ struct FacilityShellView: View {
             .transition(.scale(scale: 0.95, anchor: .bottomLeading).combined(with: .opacity))
     }
 
+    /// The legacy `DialogBeforeSync` in the shared dialog chrome. The count
+    /// says how much local work the synchronization deletes.
+    private var synchronizationConfirmation: some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+                .onTapGesture { demo.cancelSynchronization() }
+
+            FacilityConfirmationDialog(
+                titleKey: demo.isDemoMode ? "sync.confirm.demo.title" : "sync.confirm.title",
+                messageKey: demo.isDemoMode ? "sync.confirm.demo.message" : "sync.confirm.message",
+                tint: FacilityTheme.red,
+                actions: [
+                    FacilityDialogAction(
+                        titleKey: "sync.confirm.action",
+                        emphasis: .destructive,
+                        perform: demo.confirmSynchronization
+                    )
+                ],
+                cancel: demo.cancelSynchronization
+            ) {
+                Label(
+                    String(localized: "sync.confirm.count \(demo.synchronizationDeletionCount)", bundle: .appLanguage),
+                    systemImage: "trash"
+                )
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(FacilityTheme.red)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(FacilityTheme.red.opacity(0.12), in: Capsule())
+            }
+        }
+    }
+
     private var userActionMenu: some View {
         VStack(spacing: 4) {
             userMenuButton(
@@ -587,7 +633,9 @@ struct FacilityShellView: View {
                 withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
                     isShowingUserMenu = false
                 }
-                onLogout?()
+                // The menu item sits right under the settings entry, so a
+                // stray tap must not end the session on its own.
+                isLogoutConfirmationPresented = true
             }
             .disabled(onLogout == nil)
         }
