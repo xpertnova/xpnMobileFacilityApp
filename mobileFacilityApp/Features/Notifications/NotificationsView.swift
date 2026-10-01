@@ -449,11 +449,11 @@ private struct NotificationListContent: View, Equatable {
                 }
             }
 
-            if let notification = demo.selectedNotification, demo.selectedNotificationDetail == nil {
+            // Demo notifications without a form open nothing; the card only
+            // tells production users that SAP holds no form for the row.
+            if !demo.isDemoMode, let notification = demo.selectedNotification, demo.selectedNotificationDetail == nil {
                 notificationListRow(bottomInset: 28) {
-                    NotificationDetailCard(notification: notification, isReadOnly: !demo.isDemoMode) {
-                        demo.finishChecks(for: notification)
-                    }
+                    NotificationDetailCard(notification: notification)
                 }
             }
         }
@@ -1179,8 +1179,6 @@ struct NotificationStatusBadges: View {
 
 private struct NotificationDetailCard: View {
     let notification: MaintenanceNotification
-    let isReadOnly: Bool
-    let finish: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1203,31 +1201,9 @@ private struct NotificationDetailCard: View {
                 }
             }
             Divider()
-            if isReadOnly {
-                Label("sap.notifications.readOnly", systemImage: "lock")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(1...notification.totalChecks, id: \.self) { index in
-                    HStack(spacing: 12) {
-                        Image(systemName: index <= notification.completedChecks ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(index <= notification.completedChecks ? FacilityTheme.accent : .secondary)
-                        Text("\(index). \(index == 1 ? "Visual condition and access" : "Equipment inspection point")")
-                            .font(.subheadline)
-                        Spacer()
-                        Text(index <= notification.completedChecks ? "status.complete" : "status.open")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 3)
-                }
-                HStack {
-                    Spacer()
-                    Button("notifications.detail.finish", action: finish)
-                        .buttonStyle(.borderedProminent)
-                        .tint(FacilityTheme.accent)
-                }
-            }
+            Label("sap.notifications.readOnly", systemImage: "lock")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .facilityCard()
     }

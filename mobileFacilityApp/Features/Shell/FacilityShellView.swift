@@ -429,14 +429,12 @@ struct FacilityShellView: View {
             .scrollIndicators(.hidden)
             .padding(.bottom, 12)
 
-            if !demo.isDemoMode {
-                Divider()
-                    .frame(width: 32)
-                    .padding(.bottom, 12)
+            Divider()
+                .frame(width: 32)
+                .padding(.bottom, 12)
 
-                compactSAPRefreshButton(networkStatus: networkStatus)
-                    .padding(.bottom, 8)
-            }
+            compactSAPRefreshButton(networkStatus: networkStatus)
+                .padding(.bottom, 8)
 
             compactProfileButton
         }
@@ -447,8 +445,9 @@ struct FacilityShellView: View {
     }
 
     private func compactSAPRefreshButton(networkStatus: NetworkReachabilityStatus) -> some View {
-        let isRefreshing = demo.sapDataStore.isRefreshing
-        let isEnabled = demo.sapDataStore.isRefreshAvailable && networkStatus == .connected && !isRefreshing
+        let isRefreshing = demo.isSyncing
+        // The demo sync only resets local demo data, so it needs no network.
+        let isEnabled = demo.canSync && (demo.isDemoMode || networkStatus == .connected)
 
         return Button {
             demo.requestSAPRefresh()
@@ -648,20 +647,24 @@ struct FacilityShellView: View {
                     .font(.subheadline.weight(.bold))
             }
 
-            if !demo.isDemoMode {
-                Button {
-                    demo.requestSAPRefresh()
-                } label: {
+            Button {
+                demo.requestSAPRefresh()
+            } label: {
+                if demo.isDemoMode, demo.isSyncing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
                     Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
                 }
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .opacity(demo.sapDataStore.isRefreshAvailable && !demo.sapDataStore.isRefreshing ? 1 : 0.45)
-                .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
             }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .opacity(demo.canSync || demo.isSyncing ? 1 : 0.45)
+            .disabled(!demo.canSync)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

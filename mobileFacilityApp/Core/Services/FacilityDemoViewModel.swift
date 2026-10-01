@@ -62,7 +62,7 @@ final class FacilityDemoViewModel {
     var notifications = MockFacilityData.notifications {
         didSet { demoNotificationRevision &+= 1 }
     }
-    /// Demo rows are mutated in place (`finishChecks`, `resetDemo`). This is
+    /// Demo rows are replaced in place (`resetDemo`). This is
     /// observable on purpose: a view that only reads the cached
     /// `visibleNotifications` still has to be told when they change.
     private(set) var demoNotificationRevision = 0
@@ -632,8 +632,24 @@ final class FacilityDemoViewModel {
         selection = returnDestination
     }
 
+    /// Demo has no SAP. Its sync button plays a short sync and then restores
+    /// the demo data to its starting state.
+    private(set) var isResettingDemo = false
+
+    var isSyncing: Bool {
+        isDemoMode ? isResettingDemo : sapDataStore.isRefreshing
+    }
+
+    var canSync: Bool {
+        isDemoMode ? !isResettingDemo : sapDataStore.isRefreshAvailable && !sapDataStore.isRefreshing
+    }
+
     func requestSAPRefresh() {
-        guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
+        if isDemoMode {
+            simulateDemoSync()
+            return
+        }
+        guard sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
         proceedWithSAPRefresh()
     }
@@ -670,11 +686,14 @@ final class FacilityDemoViewModel {
         }
     }
 
-    func finishChecks(for notification: MaintenanceNotification) {
-        guard isDemoMode else { return }
-        guard let index = notifications.firstIndex(where: { $0.id == notification.id }) else { return }
-        notifications[index].completedChecks = notifications[index].totalChecks
-        notifications[index].status = .draft
+    private func simulateDemoSync() {
+        guard isDemoMode, !isResettingDemo else { return }
+        isResettingDemo = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(900))
+            resetDemo()
+            isResettingDemo = false
+        }
     }
 
     func resetDemo() {

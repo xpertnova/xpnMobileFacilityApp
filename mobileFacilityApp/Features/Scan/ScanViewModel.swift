@@ -52,7 +52,6 @@ final class ScanViewModel {
     }
 
     private let sapDataStore: SAPDataStore
-    private let isDemoMode: Bool
     /// Opens the only notification a new lookup found. Results restored after
     /// a cancelled scan are not opened again.
     private let openSingleMatch: @MainActor (SAPNotificationSummary) -> Void
@@ -66,11 +65,9 @@ final class ScanViewModel {
 
     init(
         sapDataStore: SAPDataStore,
-        isDemoMode: Bool,
         openSingleMatch: @escaping @MainActor (SAPNotificationSummary) -> Void
     ) {
         self.sapDataStore = sapDataStore
-        self.isDemoMode = isDemoMode
         self.openSingleMatch = openSingleMatch
     }
 
@@ -100,11 +97,7 @@ final class ScanViewModel {
         } else {
             stateBeforeScan = .idle
         }
-        if isDemoMode {
-            resolve(Self.demoPayload)
-        } else {
-            state = .requestingPermission
-        }
+        state = .requestingPermission
     }
 
     func cameraIsPreparing() {
@@ -178,9 +171,4 @@ final class ScanViewModel {
         resolutionTask = nil
         acceptedValue = nil
     }
-
-    private static let demoPayload = LegacyQRCodeCodec.encodeMTFM(
-        functionalLocationID: "UN01-ST01-BG01-TECH-420-Z",
-        equipmentID: "EQ-100040"
-    )
 }

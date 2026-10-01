@@ -9945,6 +9945,18 @@
         }
       }
     },
+    "measuringPoints.row.recorded %@ %@" : {
+      "comment" : "Xcode extraction artifact. The view formats Int counts, so the app looks up 'measuringPoints.row.recorded %lld %lld'.",
+      "shouldTranslate" : false,
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "measuringPoints.row.recorded %1$@ %2$@"
+          }
+        }
+      }
+    },
     "measuringPoints.row.recorded %lld %lld" : {
       "extractionState" : "stale",
       "localizations" : {
