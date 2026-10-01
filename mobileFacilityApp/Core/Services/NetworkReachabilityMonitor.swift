@@ -28,6 +28,11 @@ final class NetworkReachabilityMonitor {
     private(set) var status: NetworkReachabilityStatus = .checking
     private(set) var currentReachabilityType: ReachabilityType?
 
+    /// SAP, host and system reachability combined; replaceable so the SAP
+    /// callbacks can be checked without depending on the device's network.
+    @ObservationIgnored
+    private let isNetworkReachable: @Sendable () -> Bool
+
     /// SAP host parsed from ConfigurationProvider.plist
     nonisolated static let sapHost: String? = {
         guard let url = Bundle.main.url(forResource: "ConfigurationProvider", withExtension: "plist"),
@@ -39,7 +44,11 @@ final class NetworkReachabilityMonitor {
         return host
     }()
 
-    init(startMonitoring: Bool = true) {
+    init(
+        startMonitoring: Bool = true,
+        isNetworkReachable: @escaping @Sendable () -> Bool = { NetworkReachabilityMonitor.evaluateReachability() }
+    ) {
+        self.isNetworkReachable = isNetworkReachable
         if startMonitoring {
             start()
         }
@@ -131,7 +140,7 @@ final class NetworkReachabilityMonitor {
 
     /// Synchronizes status directly from SAP ConnectivityUtils, host reachability, and system flags
     func synchronizeReachability() {
-        let isConnected = Self.evaluateReachability()
+        let isConnected = isNetworkReachable()
         let isSAPConnected = ConnectivityUtils.isConnected()
         let isSystemReachable = Self.checkSystemReachability()
 
@@ -197,7 +206,7 @@ final class NetworkReachabilityMonitor {
         current: ReachabilityType
     ) {
         currentReachabilityType = current
-        let isConnected = ConnectivityUtils.isConnected(current) || Self.evaluateReachability()
+        let isConnected = ConnectivityUtils.isConnected(current) || isNetworkReachable()
         print("[SAP Connection] 🔀 [SAP Observer] connectionChanged: \(previous) -> \(current), isConnected=\(isConnected)")
         updateStatusDirectly(
             isConnected ? .connected : .disconnected,
@@ -208,7 +217,7 @@ final class NetworkReachabilityMonitor {
     /// Internal handler called by the SAP ConnectivityObserver bridge when connection is lost.
     func handleConnectionLost() {
         print("[SAP Connection] 🔴 [SAP Observer] connectionLost() received")
-        if !Self.evaluateReachability() {
+        if !isNetworkReachable() {
             updateStatusDirectly(.disconnected, reason: "SAP ConnectivityObserver.connectionLost")
         } else {
             print("[SAP Connection] ⚠️ SAP reported connection lost, but reachability check indicates network is reachable")

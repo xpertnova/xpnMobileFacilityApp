@@ -6386,6 +6386,23 @@
         }
       }
     },
+    "flEQ.briefing.signature.confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bestätigen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm"
+          }
+        }
+      }
+    },
     "flEQ.briefing.signature.instructedPerson" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -6404,7 +6421,20 @@
       }
     },
     "flEQ.briefing.signature.instructions" : {
-
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte unterschreiben Sie im angegebenen Bereich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Please sign in the indicated area"
+          }
+        }
+      }
     },
     "flEQ.briefing.signature.instructor" : {
       "extractionState" : "stale",
@@ -9911,16 +9941,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SAP has no measuring points for this place."
-          }
-        }
-      }
-    },
-    "measuringPoints.row.recorded %@ %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "measuringPoints.row.recorded %1$@ %2$@"
           }
         }
       }
@@ -17443,6 +17463,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "SAP refresh failed"
+          }
+        }
+      }
+    },
+    "sap.refresh.error.tokenExpired" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das SAP-Sitzungstoken ist ungültig oder auf einem anderen Gerät abgelaufen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The SAP session token is invalid or has expired on another device."
           }
         }
       }

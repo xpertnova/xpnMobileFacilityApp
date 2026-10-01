@@ -17,7 +17,11 @@ struct LocalCredentialStore {
     private static let storageKey = "mobileFacility.localCredentials"
     private static let saltByteCount = 32
 
-    static func createAccount(username: String, password: String) throws -> LocalAuthenticatedUser {
+    static func createAccount(
+        username: String,
+        password: String,
+        defaults: UserDefaults = .standard
+    ) throws -> LocalAuthenticatedUser {
         let displayName = trimmedUsername(username)
         // The shared device carries no password policy: any password the
         // technician types is accepted. The sign-in screen only insists that
@@ -27,7 +31,7 @@ struct LocalCredentialStore {
         }
 
         let normalizedUsername = normalizedUsername(displayName)
-        var accounts = try loadAccounts()
+        var accounts = try loadAccounts(from: defaults)
         guard accounts[normalizedUsername] == nil else {
             throw LocalCredentialStoreError.usernameAlreadyExists
         }
@@ -38,14 +42,18 @@ struct LocalCredentialStore {
             salt: salt.base64EncodedString(),
             passwordHash: hash(password: password, salt: salt).base64EncodedString()
         )
-        try save(accounts)
+        try save(accounts, to: defaults)
 
         return LocalAuthenticatedUser(workerID: normalizedUsername, displayName: displayName)
     }
 
-    static func authenticate(username: String, password: String) throws -> LocalAuthenticatedUser {
+    static func authenticate(
+        username: String,
+        password: String,
+        defaults: UserDefaults = .standard
+    ) throws -> LocalAuthenticatedUser {
         let normalizedUsername = normalizedUsername(username)
-        let accounts = try loadAccounts()
+        let accounts = try loadAccounts(from: defaults)
 
         guard let account = accounts[normalizedUsername],
               let salt = Data(base64Encoded: account.salt),
@@ -57,8 +65,8 @@ struct LocalCredentialStore {
         return LocalAuthenticatedUser(workerID: normalizedUsername, displayName: account.displayName)
     }
 
-    private static func loadAccounts() throws -> [String: StoredCredentials] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else {
+    private static func loadAccounts(from defaults: UserDefaults) throws -> [String: StoredCredentials] {
+        guard let data = defaults.data(forKey: storageKey) else {
             return [:]
         }
 
@@ -69,9 +77,9 @@ struct LocalCredentialStore {
         }
     }
 
-    private static func save(_ accounts: [String: StoredCredentials]) throws {
+    private static func save(_ accounts: [String: StoredCredentials], to defaults: UserDefaults) throws {
         do {
-            UserDefaults.standard.set(try JSONEncoder().encode(accounts), forKey: storageKey)
+            defaults.set(try JSONEncoder().encode(accounts), forKey: storageKey)
         } catch {
             throw LocalCredentialStoreError.storageUnavailable
         }

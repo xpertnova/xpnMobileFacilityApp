@@ -24,7 +24,11 @@ enum SAPDataExchangeEndpoint {
     }
 
     static func serviceRoot(backendURL: URL, destinationPath: String) -> URL? {
-        let normalizedPath = destinationPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        // A path typed into AppParameters may carry spaces around its
+        // slashes; they would otherwise end up in the URL as `%20`.
+        let normalizedPath = destinationPath.trimmingCharacters(
+            in: CharacterSet(charactersIn: "/").union(.whitespacesAndNewlines)
+        )
         guard !normalizedPath.isEmpty else { return nil }
         return backendURL.appendingPathComponent(normalizedPath, isDirectory: true)
     }

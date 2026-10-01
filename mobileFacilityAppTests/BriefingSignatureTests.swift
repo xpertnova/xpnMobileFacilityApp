@@ -14,8 +14,10 @@ final class BriefingSignatureTests: XCTestCase {
             BriefingSignatureRasterizer.standardizedPNGData(from: tall)
         )
 
-        XCTAssertEqual(try XCTUnwrap(UIImage(data: wideOutput)).size, BriefingSignatureRasterizer.canvasSize)
-        XCTAssertEqual(try XCTUnwrap(UIImage(data: tallOutput)).size, BriefingSignatureRasterizer.canvasSize)
+        // The rasterizer renders at 2x, so the PNG holds the canvas in
+        // points at twice the pixels.
+        XCTAssertEqual(try XCTUnwrap(UIImage(data: wideOutput, scale: 2)).size, BriefingSignatureRasterizer.canvasSize)
+        XCTAssertEqual(try XCTUnwrap(UIImage(data: tallOutput, scale: 2)).size, BriefingSignatureRasterizer.canvasSize)
     }
 
     private func signatureImage(size: CGSize) -> UIImage {
