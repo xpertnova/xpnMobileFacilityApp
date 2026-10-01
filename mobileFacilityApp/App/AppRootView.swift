@@ -78,20 +78,7 @@ struct AppRootView: View {
                 if let testSession = Self.debugLoginBypassSession {
                     enterProductionWorkspace(for: testSession)
                 } else {
-                    authenticationWorkspace = FacilityDemoViewModel(
-                        isDemoMode: false,
-                        offlineWorkStore: OfflineWorkStore(
-                            repository: InMemoryOfflineWorkRepository(),
-                            workerID: "unauthenticated"
-                        ),
-                        sapDataStore: SAPDataStore(
-                            repository: InMemorySAPDataCacheRepository(),
-                            refreshService: nil,
-                            localWorkerID: "unauthenticated"
-                        ),
-                        meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
-                        photoAttachmentStore: InMemoryPhotoAttachmentStore()
-                    )
+                    authenticationWorkspace = Self.makeAuthenticationWorkspace()
                     phase = .authentication
                 }
             case .demo:
@@ -187,7 +174,26 @@ struct AppRootView: View {
         #endif
     }
 
-    private static func makeDemoWorkspace() -> FacilityDemoViewModel {
+    /// The dimmed workspace behind the login. Nobody is signed in yet, so it
+    /// is mock-only like the demo and never reaches SAP or SQLite.
+    static func makeAuthenticationWorkspace() -> FacilityDemoViewModel {
+        FacilityDemoViewModel(
+            isDemoMode: false,
+            offlineWorkStore: OfflineWorkStore(
+                repository: InMemoryOfflineWorkRepository(),
+                workerID: "unauthenticated"
+            ),
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(),
+                refreshService: nil,
+                localWorkerID: "unauthenticated"
+            ),
+            meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+            photoAttachmentStore: InMemoryPhotoAttachmentStore()
+        )
+    }
+
+    static func makeDemoWorkspace() -> FacilityDemoViewModel {
         FacilityDemoViewModel(
             isDemoMode: true,
             offlineWorkStore: OfflineWorkStore(

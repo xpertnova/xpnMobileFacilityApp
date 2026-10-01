@@ -562,9 +562,9 @@ final class InspectionFormStandardizationTests: XCTestCase {
         XCTAssertTrue(userStatus.contains("Mnot"))
 
         let statusRow = batch.values.first { $0["ELEMENTNR"] == "TFM2-0000-1" }
-        XCTAssertEqual(statusRow?["ELEMENTWERT"], "aBet")
+        XCTAssertEqual(statusRow?["FELDWERT"], "aBet")
         let commentRow = batch.values.first { $0["ELEMENTNR"] == "TFM2-0000-9B" }
-        XCTAssertEqual(commentRow?["ELEMENTWERT"], "Lift shut down by the operator")
+        XCTAssertEqual(commentRow?["FELDWERT"], "Lift shut down by the operator")
     }
 
     /// Without the status set, an unanswered position still blocks the upload.

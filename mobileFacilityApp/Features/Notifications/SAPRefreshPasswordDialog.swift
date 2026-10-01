@@ -265,7 +265,7 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
     case .initialPasswordChangeRequired:
         String(localized: "sap.refresh.error.initialPassword", bundle: .appLanguage)
     case .tokenInvalidOrExpired:
-        String(localized: "The SAP session token is invalid or has expired on another device.", bundle: .appLanguage)
+        String(localized: "sap.refresh.error.tokenExpired", bundle: .appLanguage)
     case .preparationTimedOut:
         String(localized: "sap.refresh.error.timeout", bundle: .appLanguage)
     case .networkUnavailable:

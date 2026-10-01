@@ -360,6 +360,9 @@ final class ElevatorInspectionTests: XCTestCase {
             "T_0271": [[
                 "MANDT": "100", "QMNUM": "N-TFM2-1", "QMART": "I1", "QMTXT": "Elevator inspection",
                 "STTXT": "OSNO", "STRNO": "FL-1", "PLTXT": "Elevator A", "EQUNR": "EQ-1",
+                // SAP delivers the business entity with every place; the
+                // list index files the form code under it.
+                "TPWEH": "11152",
                 "FELDWERT": notificationPayload
             ]],
             "T_0263": [[
@@ -938,6 +941,7 @@ final class ElevatorInspectionTests: XCTestCase {
             "QMNUM": "4710000012",
             "QMART": "I1",
             "FORMNR": "TFM2",
+            "USTXT": "FREI",
             "T_PLPOD": [
                 [
                     "USR00": "POSITION",
@@ -1030,6 +1034,7 @@ final class ElevatorInspectionTests: XCTestCase {
         XCTAssertEqual(header["QMNUM"], "4710000012")
         XCTAssertEqual(header["VORGANGSNR"], "PROC-100")
         XCTAssertEqual(header["STTXT"], "MMAB")
+        // `BaseFormController`: the SAP user status plus `Mnot` for a defect.
         XCTAssertEqual(header["USTXT"], "FREI Mnot")
 
         // 2. T0283 Values
@@ -1041,21 +1046,25 @@ final class ElevatorInspectionTests: XCTestCase {
 
         // Check material flag row
         let matRow = batch.values.first { $0["ELEMENTNR"] == "TFM2-0020-3" }
-        XCTAssertEqual(matRow?["ELEMENTWERT"], "1")
+        // A checked box posts "X", as `sap.m.CheckBox` reads it back.
+        XCTAssertEqual(matRow?["FELDWERT"], "X")
 
         // 3. Documents (PDF + Photo)
         XCTAssertEqual(batch.documents.count, 2)
         let pdfDoc = batch.documents.first { $0.metadata["ELEMENTNR"] == "TFM2-pdf" }
         XCTAssertNotNil(pdfDoc)
         XCTAssertEqual(pdfDoc?.metadata["DOCID"], "PDF-UUID-12345")
-        XCTAssertEqual(pdfDoc?.metadata["MIMETYPE"], "application/pdf")
-        XCTAssertEqual(pdfDoc?.metadata["DOKAR"], "D_TFM_Wartung")
-        XCTAssertEqual(pdfDoc?.metadata["DOKTL"], "TFM006")
+        // `BaseFormController._insertDocument`: `DOKAR` is always "FMD"; the
+        // document class and value list travel in the DMS columns.
+        XCTAssertEqual(pdfDoc?.metadata["DOC_MIMETYPE"], "application/pdf")
+        XCTAssertEqual(pdfDoc?.metadata["DOKAR"], "FMD")
+        XCTAssertEqual(pdfDoc?.metadata["DMS_CONTENTTYPE"], "D_TFM_Wartung")
+        XCTAssertEqual(pdfDoc?.metadata["DMS_DOCID"], "TFM006")
 
         let photoDoc = batch.documents.first { $0.metadata["ELEMENTNR"] == "TFM2-0020-9B" }
         XCTAssertNotNil(photoDoc)
         XCTAssertEqual(photoDoc?.metadata["DOCID"], "DOC-1")
-        XCTAssertEqual(photoDoc?.metadata["MIMETYPE"], "image/jpeg")
+        XCTAssertEqual(photoDoc?.metadata["DOC_MIMETYPE"], "image/jpeg")
     }
 
     // MARK: - 11. Demo Fixture Isolation
