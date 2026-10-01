@@ -6,14 +6,14 @@ struct ScanView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var mode: ScanMode = .qrCode
-    @State private var rfidState: RFIDScanState = .ready
+    /// RFID, and every scan in demo mode, only plays the scan animation.
+    @State private var simulationState: SimulatedScanState = .ready
     @State private var viewModel: ScanViewModel
 
     init(demo: FacilityDemoViewModel) {
         self.demo = demo
         _viewModel = State(initialValue: ScanViewModel(
             sapDataStore: demo.sapDataStore,
-            isDemoMode: demo.isDemoMode,
             openSingleMatch: { [demo] in demo.openScannedNotification($0) }
         ))
     }
@@ -35,14 +35,14 @@ struct ScanView: View {
             // Switching to RFID only stops a running scan; found
             // notifications are still listed when the technician comes back.
             viewModel.cancel()
-            rfidState = .ready
+            simulationState = .ready
         }
         .onDisappear { viewModel.cancel() }
     }
 
     @ViewBuilder
     private var mainColumn: some View {
-        if mode == .qrCode, case let .results(lookup) = viewModel.state {
+        if !isSimulated, case let .results(lookup) = viewModel.state {
             ScanResultsPanel(
                 lookup: lookup,
                 rows: demo.scanResultRows(for: lookup.matches),
@@ -120,7 +120,7 @@ struct ScanView: View {
     private var deviceColumn: some View {
         VStack(spacing: 14) {
             actionButton
-            if mode == .qrCode { qrOutcome }
+            if !isSimulated { qrOutcome }
 
             VStack(alignment: .leading, spacing: 15) {
                 Text("scan.devices.title").font(.headline)
@@ -201,21 +201,27 @@ struct ScanView: View {
         }
     }
 
+    /// Demo mode has no camera and no SAP cache to look a code up in, so its
+    /// QR scan is simulated like RFID instead of failing on an empty lookup.
+    private var isSimulated: Bool {
+        mode == .rfid || demo.isDemoMode
+    }
+
     private func performPrimaryAction() {
-        if mode == .qrCode {
-            viewModel.startQRCodeScan()
+        if isSimulated {
+            simulateScan()
         } else {
-            simulateRFIDScan()
+            viewModel.startQRCodeScan()
         }
     }
 
-    private func simulateRFIDScan() {
-        guard rfidState != .scanning else { return }
-        rfidState = .scanning
+    private func simulateScan() {
+        guard simulationState != .scanning else { return }
+        simulationState = .scanning
         Task {
             try? await Task.sleep(for: .milliseconds(1_300))
             guard !Task.isCancelled else { return }
-            rfidState = .complete
+            simulationState = .complete
         }
     }
 
@@ -237,27 +243,24 @@ struct ScanView: View {
     /// While the camera is open the primary action stops it. The lookup after
     /// a code was read is brief and only shows progress.
     private var canCancelScan: Bool {
-        mode == .qrCode && viewModel.cameraShouldRun
+        !isSimulated && viewModel.cameraShouldRun
     }
 
     private var isActivelyScanning: Bool {
-        mode == .rfid ? rfidState == .scanning : viewModel.state == .scanning
+        isSimulated ? simulationState == .scanning : viewModel.state == .scanning
     }
 
     private var isResolving: Bool {
-        mode == .qrCode && viewModel.state == .resolving
+        !isSimulated && viewModel.state == .resolving
     }
 
     private var primaryActionIsBusy: Bool {
-        mode == .qrCode ? viewModel.isBusy : rfidState == .scanning
+        isSimulated ? simulationState == .scanning : viewModel.isBusy
     }
 
     private var primaryActionKey: String {
-        if mode == .rfid {
-            return rfidState == .scanning ? "scan.action.simulating" : "scan.action.simulate"
-        }
-        if demo.isDemoMode {
-            return viewModel.isBusy ? "scan.action.simulating" : "scan.action.simulate"
+        if isSimulated {
+            return simulationState == .scanning ? "scan.action.simulating" : "scan.action.simulate"
         }
         switch viewModel.state {
         case .requestingPermission, .configuring, .scanning, .resolving:
@@ -272,7 +275,9 @@ struct ScanView: View {
     }
 
     private var viewportMessageKey: String {
-        if mode == .rfid { return rfidState.messageKey }
+        if isSimulated {
+            return simulationState == .ready && mode == .qrCode ? "scan.viewport.ready" : simulationState.messageKey
+        }
         switch viewModel.state {
         case .idle: return "scan.viewport.ready"
         case .requestingPermission: return "scan.viewport.permission"
@@ -292,7 +297,7 @@ private enum ScanMode: CaseIterable, Identifiable {
     var titleKey: String { self == .qrCode ? "scan.mode.qr" : "scan.mode.rfid" }
 }
 
-private enum RFIDScanState: Equatable {
+private enum SimulatedScanState: Equatable {
     case ready
     case scanning
     case complete

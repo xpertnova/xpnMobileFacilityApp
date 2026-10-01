@@ -23,7 +23,7 @@ struct DraftsView: View {
                 PageHeader(
                     "drafts.title",
                     subtitle: "drafts.subtitle",
-                    trailing: demo.isDemoMode ? nil : AnyView(syncControl)
+                    trailing: AnyView(syncControl)
                 )
 
                 switch demo.offlineWorkStore.state {
@@ -95,7 +95,7 @@ struct DraftsView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(FacilityTheme.navy)
-        .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
+        .disabled(!demo.canSync)
     }
 
     private var emptyState: some View {

@@ -279,6 +279,51 @@ final class SAPSyncTokenTests: XCTestCase {
         XCTAssertNil(dataStore.refreshError)
     }
 
+    func testOnlyAnInvalidTokenAnswerDiscardsTheSavedToken() {
+        XCTAssertTrue(SAPInboundNotificationRefreshService.discardsSavedToken(after: SAPReadError.tokenInvalidOrExpired))
+
+        let keptAfter: [Error] = [
+            SAPReadError.networkUnavailable,
+            SAPReadError.requestTimedOut,
+            SAPReadError.serviceUnavailable,
+            SAPReadError.httpStatus(503),
+            SAPReadError.httpStatus(504),
+            SAPReadError.malformedPayload,
+            CancellationError()
+        ]
+        for error in keptAfter {
+            XCTAssertFalse(
+                SAPInboundNotificationRefreshService.discardsSavedToken(after: error),
+                "\(error) must not discard the saved token"
+            )
+        }
+    }
+
+    @MainActor
+    func testNetworkFailureDuringTokenRefreshKeepsTheSavedToken() async throws {
+        let tokenStore = InMemorySAPSyncTokenStore()
+        let workerID = "TEST_WORKER"
+        try tokenStore.save(token: "SAVED_TOKEN", for: workerID)
+
+        let mockService = MockTokenRefreshService()
+        mockService.tokenRefreshError = .networkUnavailable
+        let dataStore = SAPDataStore(
+            repository: InMemorySAPDataCacheRepository(workerID: workerID),
+            refreshService: mockService,
+            tokenStore: tokenStore,
+            localWorkerID: workerID,
+            synchronizationUserID: workerID
+        )
+
+        let didRefresh = await dataStore.refreshWithSavedToken()
+        XCTAssertFalse(didRefresh)
+        XCTAssertEqual(tokenStore.token(for: workerID), "SAVED_TOKEN")
+        XCTAssertTrue(dataStore.hasValidSavedToken)
+        guard case .networkUnavailable = dataStore.refreshError else {
+            return XCTFail("Expected the network failure to be shown")
+        }
+    }
+
     @MainActor
     func testPasswordRefreshFailureKeepsSafeFailureContextForTheDialog() async throws {
         let workerID = "TEST_WORKER"

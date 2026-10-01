@@ -99,10 +99,16 @@ struct AppRootView: View {
         }
     }
 
+    /// Returns to the SAP welcome screen, like leaving the demo. The saved
+    /// onboarding is forgotten so it is not silently restored straight back
+    /// to the login.
     private func signOut() {
         productionSession = nil
         productionWorkspace = nil
-        phase = .authentication
+        authenticationWorkspace = nil
+        SAPOnboardingPersistence.forget()
+        onboarding = SAPOnboardingState()
+        phase = .launching
     }
 
     private func enterProductionWorkspace(for session: FacilityUserSession) {

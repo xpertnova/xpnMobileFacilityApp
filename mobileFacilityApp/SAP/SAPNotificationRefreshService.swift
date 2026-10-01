@@ -451,11 +451,22 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         do {
             try await verify(token: trimmedToken, client: client)
         } catch {
-            tokenStore?.deleteToken(for: tokenStoreAccountID)
+            if Self.discardsSavedToken(after: error) {
+                tokenStore?.deleteToken(for: tokenStoreAccountID)
+            }
             throw error
         }
 
         return try await synchronize(client: client, progress: progress)
+    }
+
+    /// Only SAP's answer that the token is no longer valid ends it. A lost
+    /// network, a timeout or an unavailable gateway says nothing about the
+    /// token, so it is kept for the next attempt instead of asking for the
+    /// SAP password again. HTTP 401/403 are left to `SAPDataStore`.
+    static func discardsSavedToken(after error: Error) -> Bool {
+        if case SAPReadError.tokenInvalidOrExpired = error { return true }
+        return false
     }
 
     private func synchronize(

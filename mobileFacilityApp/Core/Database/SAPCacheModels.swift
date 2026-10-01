@@ -885,6 +885,9 @@ protocol SAPNotificationOutgoingStore: Sendable {
         i3Documents: [LegacySAPRow],
         meterReadings: [LegacySAPRow]
     ) async throws
+    /// Removes every row `replaceNotificationOutgoingRows` writes, before
+    /// the waiting work is built again for a new TO request.
+    func discardNotificationOutgoingRows() async throws
 }
 
 extension SAPNotificationOutgoingStore {

@@ -45,6 +45,39 @@ final class WorkspaceIsolationTests: XCTestCase {
         XCTAssertEqual(second.offlineWorkStore.activeQueueCount, 0)
     }
 
+    /// Demo has no SAP; its sync button restores the starting demo data.
+    func testDemoSyncRestoresTheStartingData() async throws {
+        let demo = AppRootView.makeDemoWorkspace()
+        _ = try await demo.offlineWorkStore.saveManualCapture(payload: manualCapture)
+        demo.notifications[0].status = .attention
+        XCTAssertTrue(demo.canSync)
+
+        demo.requestSAPRefresh()
+        XCTAssertTrue(demo.isSyncing)
+        XCTAssertFalse(demo.canSync, "a second tap must not start another reset")
+        for _ in 0..<100 where demo.isSyncing {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        await demo.offlineWorkStore.load()
+
+        XCTAssertFalse(demo.isSyncing)
+        XCTAssertEqual(demo.notifications, MockFacilityData.notifications)
+        XCTAssertEqual(demo.offlineWorkStore.activeQueueCount, 0)
+        XCTAssertEqual(demo.selection, .overview)
+    }
+
+    func testSyncWithoutSAPDoesNothingOutsideDemo() async throws {
+        let workspace = AppRootView.makeAuthenticationWorkspace()
+        _ = try await workspace.offlineWorkStore.saveManualCapture(payload: manualCapture)
+
+        XCTAssertFalse(workspace.canSync)
+        workspace.requestSAPRefresh()
+
+        XCTAssertFalse(workspace.isSyncing)
+        XCTAssertEqual(workspace.offlineWorkStore.activeQueueCount, 1)
+    }
+
     func testWorkBehindTheLoginIsNotKeptForTheNextSignIn() async throws {
         let first = AppRootView.makeAuthenticationWorkspace()
         _ = try await first.offlineWorkStore.saveManualCapture(payload: manualCapture)

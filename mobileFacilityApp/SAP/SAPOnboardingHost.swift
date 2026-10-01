@@ -352,6 +352,12 @@ enum SAPOnboardingPersistence {
         defaults.set(landscapeFingerprint, forKey: landscapeFingerprintKey)
     }
 
+    /// Logout: the next start onboards again from the welcome screen
+    /// instead of restoring the previous SAP session.
+    static func forget(defaults: UserDefaults = .standard) {
+        clear(defaults: defaults)
+    }
+
     private static func clear(defaults: UserDefaults) {
         defaults.removeObject(forKey: onboardingIDKey)
         defaults.removeObject(forKey: landscapeFingerprintKey)
