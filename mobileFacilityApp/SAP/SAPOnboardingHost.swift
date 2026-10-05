@@ -109,6 +109,7 @@ final class SAPOnboardingHostController: UIViewController, SAPWKNavigationDelega
             return
         }
         activeLandscapeFingerprint = configuration.landscapeFingerprint
+        SAPOnboardingDiagnostics.enableSDKLogging()
 
         var context = OnboardingContext(presentationDelegate: presentationDelegate)
         onboardingContext = context
@@ -117,12 +118,48 @@ final class SAPOnboardingHostController: UIViewController, SAPWKNavigationDelega
             for: configuration.landscapeFingerprint
         ) {
             context.onboardingID = onboardingID
+            SAPOnboardingDiagnostics.log("Restoring onboarding \(onboardingID).")
             OnboardingFlowController.restore(on: restorationSteps(configuration), context: context) { [weak self] result in
                 self?.handle(result)
             }
         } else {
-            OnboardingFlowController.onboard(on: onboardingSteps(configuration), context: context) { [weak self] result in
-                self?.handle(result)
+            let staleIDs = SAPOnboardingPersistence.staleOnboardingIDs()
+            SAPOnboardingDiagnostics.log("New onboarding \(context.onboardingID); stale onboardings to reset first: \(staleIDs).")
+            resetStaleOnboardings(staleIDs, configuration: configuration) { [weak self] in
+                guard let self else { return }
+                OnboardingFlowController.onboard(on: self.onboardingSteps(configuration), context: context) { [weak self] result in
+                    self?.handle(result)
+                }
+            }
+        }
+    }
+
+    /// A logout forgets the onboarding so the next start shows the welcome
+    /// screen. The SDK keeps that onboarding's secure store and keychain keys
+    /// until it is reset, and a new onboarding then fails in `StoreManagerStep`
+    /// with "Failed to create store!". Each forgotten onboarding is therefore
+    /// reset, one after another, before a new one starts.
+    private func resetStaleOnboardings(
+        _ onboardingIDs: [UUID],
+        configuration: SAPOnboardingConfiguration,
+        completion: @escaping () -> Void
+    ) {
+        guard let onboardingID = onboardingIDs.first else {
+            completion()
+            return
+        }
+        var context = OnboardingContext(presentationDelegate: presentationDelegate)
+        context.onboardingID = onboardingID
+        OnboardingFlowController.reset(on: restorationSteps(configuration), context: context) { [weak self] in
+            DispatchQueue.main.async {
+                SAPOnboardingPersistence.markReset(onboardingID)
+                SAPOnboardingDiagnostics.log("Reset stale onboarding \(onboardingID).")
+                guard let self else { return }
+                self.resetStaleOnboardings(
+                    Array(onboardingIDs.dropFirst()),
+                    configuration: configuration,
+                    completion: completion
+                )
             }
         }
     }
@@ -202,6 +239,9 @@ final class SAPOnboardingHostController: UIViewController, SAPWKNavigationDelega
                     }
                 }
             case .failed(let error):
+                if !isDemoModeRequest(error) {
+                    SAPOnboardingDiagnostics.log("Onboarding failed: \(String(reflecting: error))")
+                }
                 finish(isDemoModeRequest(error) ? .success(.demo) : .failure(error))
             @unknown default:
                 finish(.failure(SAPOnboardingError.unknownResult))
@@ -327,6 +367,8 @@ private struct SAPOnboardingConfiguration {
 enum SAPOnboardingPersistence {
     private static let onboardingIDKey = "userOnboardingID"
     private static let landscapeFingerprintKey = "sapOnboardingLandscapeFingerprint"
+    private static let pendingResetIDsKey = "sapOnboardingPendingResetIDs"
+    private static let secureStorePrefix = "SecureKeyValueStore-"
 
     static func onboardingID(
         for landscapeFingerprint: String,
@@ -353,14 +395,66 @@ enum SAPOnboardingPersistence {
     }
 
     /// Logout: the next start onboards again from the welcome screen
-    /// instead of restoring the previous SAP session.
+    /// instead of restoring the previous SAP session. The forgotten
+    /// onboarding is reset before that new onboarding starts.
     static func forget(defaults: UserDefaults = .standard) {
         clear(defaults: defaults)
     }
 
+    /// Onboardings that were forgotten but not reset yet. Besides the ones a
+    /// logout recorded, this also finds the secure stores left by logouts
+    /// from before that was recorded, which the SDK names by onboarding ID.
+    static func staleOnboardingIDs(
+        defaults: UserDefaults = .standard,
+        fileManager: FileManager = .default
+    ) -> [UUID] {
+        let current = defaults.string(forKey: onboardingIDKey).flatMap(UUID.init(uuidString:))
+        var ids = (defaults.stringArray(forKey: pendingResetIDsKey) ?? []).compactMap(UUID.init(uuidString:))
+        if let directory = try? fileManager.url(
+            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: false
+        ), let files = try? fileManager.contentsOfDirectory(atPath: directory.path) {
+            for file in files where file.hasPrefix(secureStorePrefix) && file.hasSuffix(".db") {
+                let rawID = file.dropFirst(secureStorePrefix.count).dropLast(".db".count)
+                if let id = UUID(uuidString: String(rawID)), !ids.contains(id) {
+                    ids.append(id)
+                }
+            }
+        }
+        return ids.filter { $0 != current }
+    }
+
+    static func markReset(_ onboardingID: UUID, defaults: UserDefaults = .standard) {
+        let remaining = (defaults.stringArray(forKey: pendingResetIDsKey) ?? [])
+            .filter { UUID(uuidString: $0) != onboardingID }
+        defaults.set(remaining, forKey: pendingResetIDsKey)
+    }
+
     private static func clear(defaults: UserDefaults) {
+        if let forgottenID = defaults.string(forKey: onboardingIDKey),
+           UUID(uuidString: forgottenID) != nil {
+            var pending = defaults.stringArray(forKey: pendingResetIDsKey) ?? []
+            if !pending.contains(forgottenID) { pending.append(forgottenID) }
+            defaults.set(pending, forKey: pendingResetIDsKey)
+        }
         defaults.removeObject(forKey: onboardingIDKey)
         defaults.removeObject(forKey: landscapeFingerprintKey)
+    }
+}
+
+/// Debug-only trace of the SAP onboarding: which flow ran, which forgotten
+/// onboardings were reset and the full error of a failed onboarding. It also
+/// turns on the SDK's own debug log, which names the failing store step.
+enum SAPOnboardingDiagnostics {
+    static func enableSDKLogging() {
+        #if DEBUG
+        Logger.root.logLevel = .debug
+        #endif
+    }
+
+    static func log(_ message: @autoclosure () -> String) {
+        #if DEBUG
+        print("[SAP Onboarding Debug] \(message())")
+        #endif
     }
 }
 

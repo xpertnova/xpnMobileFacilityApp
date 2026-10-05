@@ -705,8 +705,10 @@ final class FacilityDemoViewModel {
             shouldPresentSAPRefresh = true
             Task {
                 let success = await sapDataStore.refreshWithSavedToken()
+                // A failed or stopped synchronization may still have sent or
+                // failed local work, so the pending count is read again too.
+                await offlineWorkStore.load()
                 if success {
-                    await offlineWorkStore.load()
                     shouldPresentSAPRefresh = false
                 }
             }

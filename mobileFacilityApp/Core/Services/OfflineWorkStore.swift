@@ -276,10 +276,12 @@ final class OfflineWorkStore {
             items = try await repository.loadWork(for: workerID)
             hasLoaded = true
             state = items.isEmpty ? .empty : .loaded
+            LocalDataDiagnostics.log("Loaded \(items.count) local work items for \(LocalDataDiagnostics.redacted(workerID)) from \(type(of: repository)).")
         } catch is CancellationError {
             return
         } catch {
             state = .failed
+            LocalDataDiagnostics.log("Local work load for \(LocalDataDiagnostics.redacted(workerID)) failed: \(error)")
         }
     }
 

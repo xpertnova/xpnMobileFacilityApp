@@ -69,14 +69,22 @@ actor SQLiteOfflineWorkRepository: OfflineWorkRepository {
     }
 
     func loadWork(for workerID: String) async throws -> [OfflineWorkItem] {
+        try loadWork(where: "worker_id = ?", bindings: [workerID])
+    }
+
+    func loadWorkOfOtherWorkers(excluding workerID: String) async throws -> [OfflineWorkItem] {
+        try loadWork(where: "worker_id <> ?", bindings: [workerID])
+    }
+
+    private func loadWork(where condition: String, bindings: [String]) throws -> [OfflineWorkItem] {
         guard let database else { throw OfflineWorkRepositoryError.unavailable }
         let rows = try Self.query(
             on: database,
             """
             SELECT id, worker_id, type, status, payload_json, created_at, updated_at, sync_error
-            FROM offline_work_items WHERE worker_id = ? ORDER BY updated_at DESC
+            FROM offline_work_items WHERE \(condition) ORDER BY updated_at DESC
             """,
-            bindings: [workerID]
+            bindings: bindings
         ) { statement in
             (
                 Self.string(at: 0, from: statement), Self.string(at: 1, from: statement),
