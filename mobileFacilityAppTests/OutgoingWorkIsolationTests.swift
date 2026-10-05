@@ -70,6 +70,98 @@ final class OutgoingWorkIsolationTests: XCTestCase {
         await cache.abortOutgoing(requestID: "REQUEST")
     }
 
+    func testClosedWorkOfOtherWorkersIsSentWithTheirOwnUser() async throws {
+        let offline = InMemoryOfflineWorkRepository()
+        let cache = try SQLiteSAPDataCacheRepository(
+            databaseURL: directory.appendingPathComponent("cache.sqlite"), workerID: "worker"
+        )
+        let otherCacheURL = directory.appendingPathComponent("other.sqlite")
+        _ = try SQLiteSAPDataCacheRepository(databaseURL: otherCacheURL, workerID: "s70001")
+        let own = Self.meterReading()
+        let others = Self.meterReading(workerID: "s70001", meterID: "000000000018")
+        let othersDraft = Self.meterReading(workerID: "s70001", meterID: "000000000019", status: .draft)
+        try await offline.save(own)
+        try await offline.save(others)
+        try await offline.save(othersDraft)
+        var coordinator = Self.coordinator(offline: offline, cache: cache)
+        coordinator.otherWorkerCache = { workerID in
+            try SQLiteSAPDataCacheRepository(databaseURL: otherCacheURL, workerID: workerID)
+        }
+
+        let hasPendingWork = try await coordinator.hasPendingWork()
+        let batch = try await coordinator.prepare()
+
+        XCTAssertTrue(hasPendingWork)
+        XCTAssertEqual(Set(batch.workItemIDs), [own.id, others.id])
+        let rows = String(describing: batch.meterReadings)
+        XCTAssertTrue(rows.contains("S50828"))
+        XCTAssertTrue(rows.contains("S70001"))
+        let rowCount = try await cache.legacyRowCount(in: "TO_T0286")
+        XCTAssertEqual(rowCount, 2)
+        let saved = Dictionary(uniqueKeysWithValues: try await offline.loadWork(for: "s70001").map { ($0.id, $0) })
+        XCTAssertEqual(saved[others.id]?.status, .synchronizing)
+        XCTAssertEqual(saved[othersDraft.id]?.status, .draft)
+    }
+
+    func testOtherWorkerWithoutCacheFailsAloneAndOwnWorkIsSent() async throws {
+        let offline = InMemoryOfflineWorkRepository()
+        let cache = try SQLiteSAPDataCacheRepository(
+            databaseURL: directory.appendingPathComponent("cache.sqlite"), workerID: "worker"
+        )
+        let own = Self.meterReading()
+        let others = Self.meterReading(workerID: "s70001", meterID: "000000000018")
+        try await offline.save(own)
+        try await offline.save(others)
+        var coordinator = Self.coordinator(offline: offline, cache: cache)
+        coordinator.otherWorkerCache = { _ in throw SAPReadError.serviceUnavailable }
+
+        let batch = try await coordinator.prepare()
+
+        XCTAssertEqual(batch.workItemIDs, [own.id])
+        let saved = try await offline.loadWork(for: "s70001")
+        XCTAssertEqual(saved.first?.status, .failed)
+        XCTAssertEqual(saved.first?.syncError, "Keine SAP-Daten von S70001 auf diesem Gerät.")
+    }
+
+    func testFailedRequestMarksOtherWorkersWorkFailed() async throws {
+        let offline = InMemoryOfflineWorkRepository()
+        let cache = try SQLiteSAPDataCacheRepository(
+            databaseURL: directory.appendingPathComponent("cache.sqlite"), workerID: "worker"
+        )
+        let otherCacheURL = directory.appendingPathComponent("other.sqlite")
+        _ = try SQLiteSAPDataCacheRepository(databaseURL: otherCacheURL, workerID: "s70001")
+        let others = Self.meterReading(workerID: "s70001", meterID: "000000000018")
+        try await offline.save(others)
+        var coordinator = Self.coordinator(offline: offline, cache: cache)
+        coordinator.otherWorkerCache = { workerID in
+            try SQLiteSAPDataCacheRepository(databaseURL: otherCacheURL, workerID: workerID)
+        }
+
+        let batch = try await coordinator.prepare()
+        await coordinator.fail(batch.manifest, error: SAPReadError.serviceUnavailable)
+
+        let saved = try await offline.loadWork(for: "s70001")
+        XCTAssertEqual(saved.first?.status, .failed)
+    }
+
+    func testWithoutOtherWorkerCachesOnlyOwnWorkIsSent() async throws {
+        let offline = InMemoryOfflineWorkRepository()
+        let cache = try SQLiteSAPDataCacheRepository(
+            databaseURL: directory.appendingPathComponent("cache.sqlite"), workerID: "worker"
+        )
+        let others = Self.meterReading(workerID: "s70001", meterID: "000000000018")
+        try await offline.save(others)
+        let coordinator = Self.coordinator(offline: offline, cache: cache)
+
+        let hasPendingWork = try await coordinator.hasPendingWork()
+        let batch = try await coordinator.prepare()
+
+        XCTAssertFalse(hasPendingWork)
+        XCTAssertTrue(batch.workItemIDs.isEmpty)
+        let saved = try await offline.loadWork(for: "s70001")
+        XCTAssertEqual(saved.first?.status, .pendingSynchronization)
+    }
+
     func testReviewUploadErrorsExplainThemselves() {
         XCTAssertEqual(
             SAPNotificationReviewUploadError.missingPhoto("ABC").localizedDescription,
@@ -107,9 +199,13 @@ final class OutgoingWorkIsolationTests: XCTestCase {
         )
     }
 
-    private static func meterReading() -> OfflineWorkItem {
+    private static func meterReading(
+        workerID: String = "worker",
+        meterID: String = "000000000017",
+        status: OfflineWorkStatus = .pendingSynchronization
+    ) -> OfflineWorkItem {
         var meter = MeterReference(
-            id: "000000000017", kind: .electricity, technicalPlaceID: "D1-HAM-40012-02",
+            id: meterID, kind: .electricity, technicalPlaceID: "D1-HAM-40012-02",
             technicalPlaceName: "Hamburg", unit: "KWH", previousValue: 10, previousReadingAt: nil
         )
         meter.client = "100"
@@ -117,7 +213,7 @@ final class OutgoingWorkIsolationTests: XCTestCase {
             meter: meter, value: 12.5, note: "", recordedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
         return OfflineWorkItem(
-            id: UUID(), workerID: "worker", type: .meterReading, status: .pendingSynchronization,
+            id: UUID(), workerID: workerID, type: .meterReading, status: status,
             payload: .meterReading(reading), createdAt: .now, updatedAt: .now, syncError: nil
         )
     }

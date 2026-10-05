@@ -7,6 +7,8 @@ struct FacilityShellView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.facilityLayout) private var layout
     @State private var sapPassword = ""
+    /// The password SAP accepted as initial, offered as the old one.
+    @State private var initialSAPPassword = ""
     @State private var notificationFilterPresentation: NotificationStructuralFilterPresentationState
     @State private var networkReachability = NetworkReachabilityMonitor(startMonitoring: false)
     @State private var hasStartedNetworkMonitoring = false
@@ -186,7 +188,21 @@ struct FacilityShellView: View {
                     .zIndex(5)
             }
 
-            if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
+            if !demo.isDemoMode, demo.shouldPresentSAPRefresh, requiresInitialPasswordChange {
+                Color.black.opacity(0.42)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(3)
+                SAPInitialPasswordDialog(
+                    userName: demo.sapDataStore.synchronizationUserID,
+                    initialOldPassword: initialSAPPassword,
+                    save: changeInitialSAPPassword,
+                    cancel: dismissSAPRefresh
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .zIndex(4)
+            } else if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
                 Color.black.opacity(0.42)
                     .ignoresSafeArea()
                     .transition(.opacity)
@@ -229,6 +245,7 @@ struct FacilityShellView: View {
             actions: [FacilityDialogAction(titleKey: "common.ok", emphasis: .primary) {}]
         )
         .task(id: demo.offlineWorkStore.workerID) {
+            LocalDataDiagnostics.log("Workspace appeared for \(LocalDataDiagnostics.redacted(demo.offlineWorkStore.workerID)), demo: \(demo.isDemoMode).")
             let restoredFilter = NotificationStructuralFilterPreferences.load(
                 workerID: demo.sapDataStore.localWorkerID,
                 isDemoMode: demo.isDemoMode
@@ -737,8 +754,13 @@ struct FacilityShellView: View {
         Task {
             await demo.sapDataStore.refresh(sapPassword: password)
             sapPassword = ""
+            if requiresInitialPasswordChange {
+                initialSAPPassword = password
+            }
+            // A failed or stopped synchronization may still have sent or
+            // failed local work, so the pending count is read again as well.
+            await demo.offlineWorkStore.load()
             if demo.sapDataStore.refreshError == nil {
-                await demo.offlineWorkStore.load()
                 demo.shouldPresentSAPRefresh = false
             }
         }
@@ -747,8 +769,29 @@ struct FacilityShellView: View {
     private func dismissSAPRefresh() {
         guard !demo.sapDataStore.isRefreshing else { return }
         sapPassword = ""
+        initialSAPPassword = ""
         demo.sapDataStore.dismissError()
         demo.shouldPresentSAPRefresh = false
+    }
+
+    /// SAP accepted the password, but as an initial one (`PWINITIAL`).
+    private var requiresInitialPasswordChange: Bool {
+        if case .initialPasswordChangeRequired = demo.sapDataStore.refreshError { return true }
+        return false
+    }
+
+    /// `_afterCallPasswordChange`: the new password's token is kept and the
+    /// synchronization starts again with it once the confirmation was shown.
+    /// Without a token, the password dialog asks for the new password.
+    private func changeInitialSAPPassword(oldPassword: String, newPassword: String) async throws {
+        try await demo.sapDataStore.changeInitialPassword(oldPassword: oldPassword, newPassword: newPassword)
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            initialSAPPassword = ""
+            demo.sapDataStore.dismissError()
+            demo.shouldPresentSAPRefresh = false
+            demo.requestSAPRefresh()
+        }
     }
 
     private func sidebarToggleButton(

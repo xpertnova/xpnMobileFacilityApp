@@ -98,6 +98,16 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         )
     }
 
+    /// Another worker's cache, only when they synchronized on this device
+    /// before. It never creates an empty cache for a worker who has none.
+    static func existingProduction(workerID: String) throws -> SQLiteSAPDataCacheRepository {
+        let url = try productionDatabaseURL(workerID: workerID)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try SQLiteSAPDataCacheRepository(databaseURL: url, workerID: workerID)
+    }
+
     static func productionDatabaseURL(workerID: String) throws -> URL {
         let directory = try FileManager.default.url(
             for: .applicationSupportDirectory,

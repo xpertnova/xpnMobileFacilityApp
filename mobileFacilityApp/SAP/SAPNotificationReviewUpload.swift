@@ -77,6 +77,7 @@ enum SAPNotificationReviewUploadError: LocalizedError {
     case missingSourceNotification(String)
     case missingDocumentMapping(String)
     case missingPhoto(String)
+    case missingWorkerCache(String)
 
     var errorDescription: String? {
         switch self {
@@ -88,6 +89,8 @@ enum SAPNotificationReviewUploadError: LocalizedError {
             "Keine Dokumentklasse für Formular \(formNumber)."
         case let .missingPhoto(id):
             "Foto \(id) nicht gefunden."
+        case let .missingWorkerCache(workerID):
+            "Keine SAP-Daten von \(workerID.uppercased()) auf diesem Gerät."
         }
     }
 }
@@ -346,20 +349,30 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
     let cacheRepository: any SAPDataCacheRepository
     let outgoingStore: any SAPNotificationOutgoingStore
     let photoStore: any PhotoAttachmentStore
+    /// Opens the SAP cache another worker synchronized on this device. With
+    /// it, the closed work every worker left here goes with this request, as
+    /// in the legacy app, whose `copyToTempTbl` sent the whole device-wide
+    /// `TO_*` tables whoever synchronized. Their rows are built from their
+    /// own cache and carry their own user, as the legacy rows written when
+    /// they closed the work did. Without it only this worker's work is sent.
+    var otherWorkerCache: (@Sendable (_ workerID: String) throws -> any SAPDataCacheRepository)?
 
     func hasPendingWork() async throws -> Bool {
-        try await offlineRepository.loadWork(for: workerID).contains(where: \.isReadyForSynchronization)
+        if try await offlineRepository.loadWork(for: workerID).contains(where: \.isReadyForSynchronization) {
+            return true
+        }
+        return await otherWorkersWork().contains(where: \.isReadyForSynchronization)
     }
 
     func prepare() async throws -> SAPNotificationOutgoingBatch {
-        let allWork = try await offlineRepository.loadWork(for: workerID)
-        let pending = allWork.filter(\.isReadyForSynchronization)
+        let ownWork = try await offlineRepository.loadWork(for: workerID)
+        let othersWork = await otherWorkersWork()
+        let pending = (ownWork + othersWork).filter(\.isReadyForSynchronization)
         // The rows of every waiting work item are built again below. Rows left
         // from an earlier attempt of work that was deleted since, or that can
         // no longer be built, must not go with the request.
         try await outgoingStore.discardNotificationOutgoingRows()
         guard !pending.isEmpty else { return .empty }
-        let pendingIDs = Set(pending.map(\.id))
 
         // Work that cannot be built, such as an instruction form closed before
         // its report was kept, a defect saved before it had a category or a
@@ -368,26 +381,20 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         var rejected: [(item: OfflineWorkItem, error: Error)] = []
         do {
             var batches: [SAPNotificationOutgoingBatch] = []
-            for item in pending {
+            let own = try await buildBatches(allWork: ownWork)
+            batches += own.batches
+            rejected += own.rejected
+            let othersByWorker = Dictionary(grouping: othersWork, by: \.workerID)
+            for (otherWorkerID, work) in othersByWorker.sorted(by: { $0.key < $1.key }) {
+                let otherPending = work.filter(\.isReadyForSynchronization)
+                guard !otherPending.isEmpty else { continue }
                 do {
-                    if let batch = try await batch(for: item, allWork: allWork, pendingIDs: pendingIDs) {
-                        batches.append(batch)
-                    }
+                    let coordinator = try coordinator(for: otherWorkerID)
+                    let output = try await coordinator.buildBatches(allWork: work)
+                    batches += output.batches
+                    rejected += output.rejected
                 } catch {
-                    rejected.append((item, error))
-                }
-            }
-            let meterItems = pending.filter { $0.payload.meterReading != nil }
-            if !meterItems.isEmpty {
-                let meterOutput = try SAPMeterReadingUploadBuilder.build(items: meterItems, syncUserID: syncUserID)
-                var meterBatch = SAPNotificationOutgoingBatch(
-                    workItemIDs: meterOutput.workItemIDs, attachmentIDs: [], processIDs: [], equipmentIDs: [],
-                    headers: [], values: [], documents: [], equipment: []
-                )
-                meterBatch.meterReadings = meterOutput.rows
-                batches.append(meterBatch)
-                for item in meterItems where !meterOutput.workItemIDs.contains(item.id) {
-                    rejected.append((item, SAPMeterReadingUploadError.missingTechnicalPlace))
+                    rejected += otherPending.map { ($0, error) }
                 }
             }
             let merged = SAPNotificationOutgoingBatch(
@@ -447,6 +454,69 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
             }
             throw error
         }
+    }
+
+    /// The batches of this worker's waiting work and the work that could not
+    /// be built. `allWork` is all of this worker's local work.
+    private func buildBatches(
+        allWork: [OfflineWorkItem]
+    ) async throws -> (batches: [SAPNotificationOutgoingBatch], rejected: [(item: OfflineWorkItem, error: Error)]) {
+        let pending = allWork.filter(\.isReadyForSynchronization)
+        guard !pending.isEmpty else { return ([], []) }
+        let pendingIDs = Set(pending.map(\.id))
+        var batches: [SAPNotificationOutgoingBatch] = []
+        var rejected: [(item: OfflineWorkItem, error: Error)] = []
+        for item in pending {
+            do {
+                if let batch = try await batch(for: item, allWork: allWork, pendingIDs: pendingIDs) {
+                    batches.append(batch)
+                }
+            } catch {
+                rejected.append((item, error))
+            }
+        }
+        let meterItems = pending.filter { $0.payload.meterReading != nil }
+        if !meterItems.isEmpty {
+            let meterOutput = try SAPMeterReadingUploadBuilder.build(items: meterItems, syncUserID: syncUserID)
+            var meterBatch = SAPNotificationOutgoingBatch(
+                workItemIDs: meterOutput.workItemIDs, attachmentIDs: [], processIDs: [], equipmentIDs: [],
+                headers: [], values: [], documents: [], equipment: []
+            )
+            meterBatch.meterReadings = meterOutput.rows
+            batches.append(meterBatch)
+            for item in meterItems where !meterOutput.workItemIDs.contains(item.id) {
+                rejected.append((item, SAPMeterReadingUploadError.missingTechnicalPlace))
+            }
+        }
+        return (batches, rejected)
+    }
+
+    /// The local work of the other workers. A failure to read it must not
+    /// stop this worker's synchronization, so it reads as none.
+    private func otherWorkersWork() async -> [OfflineWorkItem] {
+        guard otherWorkerCache != nil else { return [] }
+        return (try? await offlineRepository.loadWorkOfOtherWorkers(excluding: workerID)) ?? []
+    }
+
+    /// Builds another worker's rows exactly as their own synchronization
+    /// would: from their cache and with their legacy synchronization user,
+    /// which is the worker ID they logged in with.
+    private func coordinator(for otherWorkerID: String) throws -> SAPNotificationReviewOutgoingCoordinator {
+        guard let otherWorkerCache else { throw SAPReadError.serviceUnavailable }
+        let cache: any SAPDataCacheRepository
+        do {
+            cache = try otherWorkerCache(otherWorkerID)
+        } catch {
+            throw SAPNotificationReviewUploadError.missingWorkerCache(otherWorkerID)
+        }
+        return SAPNotificationReviewOutgoingCoordinator(
+            workerID: otherWorkerID,
+            syncUserID: otherWorkerID,
+            offlineRepository: offlineRepository,
+            cacheRepository: cache,
+            outgoingStore: outgoingStore,
+            photoStore: photoStore
+        )
     }
 
     /// The rows of one waiting work item, or nil for work that goes with the
@@ -604,7 +674,7 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
 
     func fail(_ batch: SAPOutgoingBatchManifest, error: Error) async {
         guard !batch.workItemIDs.isEmpty else { return }
-        let work = (try? await offlineRepository.loadWork(for: workerID)) ?? []
+        let work = ((try? await offlineRepository.loadWork(for: workerID)) ?? []) + (await otherWorkersWork())
         // A cancelled synchronization is not a failure of the work itself.
         let isCancelled = error is CancellationError
         for item in work where batch.workItemIDs.contains(item.id) {

@@ -14,6 +14,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
 
     private let repository: any SAPDataCacheRepository
     private let refreshService: (any SAPNotificationRefreshService)?
+    private let passwordService: (any SAPSyncPasswordService)?
     private let tokenStore: (any SAPSyncTokenStore)?
     private let notificationPageSize = 40
     let localWorkerID: String
@@ -58,6 +59,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     init(
         repository: any SAPDataCacheRepository,
         refreshService: (any SAPNotificationRefreshService)?,
+        passwordService: (any SAPSyncPasswordService)? = nil,
         tokenStore: (any SAPSyncTokenStore)? = nil,
         localWorkerID: String,
         synchronizationUserID: String? = nil,
@@ -65,6 +67,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     ) {
         self.repository = repository
         self.refreshService = refreshService
+        self.passwordService = passwordService
         self.tokenStore = tokenStore
         self.localWorkerID = localWorkerID
         self.synchronizationUserID = synchronizationUserID ?? localWorkerID
@@ -213,12 +216,18 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     }
 
     func loadCachedData() async {
-        guard !cacheLoadIsInFlight, !initialCacheLoadCompleted else { return }
+        let worker = LocalDataDiagnostics.redacted(localWorkerID)
+        guard !cacheLoadIsInFlight, !initialCacheLoadCompleted else {
+            LocalDataDiagnostics.log("SAP cache load for \(worker) skipped: in flight \(cacheLoadIsInFlight), completed \(initialCacheLoadCompleted).")
+            return
+        }
         cacheLoadIsInFlight = true
         defer { cacheLoadIsInFlight = false }
         setCacheLoadState(.loadingCache)
+        LocalDataDiagnostics.log("SAP cache load for \(worker) started with \(type(of: repository)).")
         do {
             cachedData = try await repository.load(for: localWorkerID)
+            LocalDataDiagnostics.log("SAP cache for \(worker) has metadata: \(cachedData.metadata != nil), last refresh: \(String(describing: cachedData.metadata?.lastSuccessfulRefreshAt)).")
             guard cachedData.metadata != nil else {
                 resetNotificationPage()
                 // No cache yet: zero notifications is the actual answer.
@@ -232,9 +241,12 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
             try await loadFirstNotificationPage()
             setCacheLoadState(.ready)
             initialCacheLoadCompleted = true
+            LocalDataDiagnostics.log("SAP cache load for \(worker) finished: \(totalNotificationCount) notifications, \(notifications.count) on the first page, state \(state).")
         } catch is CancellationError {
+            LocalDataDiagnostics.log("SAP cache load for \(worker) cancelled.")
             return
         } catch {
+            LocalDataDiagnostics.log("SAP cache load for \(worker) failed: \(error); refresh running: \(activeRefreshID != nil).")
             guard activeRefreshID == nil else { return }
             refreshError = .serviceUnavailable
             state = .failed
@@ -439,6 +451,25 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
 
     func deleteSavedToken() {
         tokenStore?.deleteToken(for: tokenStoreAccountID)
+    }
+
+    /// Production only; the demo and the login backdrop never reach SAP.
+    var isPasswordServiceAvailable: Bool { passwordService != nil }
+
+    /// Replaces an initial synchronization password. Like the legacy
+    /// `_afterCallPasswordChange`, the token SAP returns is kept, so the
+    /// synchronization that follows needs no password. Returns whether a
+    /// token was kept.
+    @discardableResult
+    func changeInitialPassword(oldPassword: String, newPassword: String) async throws -> Bool {
+        guard let passwordService else { throw SAPReadError.authenticatedConnectionUnavailable }
+        let token = try await passwordService.changeInitialPassword(
+            oldPassword: oldPassword,
+            newPassword: newPassword
+        )
+        guard let token, !token.isEmpty, let tokenStore else { return false }
+        try tokenStore.save(token: token, for: tokenStoreAccountID)
+        return true
     }
 
     func dismissError() {
