@@ -240,6 +240,16 @@ struct TechnicalPlacesView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
+                if hint.structureIndicators.contains(TechnicalPlaceStructure.indicator) {
+                    Text(verbatim: String(
+                        format: String(localized: "places.namingSchema.levels", bundle: .appLanguage),
+                        TechnicalPlaceStructureLevel.allCases.map {
+                            String(localized: String.LocalizationValue(stringLiteral: $0.nameKey), bundle: .appLanguage)
+                        }.joined(separator: " – ")
+                    ))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
                 Text(verbatim: String(
                     format: String(localized: "places.namingSchema.example.label", bundle: .appLanguage),
                     hint.exampleID
@@ -417,7 +427,7 @@ private struct TechnicalObjectRow: View {
                             Text(row.node.locationCode)
                                 .font(.subheadline.monospaced().weight(.semibold))
                                 .foregroundStyle(.tertiary)
-                        } else if !row.node.isSynthetic {
+                        } else if !row.node.isSynthetic || (row.node.structureLevel != nil && displayName != row.node.reference.objectID) {
                             Text(row.node.reference.objectID)
                                 .font(.subheadline.monospaced().weight(.semibold))
                                 .foregroundStyle(.tertiary)
@@ -450,14 +460,16 @@ private struct TechnicalObjectRow: View {
 
     /// Which level of the hierarchy this row is drawn as.
     ///
-    /// SAP's own `LEVELID` is not dependable across landscapes (it is empty in
-    /// a lot of cached rows), so the level comes from the row's depth among the
-    /// real objects, with the kind and the cost group taking precedence — the
-    /// same rule the design reference applies to its own tree.
+    /// An RE-FX place is drawn as the level its identifier names. SAP's own
+    /// `LEVELID` is not dependable across landscapes (it is empty in a lot of
+    /// cached rows), so any other place takes its level from the row's depth
+    /// among the real objects, with the kind and the cost group taking
+    /// precedence — the same rule the design reference applies to its own tree.
     private var level: TechnicalPlaceLevel {
         if row.node.reference.kind == .equipment { return .equipment }
         if row.node.isUnassignedGroup { return .unassigned }
         if row.node.isCityGroup { return .site }
+        if let structureLevel = row.node.structureLevel { return TechnicalPlaceLevel(structureLevel) }
         if row.node.dinGroup != nil { return row.node.hasChildren ? .costGroup : .system }
         switch row.structuralDepth {
         case 0: return .company
@@ -468,13 +480,30 @@ private struct TechnicalObjectRow: View {
     }
 }
 
-/// The hierarchy levels of the design reference, with the emoji, tile fill and
-/// name weight it gives each one.
+/// The hierarchy levels of the design reference and of the RE-FX scheme, with
+/// the emoji, tile fill and name weight each one is drawn with.
 private enum TechnicalPlaceLevel {
+    case country, city, businessEntity, building, finalObject
     case company, site, object, area, costGroup, system, equipment, unassigned
+
+    init(_ level: TechnicalPlaceStructureLevel) {
+        switch level {
+        case .country: self = .country
+        case .city: self = .city
+        case .businessEntity: self = .businessEntity
+        case .building: self = .building
+        case .costGroup: self = .costGroup
+        case .finalObject: self = .finalObject
+        }
+    }
 
     var emoji: String {
         switch self {
+        case .country: "🌍"
+        case .city: "🏙️"
+        case .businessEntity: "📍"
+        case .building: "🏢"
+        case .finalObject: "⚙️"
         case .company: "🏢"
         case .site: "📍"
         case .object: "🏗️"
@@ -488,9 +517,10 @@ private enum TechnicalPlaceLevel {
 
     var tile: Color {
         switch self {
-        case .system: FacilityTheme.accentSoft
+        case .system, .finalObject: FacilityTheme.accentSoft
         case .costGroup, .equipment: FacilityTheme.purpleSoft
-        case .company, .site, .object, .area, .unassigned: FacilityTheme.neutralSoft
+        case .country, .city, .businessEntity, .building,
+             .company, .site, .object, .area, .unassigned: FacilityTheme.neutralSoft
         }
     }
 
@@ -498,9 +528,9 @@ private enum TechnicalPlaceLevel {
     /// cost groups, systems and equipment at regular weight.
     var nameWeight: Font.Weight {
         switch self {
-        case .company, .site, .object: .bold
+        case .country, .city, .businessEntity, .building, .company, .site, .object: .bold
         case .area, .unassigned: .semibold
-        case .costGroup, .system, .equipment: .regular
+        case .costGroup, .system, .finalObject, .equipment: .regular
         }
     }
 
@@ -508,6 +538,11 @@ private enum TechnicalPlaceLevel {
     /// by its Unicode name.
     var nameKey: String {
         switch self {
+        case .country: "places.level.country"
+        case .city: "places.level.city"
+        case .businessEntity: "places.level.businessEntity"
+        case .building: "places.level.building"
+        case .finalObject: "places.level.object"
         case .company: "places.level.company"
         case .site: "places.level.site"
         case .object: "places.level.object"
@@ -616,7 +651,8 @@ private struct TechnicalObjectDetailView: View {
     private var identifierSegments: [TechnicalObjectIdentifierSegment] {
         TechnicalObjectIdentifierSegment.segments(
             of: detail.object.reference.objectID,
-            breadcrumbs: breadcrumbs
+            breadcrumbs: breadcrumbs,
+            isStructured: detail.object.structureLevel != nil
         )
     }
 
@@ -636,6 +672,11 @@ private struct TechnicalObjectDetailView: View {
                         Text(segment.value)
                             .font(.subheadline.monospaced().weight(.bold))
                             .foregroundStyle(FacilityTheme.ink)
+                        if let level = segment.level {
+                            Text(LocalizedStringKey(level.nameKey))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                         if let objectName = segment.objectName {
                             Text(verbatim: "· \(objectName)")
                                 .font(.subheadline)
@@ -677,8 +718,11 @@ private struct TechnicalObjectDetailView: View {
         switch detail { case let .functionalLocation(v): v.breadcrumbs; case let .equipment(v): v.breadcrumbs }
     }
     private var breadcrumbLabels: [String] {
+        let path = breadcrumbs.map { model.displayName(for: $0) }
+        // An RE-FX path already starts at its country and city.
+        guard !breadcrumbs.contains(where: { $0.structureLevel == .city }) else { return path }
         let city = detail.object.cityAndLocationDisplay
-        return (city.isEmpty ? [] : [city]) + breadcrumbs.map(\.displayName)
+        return (city.isEmpty ? [] : [city]) + path
     }
     private var notifications: [SAPNotificationSummary] {
         switch detail { case let .functionalLocation(v): v.linkedNotifications; case let .equipment(v): v.linkedNotifications }

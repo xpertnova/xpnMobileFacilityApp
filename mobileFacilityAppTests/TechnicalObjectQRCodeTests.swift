@@ -106,6 +106,17 @@ final class TechnicalObjectQRCodeTests: XCTestCase {
         XCTAssertEqual(segments.map(\.objectName), ["Main site", "Office building", nil, nil])
     }
 
+    func testREFXIdentifierSegmentsNameTheirLevels() {
+        let segments = TechnicalObjectIdentifierSegment.segments(
+            of: "DE-ESS-10004-06-330-002",
+            breadcrumbs: [.structurePlaceholder("DE", cityName: ""), .structurePlaceholder("DE-ESS", cityName: "Essen")],
+            isStructured: true
+        )
+        XCTAssertEqual(segments.map(\.level), [.country, .city, .businessEntity, .building, .costGroup, .finalObject])
+        // A placeholder without a name of its own does not repeat its code.
+        XCTAssertEqual(segments.prefix(2).map(\.objectName), [nil, "Essen"])
+    }
+
     func testIdentifierWithoutSeparatorsHasNoSegmentsToShow() {
         XCTAssertTrue(TechnicalObjectIdentifierSegment.segments(of: "EQ100040", breadcrumbs: []).isEmpty)
     }

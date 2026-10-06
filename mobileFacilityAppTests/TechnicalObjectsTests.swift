@@ -442,6 +442,136 @@ final class TechnicalObjectsTests: XCTestCase {
         XCTAssertEqual(model.visibleRows[1].depth, 1)
     }
 
+    /// The customer's RE-FX scheme, `XX-XXX-XXXXX-XX-XXX-XXX`, decides the
+    /// tree. `TPLMA` points at country and city places SAP never sends, and
+    /// `HEQUI` at superior equipment that is not cached either.
+    func testREFXPlacesHangUnderTheirIdentifierPrefix() throws {
+        let rows: [[String: Any]] = [
+            ["STRNO": "DE-ESS-10004", "TPLNR": "I-3", "TPLMA": "I-CITY", "TPLKZ": "RE-FX", "PLTXT": "Essen, Lanfermannfähre 30", "TPLND": "DE", "TPORT": "ESS", "CITY1": "Essen"],
+            ["STRNO": "DE-ESS-10004-06", "TPLNR": "I-4", "TPLMA": "I-3", "TPLKZ": "RE-FX", "PLTXT": "GB06"],
+            ["STRNO": "DE-ESS-10004-06-330", "TPLNR": "I-5", "TPLMA": "I-4", "TPLKZ": "RE-FX", "PLTXT": "330 Außenwände"],
+            ["STRNO": "DE-ESS-10004-06-330-410", "TPLNR": "I-6", "TPLMA": "I-5", "TPLKZ": "RE-FX", "PLTXT": "Tor"]
+        ]
+        let aliases = SAPTechnicalObjectMapper.functionalLocationAliases(from: rows)
+        let equipment = try [
+            XCTUnwrap(SAPTechnicalObjectMapper.equipment(from: [
+                "EQUNR": "EQ-1", "STRNO": "DE-ESS-10004-06-330-410", "HEQUI": "EQ-NOT-CACHED", "EQKTX": "Antrieb"
+            ])),
+            XCTUnwrap(SAPTechnicalObjectMapper.equipment(from: [
+                "EQUNR": "EQ-2", "STRNO": "DE-ESS-10004-07-340-002", "EQKTX": "Feststellanlage"
+            ]))
+        ]
+        let objects = TechnicalObjectHierarchyNormalizer.normalize(SAPTechnicalObjectMapper.resolveRelationships(
+            in: rows.compactMap(SAPTechnicalObjectMapper.functionalLocation(from:)) + equipment,
+            functionalLocationAliases: aliases
+        ))
+        let byID = Dictionary(uniqueKeysWithValues: objects.map { ($0.reference.objectID, $0) })
+        func parent(_ id: String) -> String? { byID[id]?.parent?.objectID }
+
+        XCTAssertFalse(objects.contains(where: \.isUnassigned))
+        XCTAssertEqual(objects.filter { $0.parent == nil }.map(\.reference.objectID), ["DE"])
+        XCTAssertEqual(parent("DE-ESS"), "DE")
+        XCTAssertEqual(parent("DE-ESS-10004"), "DE-ESS")
+        XCTAssertEqual(parent("DE-ESS-10004-06-330-410"), "DE-ESS-10004-06-330")
+        XCTAssertEqual(parent("EQ-1"), "DE-ESS-10004-06-330-410")
+        // A place the cache misses is still placed by its identifier.
+        XCTAssertEqual(parent("EQ-2"), "DE-ESS-10004-07-340-002")
+        XCTAssertEqual(parent("DE-ESS-10004-07-340-002"), "DE-ESS-10004-07-340")
+        XCTAssertEqual(parent("DE-ESS-10004-07"), "DE-ESS-10004")
+
+        XCTAssertEqual(byID["DE"]?.structureLevel, .country)
+        XCTAssertEqual(byID["DE-ESS"]?.structureLevel, .city)
+        XCTAssertEqual(byID["DE-ESS"]?.displayName, "Essen")
+        XCTAssertEqual(byID["DE-ESS-10004"]?.structureLevel, .businessEntity)
+        XCTAssertEqual(byID["DE-ESS-10004-06"]?.structureLevel, .building)
+        XCTAssertEqual(byID["DE-ESS-10004-06-330"]?.structureLevel, .costGroup)
+        XCTAssertEqual(byID["DE-ESS-10004-06-330-410"]?.structureLevel, .finalObject)
+        XCTAssertEqual(byID["DE"]?.isSynthetic, true)
+        XCTAssertEqual(byID["DE-ESS-10004-07-340"]?.isSynthetic, true)
+        XCTAssertEqual(byID["DE-ESS-10004"]?.isSynthetic, false)
+        // The cost group is the fifth segment, not the final object's number.
+        XCTAssertEqual(byID["DE-ESS-10004-06-330-410"]?.dinGroup, "330")
+        XCTAssertEqual(byID["DE-ESS-10004-07-340"]?.dinGroup, "340")
+        XCTAssertNil(byID["EQ-1"]?.structureLevel)
+
+        let renormalized = TechnicalObjectHierarchyNormalizer.normalize(objects)
+        XCTAssertEqual(
+            Dictionary(uniqueKeysWithValues: renormalized.map { ($0.reference, $0.parent) }),
+            Dictionary(uniqueKeysWithValues: objects.map { ($0.reference, $0.parent) })
+        )
+    }
+
+    /// `D1`, `D2`, `D8`, `DR`, `DW` are company-specific keys for Germany
+    /// (SAP side, 2026-10-05); a real ISO code such as `DK` stays its country.
+    func testGermanCountryKeysShareOneCountry() throws {
+        for code in ["DE", "D1", "D2", "D8", "DR", "DW"] {
+            XCTAssertEqual(TechnicalPlaceStructure.country(of: code), "DE", code)
+        }
+        XCTAssertEqual(TechnicalPlaceStructure.country(of: "DK"), "DK")
+        XCTAssertEqual(TechnicalPlaceStructure.country(of: "AT"), "AT")
+
+        let places = try ["DE-ESS-10004", "D1-HAM-40012", "DR-MUL-11166"].map { id in
+            try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: ["STRNO": id, "TPLKZ": "RE-FX"]))
+        }
+        let objects = TechnicalObjectHierarchyNormalizer.normalize(places)
+        XCTAssertEqual(objects.filter { $0.parent == nil }.map(\.reference.objectID), ["DE"])
+        XCTAssertEqual(objects.first { $0.reference.objectID == "D1-HAM" }?.parent?.objectID, "DE")
+        XCTAssertEqual(objects.first { $0.reference.objectID == "DR-MUL" }?.parent?.objectID, "DE")
+        XCTAssertEqual(objects.first { $0.reference.objectID == "D1-HAM-40012" }?.parent?.objectID, "D1-HAM")
+        // SAP sends no city name here, so the city is titled by its code.
+        XCTAssertEqual(objects.first { $0.reference.objectID == "D1-HAM" }?.displayName, "HAM")
+        // The place keeps SAP's own key for the creation forms.
+        XCTAssertEqual(objects.first { $0.reference.objectID == "D1-HAM-40012" }?.countryCode, "D1")
+    }
+
+    func testPlacesOfOtherStructureIndicatorsKeepTheirSAPParent() throws {
+        let rows: [[String: Any]] = [
+            ["STRNO": "SITE", "TPLNR": "I-1", "TPLMA": "", "TPLKZ": "TPL", "PLTXT": "Site"],
+            ["STRNO": "SITE-AREA", "TPLNR": "I-2", "TPLMA": "I-1", "TPLKZ": "TPL", "PLTXT": "Area"]
+        ]
+        let objects = TechnicalObjectHierarchyNormalizer.normalize(SAPTechnicalObjectMapper.resolveRelationships(
+            in: rows.compactMap(SAPTechnicalObjectMapper.functionalLocation(from:)),
+            functionalLocationAliases: SAPTechnicalObjectMapper.functionalLocationAliases(from: rows)
+        ))
+        XCTAssertEqual(objects.count, 2)
+        XCTAssertFalse(objects.contains(where: \.isSynthetic))
+        XCTAssertNil(objects.first { $0.reference.objectID == "SITE" }?.parent)
+        XCTAssertNil(objects.first { $0.reference.objectID == "SITE-AREA" }?.structureLevel)
+    }
+
+    func testREFXPlaceholdersAreNotCountedAsTechnicalObjects() async throws {
+        let place = try XCTUnwrap(SAPTechnicalObjectMapper.functionalLocation(from: [
+            "STRNO": "DE-ESS-10004-06-330-002", "TPLKZ": "RE-FX", "PLTXT": "Tor"
+        ]))
+        let seed = cached(objects: TechnicalObjectHierarchyNormalizer.normalize([place]))
+        XCTAssertEqual(seed.technicalObjects.count, 6)
+        let repository = InMemorySAPDataCacheRepository(seed: seed, workerID: "w1")
+        let count = try await repository.technicalObjectCount(for: "w1", kind: .functionalLocation)
+        let dinCounts = try await repository.loadTechnicalObjectDINCounts(for: "w1")
+        XCTAssertEqual(count, 1)
+        XCTAssertEqual(dinCounts, [.init(code: "330", count: 1)])
+    }
+
+    @MainActor
+    func testTechnicalPlacesViewModelOpensREFXCountriesOnTheirCities() async throws {
+        let place = node("DE-ESS-10004", kind: .functionalLocation, city: "Essen", country: "DE", location: "ESS", structure: "RE-FX")
+        let seed = cached(objects: TechnicalObjectHierarchyNormalizer.normalize([place]))
+        let model = TechnicalPlacesViewModel(
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(seed: seed, workerID: "w1"),
+                refreshService: nil,
+                localWorkerID: "w1"
+            ),
+            offlineWorkStore: OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: "w1")
+        )
+
+        await model.load()
+
+        XCTAssertEqual(model.visibleRows.map(\.node.reference.objectID), ["DE", "DE-ESS"])
+        XCTAssertFalse(model.visibleRows.contains { $0.node.isCityGroup })
+        XCTAssertFalse(model.canOpenDetail(model.visibleRows[1].node))
+    }
+
     func testOldNormalizedCacheIsNotImportedOrModified() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("sqlite")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -500,12 +630,13 @@ final class TechnicalObjectsTests: XCTestCase {
         name: String? = nil,
         city: String = "",
         country: String = "",
-        location: String = ""
+        location: String = "",
+        structure: String = ""
     ) -> TechnicalObjectNode {
         TechnicalObjectNode(reference: .init(kind: kind, objectID: id), parent: parent, client: "100", name: name ?? id,
                             functionalLocationID: kind == .functionalLocation ? id : (parent?.objectID ?? ""),
                             countryCode: country, locationCode: location, cityName: city,
-                            hierarchyLevel: "", category: "", structureIndicator: "",
+                            hierarchyLevel: "", category: "", structureIndicator: structure,
                             equipmentCategory: "", equipmentType: "", manufacturer: "", modelType: "", serialNumber: "", systemStatus: "", userStatus: "", dinGroup: din,
                             sourceFingerprint: TechnicalObjectFingerprint.make([id]), directChildCount: 0, directEquipmentCount: 0, isUnassigned: false, isSynthetic: false)
     }
