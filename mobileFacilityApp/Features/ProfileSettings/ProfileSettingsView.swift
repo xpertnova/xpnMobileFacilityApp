@@ -3,21 +3,26 @@ import SwiftUI
 struct ProfileSettingsView: View {
     let backDestination: AppDestination?
     let onBack: (() -> Void)?
+    /// `nil` hides the RFID reader settings (previews).
+    let rfidReader: RFIDReaderService?
 
     @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.resolved(from: nil).rawValue
 
     init(
         backDestination: AppDestination? = nil,
-        onBack: (() -> Void)? = nil
+        onBack: (() -> Void)? = nil,
+        rfidReader: RFIDReaderService? = nil
     ) {
         self.backDestination = backDestination
         self.onBack = onBack
+        self.rfidReader = rfidReader
     }
 
     init(demo: FacilityDemoViewModel) {
         self.init(
             backDestination: demo.profileSettingsReturnDestination,
-            onBack: { demo.closeProfileSettings() }
+            onBack: { demo.closeProfileSettings() },
+            rfidReader: demo.rfidReader
         )
     }
 
@@ -26,6 +31,9 @@ struct ProfileSettingsView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header
                 languageCard
+                if let rfidReader {
+                    RFIDReaderSettingsSection(reader: rfidReader)
+                }
             }
             .facilityPageContent()
         }
@@ -111,7 +119,8 @@ struct ProfileSettingsView: View {
 #Preview {
     ProfileSettingsView(
         backDestination: .notifications,
-        onBack: {}
+        onBack: {},
+        rfidReader: .demo()
     )
     .frame(width: 900, height: 600)
 }

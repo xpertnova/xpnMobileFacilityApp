@@ -15,6 +15,9 @@ Release-xcframework/
 # SAP landscape configuration is local and can contain tenant-specific values.
 .local-sap-config-backups/
 
+# Socket Mobile CaptureSDK credentials are issued per bundle ID (see docs/RFID.md).
+mobileFacilityApp/SocketMobileCapture.plist
+
 ## Obj-C/Swift specific
 *.hmap
 

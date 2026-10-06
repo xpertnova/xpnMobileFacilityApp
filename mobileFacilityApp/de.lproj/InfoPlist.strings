@@ -1,1 +1,2 @@
 "NSCameraUsageDescription" = "QR-Codes scannen und Fotos zur Dokumentation von Wartungsarbeiten und Störungsmeldungen aufnehmen.";
+"NSBluetoothAlwaysUsageDescription" = "Mit dem RFID-Scanner verbinden, um RFID-Tags an technischen Objekten zu lesen.";

@@ -776,6 +776,27 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return uniqueMatches.values.sorted { ($0.startDate, $0.id) < ($1.startDate, $1.id) }
     }
 
+    /// Unlike a QR code, Cordova looked a tag up without the S/4 remapping
+    /// of `FROM_T0213`: the `FROM_T0212` row already names the current object.
+    func resolveRFIDTag(_ tag: String, for localWorkerID: String) async throws -> RFIDTagResolution? {
+        try validateWorker(localWorkerID)
+        guard let database else { throw QRCodeResolutionError.cacheUnavailable }
+        let assignments = try Self.rows(in: "FROM_T0212", on: database).map {
+            RFIDTagAssignment(
+                tag: Self.string("RFIDTAG", in: $0),
+                functionalLocationID: Self.string("STRNO", in: $0),
+                equipmentID: Self.string("EQUNR", in: $0),
+                controlKey: Self.string("STEUS", in: $0)
+            )
+        }
+        guard RFIDTagLookup.assignment(for: tag, in: assignments) != nil else { return nil }
+        return RFIDTagLookup.resolve(
+            tag,
+            assignments: assignments,
+            notifications: try Self.activeNotifications(on: database)
+        )
+    }
+
     func loadTechnicalObjectRoots(
         for localWorkerID: String,
         limit: Int,

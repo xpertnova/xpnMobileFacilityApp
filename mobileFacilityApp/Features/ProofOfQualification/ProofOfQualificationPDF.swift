@@ -369,9 +369,12 @@ struct ProofOfQualificationPDFRenderer: Sendable {
 
   /// Horizontal option layout used when every option fits in the answer column.
   private func answerOptionsRowWidth(_ options: [SAPBriefingAnswerOption]) -> CGFloat {
-    options.reduce(12.0) { width, opt in
-      width + 11.0 + 5.0 + ceil(textWidth(opt.title, font: Layout.bodyFont)) + 4 + 12.0
+    var width: CGFloat = 12
+    for opt in options {
+      let titleWidth: CGFloat = ceil(textWidth(opt.title, font: Layout.bodyFont))
+      width += 11 + 5 + titleWidth + 4 + 12
     }
+    return width
   }
 
   private func answerOptionsStacked(_ options: [SAPBriefingAnswerOption]) -> Bool {

@@ -15239,6 +15239,379 @@
         }
       }
     },
+    "profile.settings.rfid.add.hint" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte den Scanner ein und halte ihn in die Nähe des iPads."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch the scanner on and keep it near the iPad."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.add.limit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es kann nur ein Scanner verbunden sein. Entferne den verbundenen Scanner, um einen anderen zu koppeln."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Only one scanner can be connected. Remove the connected scanner to pair another one."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.add.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanner hinzufügen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add scanner"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.battery %@" : {
+
+    },
+    "profile.settings.rfid.battery %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akku %lld %%"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Battery %lld %%"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.bluetoothDenied" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Bluetooth-Zugriff ist nicht erlaubt. Erlaube ihn in den Einstellungen, um RFID-Scanner zu verwenden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth access is not allowed. Allow it in Settings to use RFID scanners."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.bluetoothOff" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth ist ausgeschaltet. Schalte es im Kontrollzentrum oder in den Einstellungen ein."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth is off. Turn it on in Control Center or Settings."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.connect.action" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.connected.empty" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Scanner verbunden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No scanner connected."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.connected.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbundener Scanner"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected scanner"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.description" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einen Socket-Mobile-Scanner koppeln. Der gekoppelte Scanner verbindet sich automatisch wieder, sobald er in der Nähe eingeschaltet wird."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pair a Socket Mobile scanner. The paired scanner reconnects automatically when it is switched on nearby."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.found.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gefundene Scanner"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Found scanners"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.remove.action" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.remove.confirm" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entfernen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.remove.failed" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Scanner konnte nicht entfernt werden. Versuche es erneut oder entkopple ihn in den Bluetooth-Einstellungen des iPads."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The scanner could not be removed. Try again or unpair it in the iPad's Bluetooth settings."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.remove.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Scanner wird entkoppelt und verbindet sich nicht mehr automatisch. Du kannst ihn jederzeit erneut koppeln."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The scanner is unpaired and no longer connects automatically. You can pair it again at any time."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.remove.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanner entfernen?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove scanner?"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.search.action" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID-Scanner suchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search RFID scanner"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.search.running" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche läuft …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching …"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.setUp.action" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID-Scanner einrichten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Set up RFID scanners"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.setUp.message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die App benötigt Bluetooth-Zugriff, um RFID-Scanner zu finden und zu verbinden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The app needs Bluetooth access to find and connect RFID scanners."
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.title" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID-Scanner"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID scanners"
+          }
+        }
+      }
+    },
+    "profile.settings.rfid.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese App-Version kann sich noch nicht mit RFID-Scannern verbinden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This app version cannot connect to RFID scanners yet."
+          }
+        }
+      }
+    },
     "profile.settings.subtitle" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -18218,41 +18591,91 @@
         }
       }
     },
-    "scan.devices.printer.subtitle" : {
+    "scan.devices.disconnected" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bluetooth · verbunden"
+            "value" : "nicht verbunden"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bluetooth · connected"
+            "value" : "not connected"
+          }
+        }
+      }
+    },
+    "scan.devices.manage" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID-Scanner verwalten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manage RFID scanners"
+          }
+        }
+      }
+    },
+    "scan.devices.notAvailable.subtitle" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In dieser App-Version nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not available in this app version"
           }
         }
       }
     },
     "scan.devices.printer.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zebra ZQ320 · QR-Labeldrucker"
+            "value" : "QR-Etikettendrucker"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zebra ZQ320 · QR label printer"
+            "value" : "QR label printer"
+          }
+        }
+      }
+    },
+    "scan.devices.reading" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "liest"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "reading"
           }
         }
       }
     },
     "scan.devices.ready" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18268,36 +18691,113 @@
         }
       }
     },
-    "scan.devices.rfid.subtitle" : {
-      "extractionState" : "stale",
+    "scan.devices.rfid.bluetoothDenied" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bluetooth · verbunden"
+            "value" : "Bluetooth-Zugriff nicht erlaubt"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bluetooth · connected"
+            "value" : "Bluetooth access not allowed"
+          }
+        }
+      }
+    },
+    "scan.devices.rfid.bluetoothOff" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth ist ausgeschaltet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth is off"
+          }
+        }
+      }
+    },
+    "scan.devices.rfid.connectedBattery %@ %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "scan.devices.rfid.connectedBattery %1$@ %2$@"
+          }
+        }
+      }
+    },
+    "scan.devices.rfid.connectedBattery %@ %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · Akku %2$lld %%"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · battery %2$lld %%"
+          }
+        }
+      }
+    },
+    "scan.devices.rfid.connectedCount %@" : {
+
+    },
+    "scan.devices.rfid.connectedCount %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Scanner verbunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld scanners connected"
+          }
+        }
+      }
+    },
+    "scan.devices.rfid.searching" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht verbunden · Scanner einschalten oder koppeln"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not connected · switch on or pair a scanner"
           }
         }
       }
     },
     "scan.devices.rfid.title" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "RFID-Scanner TSL 1128"
+            "value" : "RFID-Scanner (Socket Mobile)"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "RFID scanner TSL 1128"
+            "value" : "RFID scanner (Socket Mobile)"
           }
         }
       }
@@ -18314,6 +18814,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mobile devices"
+          }
+        }
+      }
+    },
+    "scan.devices.unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "unavailable"
+          }
+        }
+      }
+    },
+    "scan.error.bluetoothDenied.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube den Bluetooth-Zugriff in den Einstellungen, um den RFID-Scanner zu verwenden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Allow Bluetooth access in Settings to use the RFID scanner."
+          }
+        }
+      }
+    },
+    "scan.error.bluetoothOff.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte Bluetooth im Kontrollzentrum oder in den Einstellungen ein und versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Turn on Bluetooth in Control Center or Settings, then try again."
           }
         }
       }
@@ -18450,6 +19001,91 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No open maintenance notification was found for this QR code."
+          }
+        }
+      }
+    },
+    "scan.error.rfidNoMatches.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diesen RFID-Tag wurde keine offene Wartungsmeldung gefunden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No open maintenance notification was found for this RFID tag."
+          }
+        }
+      }
+    },
+    "scan.error.rfidNotConnected.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte den RFID-Scanner ein oder kopple ihn unter „RFID-Scanner verwalten“. Versuche es dann erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Switch on the RFID scanner or pair it under “Manage RFID scanners”, then try again."
+          }
+        }
+      }
+    },
+    "scan.error.rfidReader.title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID-Scanner nicht bereit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID scanner not ready"
+          }
+        }
+      }
+    },
+    "scan.error.rfidTagUnknown.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diesem RFID-Tag ist in den synchronisierten Daten kein technisches Objekt zugeordnet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No technical object is linked to this RFID tag in the synchronized data."
+          }
+        }
+      }
+    },
+    "scan.error.rfidUnavailable.message" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese App-Version kann sich noch nicht mit einem RFID-Scanner verbinden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This app version cannot connect to an RFID scanner yet."
           }
         }
       }
@@ -18679,13 +19315,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "QR-Code scannen und passende lokale Wartungsmeldungen öffnen"
+            "value" : "QR-Code oder RFID-Tag scannen und passende lokale Wartungsmeldungen öffnen"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scan a QR code and open matching local maintenance notifications"
+            "value" : "Scan a QR code or RFID tag and open matching local maintenance notifications"
           }
         }
       }
@@ -18805,6 +19441,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Looking up maintenance notifications …"
+          }
+        }
+      }
+    },
+    "scan.viewport.rfidComplete" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID-Tag erkannt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "RFID tag recognized"
+          }
+        }
+      }
+    },
+    "scan.viewport.rfidIdle" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan starten und RFID-Scanner an den Tag halten …"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start the scan, then hold the RFID scanner near the tag …"
           }
         }
       }

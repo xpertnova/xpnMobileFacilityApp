@@ -19,6 +19,7 @@
 		A10000000000000000000020 /* SAPOData.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* SAPOData.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A10000000000000000000021 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000007 /* libsqlite3.tbd */; };
 		A10000000000000000000022 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A10000000000000000000008 /* libz.tbd */; };
+		C30000000000000000000001 /* CaptureSDK in Frameworks */ = {isa = PBXBuildFile; productRef = C30000000000000000000003 /* CaptureSDK */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +100,7 @@
 				A10000000000000000000015 /* SAPFioriFlows.xcframework in Frameworks */,
 				A10000000000000000000017 /* SAPFoundation.xcframework in Frameworks */,
 				A10000000000000000000019 /* SAPOData.xcframework in Frameworks */,
+				C30000000000000000000001 /* CaptureSDK in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -166,6 +168,9 @@
 				A10000000000000000000041 /* mobileFacilityApp */,
 			);
 			name = mobileFacilityApp;
+			packageProductDependencies = (
+				C30000000000000000000003 /* CaptureSDK */,
+			);
 			productName = mobileFacilityApp;
 			productReference = A10000000000000000000006 /* mobileFacilityApp.app */;
 			productType = "com.apple.product-type.application";
@@ -220,6 +225,9 @@
 			);
 			mainGroup = A10000000000000000000061;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C30000000000000000000002 /* XCRemoteSwiftPackageReference "swift-package-capturesdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A10000000000000000000063 /* Products */;
 			projectDirPath = "";
@@ -305,6 +313,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = mobileFacilityApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "qTechnical Asset Manager";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to the RFID scanner to read RFID tags on technical objects.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan QR codes and take photos to document maintenance work and defects.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Choose photos from your library to document maintenance work and defects.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Dictate text into form fields using speech recognition.";
@@ -341,6 +350,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = mobileFacilityApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "qTechnical Asset Manager";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to the RFID scanner to read RFID tags on technical objects.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan QR codes and take photos to document maintenance work and defects.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Choose photos from your library to document maintenance work and defects.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Dictate text into form fields using speech recognition.";
@@ -371,6 +381,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 33DF4FPL9Z;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mobilefacility.app.tests;
@@ -388,6 +399,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 33DF4FPL9Z;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mobilefacility.app.tests;
@@ -431,6 +443,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C30000000000000000000002 /* XCRemoteSwiftPackageReference "swift-package-capturesdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SocketMobile/swift-package-capturesdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.1.22;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C30000000000000000000003 /* CaptureSDK */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C30000000000000000000002 /* XCRemoteSwiftPackageReference "swift-package-capturesdk" */;
+			productName = CaptureSDK;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A10000000000000000000081 /* Project object */;
 }

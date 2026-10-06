@@ -6,7 +6,7 @@ struct ScanView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var mode: ScanMode = .qrCode
-    /// RFID, and every scan in demo mode, only plays the scan animation.
+    /// Every scan in demo mode only plays the scan animation.
     @State private var simulationState: SimulatedScanState = .ready
     @State private var viewModel: ScanViewModel
 
@@ -14,6 +14,7 @@ struct ScanView: View {
         self.demo = demo
         _viewModel = State(initialValue: ScanViewModel(
             sapDataStore: demo.sapDataStore,
+            rfidReader: demo.rfidReader,
             openSingleMatch: { [demo] in demo.openScannedNotification($0) }
         ))
     }
@@ -31,18 +32,27 @@ struct ScanView: View {
             .facilityPageContent()
         }
         .background(FacilityTheme.canvas)
-        .onChange(of: mode) { _, _ in
-            // Switching to RFID only stops a running scan; found
-            // notifications are still listed when the technician comes back.
+        .onChange(of: mode) { _, newMode in
+            // Switching modes only stops a running scan; found notifications
+            // are still listed when the technician comes back.
             viewModel.cancel()
             simulationState = .ready
+            // Bluetooth is only requested once the technician turns to RFID,
+            // so the system prompt appears in context.
+            if newMode == .rfid { demo.rfidReader.start() }
         }
         .onDisappear { viewModel.cancel() }
     }
 
+    /// The view model's state on screen belongs to the selected mode. Demo
+    /// mode only shows its simulation.
+    private var showsCurrentMode: Bool {
+        !isSimulated && viewModel.source == mode.source
+    }
+
     @ViewBuilder
     private var mainColumn: some View {
-        if !isSimulated, case let .results(lookup) = viewModel.state {
+        if showsCurrentMode, case let .results(lookup) = viewModel.state {
             ScanResultsPanel(
                 lookup: lookup,
                 rows: demo.scanResultRows(for: lookup.matches),
@@ -120,22 +130,72 @@ struct ScanView: View {
     private var deviceColumn: some View {
         VStack(spacing: 14) {
             actionButton
-            if !isSimulated { qrOutcome }
+            if showsCurrentMode { scanOutcome }
 
             VStack(alignment: .leading, spacing: 15) {
                 Text("scan.devices.title").font(.headline)
                 ScanDeviceRow(
-                    symbol: "printer.fill",
-                    titleKey: "scan.devices.printer.title",
-                    subtitleKey: "scan.devices.printer.subtitle"
-                )
-                ScanDeviceRow(
                     symbol: "antenna.radiowaves.left.and.right",
-                    titleKey: "scan.devices.rfid.title",
-                    subtitleKey: "scan.devices.rfid.subtitle"
+                    title: Text("scan.devices.rfid.title"),
+                    subtitle: rfidSubtitle,
+                    badge: rfidBadge
+                )
+                if demo.rfidReader.status != .unavailable {
+                    Button(action: demo.openProfileSettings) {
+                        Label("scan.devices.manage", systemImage: "gearshape")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(FacilityTheme.blue)
+                    .frame(minHeight: 32, alignment: .leading)
+                }
+                // QR label printing (Bixolon in Cordova) is not part of this app yet.
+                ScanDeviceRow(
+                    symbol: "printer.fill",
+                    title: Text("scan.devices.printer.title"),
+                    subtitle: Text("scan.devices.notAvailable.subtitle"),
+                    badge: .unavailable
                 )
             }
             .facilityCard()
+
+            #if DEBUG
+            if mode == .rfid {
+                RFIDDiagnosticsPanel(reader: demo.rfidReader, lookUp: viewModel.lookUpRFIDTag)
+            }
+            #endif
+        }
+    }
+
+    private var rfidSubtitle: Text {
+        switch demo.rfidReader.status {
+        case .unavailable:
+            Text("scan.devices.notAvailable.subtitle")
+        case .bluetoothDenied:
+            Text("scan.devices.rfid.bluetoothDenied")
+        case .bluetoothOff:
+            Text("scan.devices.rfid.bluetoothOff")
+        case .notConnected:
+            Text("scan.devices.rfid.searching")
+        case .connected:
+            connectedReadersText(demo.rfidReader.devices)
+        }
+    }
+
+    private func connectedReadersText(_ devices: [RFIDReaderDevice]) -> Text {
+        if devices.count > 1 {
+            return Text("scan.devices.rfid.connectedCount \(devices.count)")
+        }
+        guard let device = devices.first else { return Text(verbatim: "") }
+        guard let batteryPercent = device.batteryPercent else { return Text(verbatim: device.name) }
+        return Text("scan.devices.rfid.connectedBattery \(device.name) \(batteryPercent)")
+    }
+
+    private var rfidBadge: ScanDeviceBadge {
+        switch demo.rfidReader.status {
+        case .unavailable, .bluetoothDenied: .unavailable
+        case .bluetoothOff, .notConnected: .disconnected
+        case .connected: demo.rfidReader.isReading ? .reading : .ready
         }
     }
 
@@ -179,7 +239,7 @@ struct ScanView: View {
     }
 
     @ViewBuilder
-    private var qrOutcome: some View {
+    private var scanOutcome: some View {
         switch viewModel.state {
         case let .failure(failure):
             VStack(alignment: .leading, spacing: 12) {
@@ -189,8 +249,11 @@ struct ScanView: View {
                 Text(LocalizedStringKey(failure.messageKey))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                if failure == .cameraPermissionDenied {
+                if failure == .cameraPermissionDenied || failure == .bluetoothDenied {
                     Button("scan.action.openSettings", action: openSettings)
+                        .buttonStyle(.bordered)
+                } else if failure == .rfidReaderNotConnected {
+                    Button("scan.devices.manage", action: demo.openProfileSettings)
                         .buttonStyle(.bordered)
                 }
             }
@@ -202,16 +265,19 @@ struct ScanView: View {
     }
 
     /// Demo mode has no camera and no SAP cache to look a code up in, so its
-    /// QR scan is simulated like RFID instead of failing on an empty lookup.
+    /// QR and RFID scans are simulated instead of failing on an empty lookup.
     private var isSimulated: Bool {
-        mode == .rfid || demo.isDemoMode
+        demo.isDemoMode
     }
 
     private func performPrimaryAction() {
         if isSimulated {
             simulateScan()
-        } else {
-            viewModel.startQRCodeScan()
+            return
+        }
+        switch mode {
+        case .qrCode: viewModel.startQRCodeScan()
+        case .rfid: viewModel.startRFIDScan()
         }
     }
 
@@ -231,7 +297,7 @@ struct ScanView: View {
     }
 
     private var shouldShowCamera: Bool {
-        guard !demo.isDemoMode else { return false }
+        guard !demo.isDemoMode, viewModel.source == .qrCode else { return false }
         switch viewModel.state {
         case .requestingPermission, .configuring, .scanning, .resolving:
             return true
@@ -240,18 +306,22 @@ struct ScanView: View {
         }
     }
 
-    /// While the camera is open the primary action stops it. The lookup after
-    /// a code was read is brief and only shows progress.
+    /// While the camera is open or the reader waits for a tag, the primary
+    /// action stops the scan. The lookup afterwards only shows progress.
     private var canCancelScan: Bool {
-        !isSimulated && viewModel.cameraShouldRun
+        guard !isSimulated else { return false }
+        switch mode {
+        case .qrCode: return viewModel.cameraShouldRun
+        case .rfid: return viewModel.isWaitingForRFIDTag
+        }
     }
 
     private var isActivelyScanning: Bool {
-        isSimulated ? simulationState == .scanning : viewModel.state == .scanning
+        isSimulated ? simulationState == .scanning : showsCurrentMode && viewModel.state == .scanning
     }
 
     private var isResolving: Bool {
-        !isSimulated && viewModel.state == .resolving
+        showsCurrentMode && viewModel.state == .resolving
     }
 
     private var primaryActionIsBusy: Bool {
@@ -262,7 +332,7 @@ struct ScanView: View {
         if isSimulated {
             return simulationState == .scanning ? "scan.action.simulating" : "scan.action.simulate"
         }
-        switch viewModel.state {
+        switch showsCurrentMode ? viewModel.state : .idle {
         case .requestingPermission, .configuring, .scanning, .resolving:
             return "scan.action.scanning"
         case .results:
@@ -275,17 +345,27 @@ struct ScanView: View {
     }
 
     private var viewportMessageKey: String {
-        if isSimulated {
-            return simulationState == .ready && mode == .qrCode ? "scan.viewport.ready" : simulationState.messageKey
-        }
-        switch viewModel.state {
-        case .idle: return "scan.viewport.ready"
-        case .requestingPermission: return "scan.viewport.permission"
-        case .configuring: return "scan.viewport.configuring"
-        case .scanning: return "scan.viewport.scanning"
-        case .resolving: return "scan.viewport.resolving"
-        case .results: return "scan.viewport.complete"
-        case .failure: return "scan.viewport.failed"
+        if isSimulated { return simulationState.messageKey(for: mode) }
+        let state = showsCurrentMode ? viewModel.state : .idle
+        switch mode {
+        case .qrCode:
+            switch state {
+            case .idle: return "scan.viewport.ready"
+            case .requestingPermission: return "scan.viewport.permission"
+            case .configuring: return "scan.viewport.configuring"
+            case .scanning: return "scan.viewport.scanning"
+            case .resolving: return "scan.viewport.resolving"
+            case .results: return "scan.viewport.complete"
+            case .failure: return "scan.viewport.failed"
+            }
+        case .rfid:
+            switch state {
+            case .idle, .requestingPermission, .configuring: return "scan.viewport.rfidIdle"
+            case .scanning: return "scan.viewport.rfidReady"
+            case .resolving: return "scan.viewport.resolving"
+            case .results: return "scan.viewport.rfidComplete"
+            case .failure: return "scan.viewport.failed"
+            }
         }
     }
 }
@@ -295,17 +375,27 @@ private enum ScanMode: CaseIterable, Identifiable {
     case rfid
     var id: Self { self }
     var titleKey: String { self == .qrCode ? "scan.mode.qr" : "scan.mode.rfid" }
+    var source: ScanViewModel.Source {
+        switch self {
+        case .qrCode: .qrCode
+        case .rfid: .rfid
+        }
+    }
 }
 
 private enum SimulatedScanState: Equatable {
     case ready
     case scanning
     case complete
-    var messageKey: String {
-        switch self {
-        case .ready: "scan.viewport.rfidReady"
-        case .scanning: "scan.viewport.scanning"
-        case .complete: "scan.viewport.complete"
+
+    func messageKey(for mode: ScanMode) -> String {
+        switch (self, mode) {
+        case (.ready, .qrCode): "scan.viewport.ready"
+        case (.ready, .rfid): "scan.viewport.rfidIdle"
+        case (.scanning, .qrCode): "scan.viewport.scanning"
+        case (.scanning, .rfid): "scan.viewport.rfidReady"
+        case (.complete, .qrCode): "scan.viewport.complete"
+        case (.complete, .rfid): "scan.viewport.rfidComplete"
         }
     }
 }
@@ -322,10 +412,43 @@ private struct ScanFrame: Shape {
     }
 }
 
+private enum ScanDeviceBadge {
+    case ready
+    case reading
+    case disconnected
+    case unavailable
+
+    var titleKey: LocalizedStringKey {
+        switch self {
+        case .ready: "scan.devices.ready"
+        case .reading: "scan.devices.reading"
+        case .disconnected: "scan.devices.disconnected"
+        case .unavailable: "scan.devices.unavailable"
+        }
+    }
+
+    var foreground: Color {
+        switch self {
+        case .ready, .reading: FacilityTheme.accent
+        case .disconnected: FacilityTheme.orange
+        case .unavailable: .secondary
+        }
+    }
+
+    var background: Color {
+        switch self {
+        case .ready, .reading: FacilityTheme.accentSoft
+        case .disconnected: FacilityTheme.orange.opacity(0.12)
+        case .unavailable: FacilityTheme.neutralSoft
+        }
+    }
+}
+
 private struct ScanDeviceRow: View {
     let symbol: String
-    let titleKey: String
-    let subtitleKey: String
+    let title: Text
+    let subtitle: Text
+    let badge: ScanDeviceBadge
 
     var body: some View {
         HStack(spacing: 12) {
@@ -335,16 +458,17 @@ private struct ScanDeviceRow: View {
                 .frame(width: 42, height: 42)
                 .background(FacilityTheme.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 3) {
-                Text(LocalizedStringKey(titleKey)).font(.subheadline.weight(.semibold))
-                Text(LocalizedStringKey(subtitleKey)).font(.caption).foregroundStyle(.secondary)
+                title.font(.subheadline.weight(.semibold))
+                subtitle.font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            Text("scan.devices.ready")
+            Text(badge.titleKey)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(FacilityTheme.accent)
+                .foregroundStyle(badge.foreground)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(FacilityTheme.accentSoft, in: Capsule())
+                .background(badge.background, in: Capsule())
+                .fixedSize()
         }
     }
 }
@@ -371,7 +495,7 @@ private struct ScanResultsPanel: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "qrcode.viewfinder")
+            Image(systemName: lookup.code.symbol)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(FacilityTheme.accent)
                 .frame(width: 44, height: 44)
@@ -390,7 +514,7 @@ private struct ScanResultsPanel: View {
                         .padding(.vertical, 3)
                         .background(FacilityTheme.accentSoft, in: Capsule())
                 }
-                Text("scan.results.scannedCode \(lookup.payload.scannedCodeDescription)")
+                Text("scan.results.scannedCode \(lookup.code.scannedCodeDescription)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -475,15 +599,32 @@ private struct ScanResultRow: View {
     }
 }
 
-private extension LegacyQRCodePayload {
+private extension ScanViewModel.ScannedCode {
+    var symbol: String {
+        switch self {
+        case .qrCode: "qrcode.viewfinder"
+        case .rfidTag: "antenna.radiowaves.left.and.right"
+        }
+    }
+
     var scannedCodeDescription: String {
         switch self {
-        case let .mtfm(_, functionalLocationID, equipmentID):
-            guard let equipmentID else { return functionalLocationID }
-            return "\(functionalLocationID) · \(String(localized: "notifications.detail.equipment", bundle: .appLanguage)) \(equipmentID.withoutSAPLeadingZeros)"
-        case let .mihm(objectNumber, technicalReference):
+        case let .qrCode(.mtfm(_, functionalLocationID, equipmentID)):
+            return Self.objectDescription(functionalLocationID, equipmentID: equipmentID)
+        case let .qrCode(.mihm(objectNumber, technicalReference)):
             return "\(objectNumber) · \(technicalReference)"
+        case let .rfidTag(tag, assignment):
+            let equipmentID = assignment.equipmentID == "%" ? "" : assignment.equipmentID
+            return "\(tag) · " + Self.objectDescription(
+                assignment.functionalLocationID,
+                equipmentID: equipmentID.isEmpty ? nil : equipmentID
+            )
         }
+    }
+
+    private static func objectDescription(_ functionalLocationID: String, equipmentID: String?) -> String {
+        guard let equipmentID else { return functionalLocationID }
+        return "\(functionalLocationID) · \(String(localized: "notifications.detail.equipment", bundle: .appLanguage)) \(equipmentID.withoutSAPLeadingZeros)"
     }
 }
 
