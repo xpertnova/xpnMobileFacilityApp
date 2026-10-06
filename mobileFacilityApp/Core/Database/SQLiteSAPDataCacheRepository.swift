@@ -393,11 +393,10 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             let functionalLocation = string("STRNO").isEmpty ? string("TPLNR") : string("STRNO")
             let trade = string("TPGSG")
             guard !functionalLocation.isEmpty else { return nil }
-            let template = templates.first {
-                ($0.plant.isEmpty || $0.plant == string("IWERK"))
-                    && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
-            } ?? templates.first
-            guard let template,
+            guard let template = Self.legacyCreationTemplate(
+                    in: templates, plant: string("IWERK"), plannerGroup: string("INGRP"),
+                    selectionPlanNumber: "00040015"
+                  ),
                   let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
                   let sourceJSON = String(data: sourceData, encoding: .utf8) else { return nil }
 
@@ -583,6 +582,24 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return assetData
     }
 
+    /// `getItemNewMeldung`: the `FROM_T0267` row whose `INGRP` and `IWERK`
+    /// are the functional location's. Only a location without `INGRP` falls
+    /// back to the plan number `SelectionCreate` passes. Cordova offers no
+    /// other template: a location without a match ends in "No creation data
+    /// found", so it is not offered here. A template of another plant makes
+    /// SAP reject the new equipment ("Different plants not permitted").
+    static func legacyCreationTemplate<Template: LegacyCreationTemplate>(
+        in templates: [Template],
+        plant: String,
+        plannerGroup: String,
+        selectionPlanNumber: String
+    ) -> Template? {
+        guard !plannerGroup.isEmpty else {
+            return templates.first { $0.planNumber == selectionPlanNumber }
+        }
+        return templates.first { $0.plannerGroup == plannerGroup && $0.plant == plant }
+    }
+
     func loadSubdistributionCreationData(for workerID: String) async throws -> SubdistributionCreationData {
         try validateWorker(workerID)
         guard let database else { throw SAPReadError.serviceUnavailable }
@@ -619,10 +636,10 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                     countryCode: string("TPLND"), businessEntityCode: string("TPWEH"), buildingCode: building
                   )
             else { return nil }
-            guard let template = templates.first(where: {
-                ($0.plant.isEmpty || $0.plant == string("IWERK"))
-                    && ($0.plannerGroup.isEmpty || $0.plannerGroup == string("INGRP"))
-            }) ?? templates.first,
+            guard let template = Self.legacyCreationTemplate(
+                in: templates, plant: string("IWERK"), plannerGroup: string("INGRP"),
+                selectionPlanNumber: "TFM7_001"
+            ),
             let sourceData = try? JSONSerialization.data(withJSONObject: row, options: [.sortedKeys]),
             let sourceJSON = String(data: sourceData, encoding: .utf8)
             else { return nil }
@@ -1883,3 +1900,13 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         return String(cString: text)
     }
 }
+
+/// The `FROM_T0267` keys `getItemNewMeldung` selects a creation template by.
+protocol LegacyCreationTemplate {
+    var plant: String { get }
+    var plannerGroup: String { get }
+    var planNumber: String { get }
+}
+
+extension MobileLadderLegacyTemplate: LegacyCreationTemplate {}
+extension SubdistributionLegacyTemplate: LegacyCreationTemplate {}

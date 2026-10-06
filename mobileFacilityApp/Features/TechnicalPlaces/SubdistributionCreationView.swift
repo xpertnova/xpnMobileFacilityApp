@@ -39,6 +39,7 @@ struct SubdistributionCreationView: View {
             provider: demo.subdistributionCreationProvider,
             offlineWorkStore: demo.offlineWorkStore,
             photoStore: demo.photoAttachmentStore,
+            sapDataStore: demo.sapDataStore,
             isDemo: demo.isDemoMode,
             item: demo.offlineWorkStore.subdistributionItem(id: itemID)
         ))

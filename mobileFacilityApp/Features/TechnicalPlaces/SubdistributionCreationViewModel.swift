@@ -23,6 +23,7 @@ final class SubdistributionCreationViewModel {
     private let provider: any SubdistributionCreationProviding
     private let offlineWorkStore: OfflineWorkStore
     private let photoStore: any PhotoAttachmentStore
+    private let sapDataStore: SAPDataStore?
     private let isDemo: Bool
     private(set) var workItemID: UUID?
     private(set) var itemStatus: OfflineWorkStatus?
@@ -39,12 +40,14 @@ final class SubdistributionCreationViewModel {
         provider: any SubdistributionCreationProviding,
         offlineWorkStore: OfflineWorkStore,
         photoStore: any PhotoAttachmentStore = UnavailablePhotoAttachmentStore(),
+        sapDataStore: SAPDataStore? = nil,
         isDemo: Bool,
         item: OfflineWorkItem?
     ) {
         self.provider = provider
         self.offlineWorkStore = offlineWorkStore
         self.photoStore = photoStore
+        self.sapDataStore = sapDataStore
         self.isDemo = isDemo
         workItemID = item?.id
         itemStatus = item?.status
@@ -349,14 +352,24 @@ final class SubdistributionCreationViewModel {
         if !isDemo, draft.legacyIdentifiers == nil {
             draft.legacyIdentifiers = SubdistributionIdentifierFactory.make()
         }
-        if draft.reportPDF == nil { draft.reportPDF = SubdistributionPDFReport.make(draft: draft) }
+        // The report is the state that is closed, like the other I1 forms.
+        let worker = NotificationReportWorker(
+            profile: await sapDataStore?.loadUserProfile(),
+            fallbackPersonnelNumber: offlineWorkStore.workerID
+        )
+        let previousReport = (draft.reportPDF, draft.pdfDocumentID, draft.reportCreatedAt)
+        draft.reportCreatedAt = .now
+        draft.reportPDF = draft.reportPDF(worker: worker)
         if draft.pdfDocumentID == nil { draft.pdfDocumentID = UUID().uuidString.uppercased() }
         let previousClosed = draft.isClosedLocally
         draft.isClosedLocally = !isDemo
         // Demo proves the UX but never enters SAP's outgoing queue.
         let status: OfflineWorkStatus = isDemo ? .draft : .pendingSynchronization
         let didSave = await save(status: status, successFeedback: .queued, allowsClosedPayload: true)
-        if !didSave { draft.isClosedLocally = previousClosed }
+        if !didSave {
+            draft.isClosedLocally = previousClosed
+            (draft.reportPDF, draft.pdfDocumentID, draft.reportCreatedAt) = previousReport
+        }
         return didSave
     }
 

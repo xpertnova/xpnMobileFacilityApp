@@ -66,6 +66,9 @@ struct MobileLadderLegacyTemplate: Codable, Equatable, Identifiable, Sendable {
     let equipmentDataJSON: String
     let characteristics: [MobileLadderLegacyCharacteristic]
     let inspectionItems: [MobileLadderLegacyInspectionDefinition]
+    /// The `T0267` plan row without `T_PLPOD`. Optional to keep drafts saved
+    /// before it was captured readable.
+    var planDataJSON: String? = nil
 }
 
 struct MobileLadderLegacyCharacteristic: Codable, Equatable, Identifiable, Sendable {
@@ -288,6 +291,13 @@ struct MobileLadderDraftPayload: Codable, Equatable, Sendable {
     /// "Pflege durch Admin". Optional to keep earlier version-1 drafts
     /// readable.
     var proposals: [String: String]?
+    /// The `TFM5-pdf` report, rendered once when the ladder is closed.
+    /// Optional to keep drafts closed before it existed readable.
+    var reportPDF: Data?
+    var pdfDocumentID: String?
+    /// When the report was rendered, i.e. the form was closed: its
+    /// `Bericht_<dd_MM_yyyy_HH_mm_ss_SSS>` document name.
+    var reportCreatedAt: Date?
 
     init(localDraftID: String = UUID().uuidString, now: Date = .now) {
         version = Self.currentVersion
@@ -310,6 +320,9 @@ struct MobileLadderDraftPayload: Codable, Equatable, Sendable {
         photoAttachments = []
         legacyIdentifiers = nil
         proposals = [:]
+        reportPDF = nil
+        pdfDocumentID = nil
+        reportCreatedAt = nil
     }
 
     func value(for field: MobileLadderCatalogField) -> String {

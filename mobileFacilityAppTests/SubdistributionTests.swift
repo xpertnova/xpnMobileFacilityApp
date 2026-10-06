@@ -219,7 +219,10 @@ final class SubdistributionTests: XCTestCase {
     func testTFM7OutgoingRowsContainPDFCharacteristicsAndOutOfOperationStatus() async throws {
         let data = try await DemoSubdistributionCreationProvider().loadSubdistributionCreationData(for: "S50828")
         var draft = SubdistributionDraftPayload(localDraftID: "sub-1", now: Date(timeIntervalSince1970: 1_700_000_000))
-        draft.context = try XCTUnwrap(data.contexts.first)
+        draft.context = try withPlanData(
+            try XCTUnwrap(data.contexts.first),
+            #"{"STRAT":"TFMWP1","MPTYP":"N1","HUNIT":"JHR","IWERK":"9999"}"#
+        )
         draft.characteristicValues = [
             "TFMSCHUTZSCH_ANZAHL_RCD": "4",
             "TFMUNTERVERT_BEZUNTERVERT": "UV-01"
@@ -245,7 +248,8 @@ final class SubdistributionTests: XCTestCase {
         draft.isClosedLocally = true
         let work = OfflineWorkItem(
             id: UUID(), workerID: "S50828", type: .subdistribution, status: .pendingSynchronization,
-            payload: .subdistribution(draft), createdAt: .now, updatedAt: .now, syncError: nil
+            payload: .subdistribution(draft), createdAt: Date(timeIntervalSince1970: 1_699_963_200),
+            updatedAt: .now, syncError: nil
         )
 
         let batch = try SAPSubdistributionUploadBuilder.build(
@@ -259,7 +263,11 @@ final class SubdistributionTests: XCTestCase {
         XCTAssertEqual(header["QMART"], "I1")
         XCTAssertEqual(header["FORMNR"], "TFM7")
         XCTAssertEqual(header["STTXT"], "MIAR")
-        XCTAssertEqual(header["USTXT"], "aBet Mnot")
+        XCTAssertEqual(header["USTXT"], "Mnot")
+        XCTAssertEqual(header["IWERK"], draft.context?.legacyContext.template.plant, "the template's plant wins over the merged plan row")
+        let headerPayload = try XCTUnwrap(SAPLegacyDataExchangeCodec.decodedFeldwertObject(try XCTUnwrap(header["FELDWERT"] ?? nil)))
+        XCTAssertEqual(headerPayload["STRAT"] as? String, "TFMWP1", "the T0267 maintenance plan fields")
+        XCTAssertEqual(headerPayload["MPTYP"] as? String, "N1")
         XCTAssertEqual(batch.values.first { $0["ELEMENTNR"] == "TFMSCHUTZSCH_ANZAHL_RCD" }?["FELDWERT"], "4")
         XCTAssertEqual(batch.values.first { $0["ELEMENTNR"] == "TFM7-0000-1" }?["FELDWERT"], "aBet")
         XCTAssertEqual(
@@ -279,6 +287,28 @@ final class SubdistributionTests: XCTestCase {
         XCTAssertEqual(payload["EQART_TO"] as? String, "TFMNSPV")
         XCTAssertEqual(payload["ANW_STATUS"] as? String, "aBet")
         XCTAssertEqual(payload["SYS_STATUS"] as? String, "INAK")
+        XCTAssertEqual(payload["EQUNR_TO"] as? String, "NEU-12345678901234")
+        XCTAssertEqual(payload["ERDAT_TO"] as? String, "2023-11-14", "getBerichtDatum() of the new equipment")
+        XCTAssertEqual(payload["AEDAT_TO"] as? String, "2023-11-14")
+        XCTAssertEqual(payload["AENAM_TO"] as? String, "S50828")
+    }
+
+    private nonisolated func withPlanData(
+        _ context: SubdistributionCreationContext,
+        _ planDataJSON: String
+    ) throws -> SubdistributionCreationContext {
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(context)) as? [String: Any]
+        )
+        var legacyContext = try XCTUnwrap(object["legacyContext"] as? [String: Any])
+        var template = try XCTUnwrap(legacyContext["template"] as? [String: Any])
+        template["planDataJSON"] = planDataJSON
+        legacyContext["template"] = template
+        object["legacyContext"] = legacyContext
+        return try JSONDecoder().decode(
+            SubdistributionCreationContext.self,
+            from: JSONSerialization.data(withJSONObject: object)
+        )
     }
 
     func testDefectMayBeClosedWithLegacyMMABAndMnot() async throws {
@@ -313,7 +343,7 @@ final class SubdistributionTests: XCTestCase {
         )
         let header = try XCTUnwrap(batch.headers.first)
         XCTAssertEqual(header["STTXT"], "MMAB")
-        XCTAssertEqual(header["USTXT"], "iBet Mnot")
+        XCTAssertEqual(header["USTXT"], "Mnot")
     }
 
     func testTFM7UploadRejectsMissingPhotoOrCommentForDocumentationPoint() async throws {
@@ -387,7 +417,7 @@ final class SubdistributionTests: XCTestCase {
         let url = directory.appendingPathComponent("cache.sqlite")
         defer { try? FileManager.default.removeItem(at: directory) }
         let repository = try SQLiteSAPDataCacheRepository(databaseURL: url, workerID: "S50828")
-        let plan = try SAPLegacyDataExchangeCodec.packedFeldwert(["T_PLPOD": [[
+        let plan = try SAPLegacyDataExchangeCodec.packedFeldwert(["STRAT": "TFMWP1", "T_PLPOD": [[
             "USR00": "POSITION", "STEUS": "TFM7", "VORNR": "0010", "LTXA1": "Test button",
             "T_PROPS": [
                 ["DFVAL": "1;2;", "DFVAL_TXT": "OK;Defect;"],
@@ -448,6 +478,8 @@ final class SubdistributionTests: XCTestCase {
         XCTAssertEqual(context.legacyContext.parentEquipmentType, "TFMNSPV")
         XCTAssertEqual(context.building, "01 · GB01 Office", "the building location's text, not the distributor's")
         XCTAssertEqual(context.legacyContext.template.planNumber, "TFM7_001")
+        XCTAssertTrue(context.legacyContext.template.planDataJSON?.contains("TFMWP1") == true)
+        XCTAssertFalse(context.legacyContext.template.planDataJSON?.contains("T_PLPOD") == true)
         XCTAssertEqual(context.legacyContext.template.inspectionItems.first?.resultValues.map(\.value), ["1", "2"])
         let characteristic = try XCTUnwrap(context.legacyContext.template.characteristics.first)
         XCTAssertTrue(characteristic.required)

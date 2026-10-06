@@ -831,6 +831,14 @@ extension SAPNotificationOutgoingDocument {
     }
 }
 
+/// The template a new TFM5/TFM7 object was drafted with still is the one
+/// `getItemNewMeldung` would select for its functional location.
+enum SAPLegacyCreationTemplateRule {
+    static func matches(_ template: some LegacyCreationTemplate, plant: String, plannerGroup: String) -> Bool {
+        plannerGroup.isEmpty || (template.plant == plant && template.plannerGroup == plannerGroup)
+    }
+}
+
 enum SAPMobileLadderUploadBuilder {
     static func build(
         workItem: OfflineWorkItem,
@@ -844,6 +852,11 @@ enum SAPMobileLadderUploadBuilder {
               !draft.inspectionItems.isEmpty,
               (draft.isDisassembled || draft.inspectionItems.allSatisfy({ $0.result != nil })),
               draft.photoAttachments.count <= 20,
+              // Drafts saved while any template could be picked must not
+              // reach SAP with another plant's template.
+              SAPLegacyCreationTemplateRule.matches(
+                context.template, plant: context.plant, plannerGroup: context.plannerGroup
+              ),
               let sourceData = context.sourceNotificationJSON.data(using: .utf8),
               var notificationData = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any]
         else { throw SAPNotificationReviewUploadError.invalidReview(draft.localDraftID) }
@@ -851,9 +864,22 @@ enum SAPMobileLadderUploadBuilder {
         let createdDate = date(now), createdTime = time(now), performedDate = date(draft.performedOn)
         let user = syncUserID.uppercased()
         let template = context.template
+        // `HeaderFormBuilder.setValue4Process`: Demontiert, result 2 or 4, or
+        // result 3 with an action other than "repaired" is deficient. The
+        // notification's user status (profile ZPMNI1) then gains `Mnot`;
+        // iBet/dem belong to the equipment's `ANW_STATUS` only.
+        let isDeficient = draft.isDisassembled || draft.inspectionItems.contains { item in
+            switch item.result {
+            case .cleaningRequired, .majorDefect: true
+            case .minorDefect: item.action != nil && item.action != .repaired
+            default: false
+            }
+        }
+        let userStatus = isDeficient ? "Mnot" : ""
+        notificationData.merge(jsonObject(template.planDataJSON ?? "")) { _, plan in plan }
         notificationData.merge([
             "MANDT": context.client, "QMNUM": identifiers.notificationNumber, "QMART": "I1",
-            "QMTXT": draft.designation, "STTXT": "MMAB", "USTXT": draft.isDisassembled ? "dem" : "iBet",
+            "QMTXT": draft.designation, "STTXT": "MMAB", "USTXT": userStatus,
             "EQUNR": identifiers.equipmentNumber, "EQKTX": draft.designation,
             "STRNO": context.functionalLocation, "TPLND": context.country, "TPORT": context.location,
             "TPWEH": context.businessEntity, "TPGEB": context.building, "TPGSG": context.trade,
@@ -876,7 +902,7 @@ enum SAPMobileLadderUploadBuilder {
             "QMNUM": identifiers.notificationNumber, "CREATEDBY": user,
             "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
             "MODIFIEDBY": user, "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime,
-            "FORMNR": template.formCode, "STATUSNR": "1", "STTXT": "MMAB",
+            "FORMNR": template.formCode, "STATUSNR": isDeficient ? "2" : "1", "STTXT": "MMAB",
             "FELDWERT": try SAPLegacyDataExchangeCodec.packedFeldwert(notificationData)
         ]) { _, new in new }
 
@@ -897,7 +923,7 @@ enum SAPMobileLadderUploadBuilder {
             draft.disassembledComment ?? "", user, createdDate, createdTime
         ))
 
-        let documents = try draft.photoAttachments.map { attachment -> SAPNotificationOutgoingDocument in
+        var documents = try draft.photoAttachments.map { attachment -> SAPNotificationOutgoingDocument in
             let belongsToInspection = draft.inspectionItems.contains(where: {
                 $0.id == attachment.inspectionItemID && $0.commentElementID == attachment.sapElementID
             })
@@ -924,6 +950,26 @@ enum SAPMobileLadderUploadBuilder {
             ]) { _, new in new }
             return SAPNotificationOutgoingDocument(metadata: metadata, data: jpeg)
         }
+        // `closeProcess`: every closed form carries its report as
+        // `<FORMNR>-pdf`. Ladders closed before the report existed have none.
+        if let reportPDF = draft.reportPDF, !reportPDF.isEmpty,
+           let pdfDocumentID = draft.pdfDocumentID, !pdfDocumentID.isEmpty {
+            var metadata = Dictionary(uniqueKeysWithValues:
+                (LegacySQLiteSchema.byName["TO_T0282"]?.columns ?? []).map { ($0.name, "") }
+            )
+            metadata.merge([
+                "MANDT": context.client, "REQID": "", "VORGANGSNR": identifiers.processNumber,
+                "DOCID": pdfDocumentID, "ELEMENTNR": "\(template.formCode)-pdf",
+                "QMNUM": identifiers.notificationNumber, "CREATEDBY": user,
+                "CREATEDDATE": createdDate, "CREATEDTIME": createdTime,
+                "MODIFIEDBY": user, "MODIFIEDDATE": createdDate, "MODIFIEDTIME": createdTime,
+                "DOC_TYPE": "PDF", "DOC_MIMETYPE": "application/pdf",
+                "NAME": NotificationReportFormat.legacyReportName(draft.reportCreatedAt ?? now), "DESCRIPTION": "Bericht",
+                "DOKAR": "FMD", "DOKOB": "SMQMEL", "OBJKY": identifiers.notificationNumber,
+                "DMS_CONTENTTYPE": "D_TFM_Dokumentation", "DMS_DOCID": "TFM001"
+            ]) { _, new in new }
+            documents.append(SAPNotificationOutgoingDocument(metadata: metadata, data: reportPDF))
+        }
 
         // A new ladder's `masterDataQuery` carries the new `EQUNR` and no
         // `STRNO`, so its proposals are filed under the new equipment.
@@ -942,7 +988,7 @@ enum SAPMobileLadderUploadBuilder {
             workItemIDs: [workItem.id], attachmentIDs: draft.photoAttachments.map(\.localAttachmentID),
             processIDs: [identifiers.processNumber], equipmentIDs: [identifiers.equipmentNumber],
             headers: [header], values: values, documents: documents,
-            equipment: [try equipmentRow(draft, context, identifiers)],
+            equipment: [try equipmentRow(draft, context, identifiers, user: user, createdAt: workItem.createdAt)],
             proposals: proposals
         )
     }
@@ -961,15 +1007,24 @@ enum SAPMobileLadderUploadBuilder {
     private static func equipmentRow(
         _ draft: MobileLadderDraftPayload,
         _ context: MobileLadderLegacyContext,
-        _ identifiers: MobileLadderLegacyIdentifiers
+        _ identifiers: MobileLadderLegacyIdentifiers,
+        user: String,
+        createdAt: Date
     ) throws -> LegacySAPRow {
         var equipment = jsonObject(context.template.equipmentDataJSON)
+        // `afterGetNewMasterData` stamps the new equipment with
+        // `getBerichtDatum()` (`yyyy-MM-dd`) and the user. Without these
+        // dates SAP's maintenance plan creation fails on an initial key date.
+        let creationDate = format(createdAt, "yyyy-MM-dd")
         equipment.merge([
+            "MANDT_TO": context.client, "EQUNR_TO": identifiers.equipmentNumber,
+            "ERDAT_TO": creationDate, "ERNAM_TO": user, "AEDAT_TO": creationDate, "AENAM_TO": user,
             "EQUNR": identifiers.equipmentNumber, "EQTYP_TO": "I",
             "EQART_TO": context.template.equipmentType, "EQKTX": draft.designation,
             "SHTXT_TO": draft.designation, "TPLNR_TO": context.functionalLocation,
             "SWERK_TO": context.template.plant.isEmpty ? context.plant : context.template.plant,
-            "ANW_STATUS": draft.isDisassembled ? "dem" : "iBet", "SYS_STATUS": "",
+            // `setAnwStatus`: a dismantled ladder is also `INAK`.
+            "ANW_STATUS": draft.isDisassembled ? "dem" : "iBet", "SYS_STATUS": draft.isDisassembled ? "INAK" : "",
             "T_CLASS_EQ": classData(draft, context)
         ]) { _, new in new }
         return [
@@ -1062,6 +1117,9 @@ enum SAPSubdistributionUploadBuilder {
               let pdfDocumentID = draft.pdfDocumentID, !pdfDocumentID.isEmpty,
               draft.photoAttachments.count <= 20,
               (draft.isOutOfOperation || inspectionRequirementsAreComplete(draft)),
+              SAPLegacyCreationTemplateRule.matches(
+                context.template, plant: context.plant, plannerGroup: context.plannerGroup
+              ),
               let sourceData = context.sourceNotificationJSON.data(using: .utf8),
               var notificationData = try JSONSerialization.jsonObject(with: sourceData) as? [String: Any]
         else { throw SAPNotificationReviewUploadError.invalidReview(draft.localDraftID) }
@@ -1075,12 +1133,14 @@ enum SAPSubdistributionUploadBuilder {
         else if hasDefect { closureStatus = draft.defectCloseAction?.sapStatus ?? "MIAR" }
         else { closureStatus = "MMAB" }
         let applicationStatus = draft.isOutOfOperation ? "aBet" : "iBet"
-        let userStatus = [applicationStatus, (draft.isOutOfOperation || hasDefect) ? "Mnot" : ""]
-            .filter { !$0.isEmpty }.joined(separator: " ")
+        // Only `Mnot` goes to the notification (profile ZPMNI1); aBet/iBet
+        // are the equipment's `ANW_STATUS` and the `TFM7-0000-1` value.
+        let userStatus = (draft.isOutOfOperation || hasDefect) ? "Mnot" : ""
         guard let designation = equipmentDesignation(draft: draft) else {
             throw SAPNotificationReviewUploadError.invalidReview(draft.localDraftID)
         }
 
+        notificationData.merge(jsonObject(template.planDataJSON ?? "")) { _, plan in plan }
         notificationData.merge([
             "MANDT": context.client, "QMNUM": identifiers.notificationNumber, "QMART": "I1",
             "QMTXT": designation, "STTXT": closureStatus, "USTXT": userStatus,
@@ -1156,20 +1216,25 @@ enum SAPSubdistributionUploadBuilder {
                 ), data: jpeg
             )
         }
-        documents.append(SAPNotificationOutgoingDocument(
-            metadata: documentMetadata(
-                client: context.client, processID: identifiers.processNumber,
-                notificationID: identifiers.notificationNumber, documentID: pdfDocumentID,
-                elementID: "TFM7-pdf", user: user, timestamp: now,
-                type: "PDF", mimeType: "application/pdf", name: "TFM7-pdf"
-            ), data: reportPDF
-        ))
+        // `closeProcess`: named and described "Bericht" like every report.
+        var reportMetadata = documentMetadata(
+            client: context.client, processID: identifiers.processNumber,
+            notificationID: identifiers.notificationNumber, documentID: pdfDocumentID,
+            elementID: "TFM7-pdf", user: user, timestamp: now,
+            type: "PDF", mimeType: "application/pdf",
+            name: NotificationReportFormat.legacyReportName(draft.reportCreatedAt ?? now)
+        )
+        reportMetadata["DESCRIPTION"] = "Bericht"
+        documents.append(SAPNotificationOutgoingDocument(metadata: reportMetadata, data: reportPDF))
 
         return SAPNotificationOutgoingBatch(
             workItemIDs: [workItem.id], attachmentIDs: draft.photoAttachments.map(\.localAttachmentID),
             processIDs: [identifiers.processNumber], equipmentIDs: [identifiers.equipmentNumber],
             headers: [header], values: values, documents: documents,
-            equipment: [try equipmentRow(draft: draft, context: context, identifiers: identifiers, designation: designation)]
+            equipment: [try equipmentRow(
+                draft: draft, context: context, identifiers: identifiers, designation: designation,
+                user: user, createdAt: workItem.createdAt
+            )]
         )
     }
 
@@ -1209,10 +1274,15 @@ enum SAPSubdistributionUploadBuilder {
 
     private static func equipmentRow(
         draft: SubdistributionDraftPayload, context: SubdistributionLegacyContext,
-        identifiers: SubdistributionLegacyIdentifiers, designation: String
+        identifiers: SubdistributionLegacyIdentifiers, designation: String,
+        user: String, createdAt: Date
     ) throws -> LegacySAPRow {
         var equipment = jsonObject(context.template.equipmentDataJSON)
+        // `afterGetNewMasterData`, as for TFM5.
+        let creationDate = format(createdAt, "yyyy-MM-dd")
         equipment.merge([
+            "MANDT_TO": context.client, "EQUNR_TO": identifiers.equipmentNumber,
+            "ERDAT_TO": creationDate, "ERNAM_TO": user, "AEDAT_TO": creationDate, "AENAM_TO": user,
             "EQUNR": identifiers.equipmentNumber, "EQTYP_TO": "I", "EQART_TO": "TFMNSPV",
             "EQKTX": designation, "SHTXT_TO": designation, "TPLNR_TO": context.functionalLocation,
             "SWERK_TO": context.template.plant.isEmpty ? context.plant : context.template.plant,

@@ -21,6 +21,7 @@ final class MobileLadderCreationViewModel {
     private let provider: any MobileLadderCreationProviding
     private let offlineWorkStore: OfflineWorkStore
     private let photoStore: any PhotoAttachmentStore
+    private let sapDataStore: SAPDataStore?
     private let isDemo: Bool
     private(set) var workItemID: UUID?
     private(set) var itemStatus: OfflineWorkStatus?
@@ -40,12 +41,14 @@ final class MobileLadderCreationViewModel {
         provider: any MobileLadderCreationProviding,
         offlineWorkStore: OfflineWorkStore,
         photoStore: any PhotoAttachmentStore = UnavailablePhotoAttachmentStore(),
+        sapDataStore: SAPDataStore? = nil,
         isDemo: Bool,
         item: OfflineWorkItem?
     ) {
         self.provider = provider
         self.offlineWorkStore = offlineWorkStore
         self.photoStore = photoStore
+        self.sapDataStore = sapDataStore
         self.isDemo = isDemo
         workItemID = item?.id
         itemStatus = item?.status
@@ -385,6 +388,15 @@ final class MobileLadderCreationViewModel {
         if !isDemo, draft.legacyIdentifiers == nil {
             draft.legacyIdentifiers = MobileLadderIdentifierFactory.make()
         }
+        // The report is the state that is closed, like the other I1 forms.
+        let worker = NotificationReportWorker(
+            profile: await sapDataStore?.loadUserProfile(),
+            fallbackPersonnelNumber: offlineWorkStore.workerID
+        )
+        let previousReport = (draft.reportPDF, draft.pdfDocumentID, draft.reportCreatedAt)
+        draft.reportCreatedAt = .now
+        draft.reportPDF = draft.reportPDF(worker: worker)
+        if draft.pdfDocumentID == nil { draft.pdfDocumentID = UUID().uuidString.uppercased() }
         // Keep the close marker in the local payload, as notification reviews
         // do, so reopening the item reliably restores its read-only state.
         let previousClosedState = draft.isClosedLocally
@@ -394,7 +406,10 @@ final class MobileLadderCreationViewModel {
             successFeedback: .queued,
             allowsClosedPayload: true
         )
-        if !didSave { draft.isClosedLocally = previousClosedState }
+        if !didSave {
+            draft.isClosedLocally = previousClosedState
+            (draft.reportPDF, draft.pdfDocumentID, draft.reportCreatedAt) = previousReport
+        }
         return didSave
     }
 

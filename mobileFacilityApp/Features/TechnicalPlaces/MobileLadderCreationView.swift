@@ -47,6 +47,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
             provider: demo.mobileLadderCreationProvider,
             offlineWorkStore: demo.offlineWorkStore,
             photoStore: demo.photoAttachmentStore,
+            sapDataStore: demo.sapDataStore,
             isDemo: demo.isDemoMode,
             item: demo.offlineWorkStore.mobileLadderItem(id: itemID)
         ))
