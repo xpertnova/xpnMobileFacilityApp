@@ -92,7 +92,6 @@ final class ScanViewModelTests: XCTestCase {
         return ScanViewModel(
             sapDataStore: store,
             rfidReader: RFIDReaderService(unavailableReason: "tests"),
-            isDemoMode: false,
             openSingleMatch: openSingleMatch
         )
     }

@@ -79,7 +79,6 @@ final class ScanViewModel {
 
     private let sapDataStore: SAPDataStore
     private let rfidReader: RFIDReaderService
-    private let isDemoMode: Bool
     /// Opens the only notification a new lookup found. Results restored after
     /// a cancelled scan are not opened again.
     private let openSingleMatch: @MainActor (SAPNotificationSummary) -> Void
@@ -96,12 +95,10 @@ final class ScanViewModel {
     init(
         sapDataStore: SAPDataStore,
         rfidReader: RFIDReaderService,
-        isDemoMode: Bool,
         openSingleMatch: @escaping @MainActor (SAPNotificationSummary) -> Void
     ) {
         self.sapDataStore = sapDataStore
         self.rfidReader = rfidReader
-        self.isDemoMode = isDemoMode
         self.openSingleMatch = openSingleMatch
     }
 
@@ -130,11 +127,7 @@ final class ScanViewModel {
 
     func startQRCodeScan() {
         guard beginScan(from: .qrCode) else { return }
-        if isDemoMode {
-            resolveQRCode(Self.demoPayload)
-        } else {
-            state = .requestingPermission
-        }
+        state = .requestingPermission
     }
 
     /// Cordova's `onRfidPress`: activates the reader and looks up the next tag.
@@ -283,9 +276,4 @@ final class ScanViewModel {
         acceptedValue = nil
         rfidReader.endReading()
     }
-
-    private static let demoPayload = LegacyQRCodeCodec.encodeMTFM(
-        functionalLocationID: "UN01-ST01-BG01-TECH-420-Z",
-        equipmentID: "EQ-100040"
-    )
 }

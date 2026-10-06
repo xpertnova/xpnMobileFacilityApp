@@ -609,10 +609,9 @@ struct ManualCaptureView: View {
         LocalPhotoScope(
             workflow: .defect,
             ownerID: defectModel.editingID?.uuidString ?? "new-defect",
-            displayTitle: String(localized: "photos.workspace.title", bundle: .appLanguage),
-            displaySubtitle: defectModel.shortText.isEmpty
-                ? String(localized: "manual.defect.form.title", bundle: .appLanguage)
-                : defectModel.shortText
+            displayTitleKey: "photos.workspace.title",
+            displaySubtitle: defectModel.shortText,
+            displaySubtitleKey: defectModel.shortText.isEmpty ? "manual.defect.form.title" : nil
         )
     }
 
@@ -620,9 +619,9 @@ struct ManualCaptureView: View {
         LocalPhotoScope(
             workflow: .meterReading,
             ownerID: meterModel.editingID?.uuidString ?? "new-meter-reading",
-            displayTitle: String(localized: "photos.workspace.title", bundle: .appLanguage),
-            displaySubtitle: meterModel.selectedReference.map { "\($0.id) · \($0.technicalPlaceName)" }
-                ?? String(localized: "manual.meter.form.title", bundle: .appLanguage)
+            displayTitleKey: "photos.workspace.title",
+            displaySubtitle: meterModel.selectedReference.map { "\($0.id) · \($0.technicalPlaceName)" } ?? "",
+            displaySubtitleKey: meterModel.selectedReference == nil ? "manual.meter.form.title" : nil
         )
     }
 

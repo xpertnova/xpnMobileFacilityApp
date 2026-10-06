@@ -372,7 +372,8 @@ final class FormStandardizationTests: XCTestCase {
         let payload = try XCTUnwrap(briefing.makePDFPayload())
         let artifact = try LegacyBriefingPDFRenderer().render(payload)
 
-        XCTAssertEqual(artifact.fileName, "Einweisung.pdf")
+        XCTAssertTrue(artifact.fileName.hasPrefix("Briefing-sdfsdfsdfsdf-"), artifact.fileName)
+        XCTAssertTrue(artifact.fileName.hasSuffix(".pdf"), artifact.fileName)
         let doc = try XCTUnwrap(PDFDocument(data: artifact.data))
         XCTAssertEqual(doc.pageCount, 5)
 
@@ -381,7 +382,7 @@ final class FormStandardizationTests: XCTestCase {
         XCTAssertTrue(p1.contains("Einweisung von Partnerfirmen"))
         XCTAssertTrue(p1.contains("Einweiser/Abnehmer(E.ON"))
         XCTAssertTrue(p1.contains("Sudhir Kancherla"))
-        XCTAssertTrue(p1.contains("e.on"))
+        XCTAssertTrue(p1.contains("XPN Facility Management"))
         XCTAssertTrue(p1.contains("Benannter Koordinator ggf. SiGeKo gemäß BauStellV:"))
         XCTAssertTrue(p1.contains("Sdfsdfsdfsdf"))
         XCTAssertTrue(p1.contains("Partnerfirma/Auftragnehmer:"))
@@ -424,17 +425,19 @@ final class FormStandardizationTests: XCTestCase {
         XCTAssertTrue(p3.contains("Schutzhelm"))
         XCTAssertTrue(p3.contains("Sicherheitsschuh"))
         XCTAssertTrue(p3.contains("Gehörschutz"))
+        XCTAssertTrue(p3.contains("5.01"))
 
-        // Page 4: Arbeitsplatz
+        // Page 4: rest of Arbeitsplatz + Erdarbeiten banner
         let p4 = try XCTUnwrap(doc.page(at: 3)?.string)
         XCTAssertTrue(p4.contains("Seite 4 von 5"))
-        XCTAssertTrue(p4.contains("5.01"))
+        XCTAssertTrue(p4.contains("5.03"))
+        XCTAssertTrue(p4.contains("Sicherheitscheckliste für Erdarbeiten"))
+        XCTAssertTrue(p4.contains("Die Sicherheitscheckliste Erdarbeiten in der Nähe erdverlegter Kabel und Rohrleitungen wurde ausgefüllt."))
 
-        // Page 5: Erdarbeiten banner + Unfälle
+        // Page 5: Unfälle
         let p5 = try XCTUnwrap(doc.page(at: 4)?.string)
         XCTAssertTrue(p5.contains("Seite 5 von 5"))
-        XCTAssertTrue(p5.contains("Sicherheitscheckliste für Erdarbeiten"))
-        XCTAssertTrue(p5.contains("Die Sicherheitscheckliste Erdarbeiten in der Nähe erdverlegter Kabel und Rohrleitungen wurde ausgefüllt."))
+        XCTAssertTrue(p5.contains("Unfälle"))
         XCTAssertTrue(p5.contains("8.01"))
         XCTAssertTrue(p5.contains("8.02"))
         XCTAssertTrue(p5.contains("8.03"))

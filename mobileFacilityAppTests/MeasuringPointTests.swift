@@ -37,7 +37,8 @@ final class MeasuringPointTests: XCTestCase {
         XCTAssertTrue(available.resultOptions.isEmpty)
         XCTAssertEqual(available.measuringPoint, InspectionFormMeasuringPoint(buttonTitle: "Messpunkt", unavailableReasonKey: nil))
 
-        let none = measure.inspectionFormItem(number: 2, measuringPoints: .none)
+        // Spelled out: a bare `.none` is `Optional.none`, the old result row.
+        let none = measure.inspectionFormItem(number: 2, measuringPoints: InspectionFormMeasuringPointAvailability.none)
         XCTAssertEqual(none.measuringPoint?.unavailableReasonKey, "measuringPoints.row.none")
 
         // A form that does not pass availability keeps the old result row.

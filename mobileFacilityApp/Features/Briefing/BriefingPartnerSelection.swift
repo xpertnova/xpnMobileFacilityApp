@@ -258,7 +258,7 @@ struct LegacyBriefingSignatureDialog: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Color.accentColor)
                 .disabled(drawing.bounds.isEmpty)
-                Button("app.button.cancel", action: onCancel)
+                Button("common.cancel", action: onCancel)
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.accentColor)
             }

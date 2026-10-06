@@ -38,6 +38,14 @@ enum SAPSynchronizationDiagnostics {
         print("\(prefix) M0153003 accepted credentials; token returned: \(hasToken ? "yes" : "no").")
     }
 
+    static func logPasswordCheckAnswer(method: String = "M0153003", _ authorization: SAPReadAuthorization) {
+        print(
+            "\(prefix) \(method) answered CHECKPW=\"\(authorization.checkPasswordFlag)\", " +
+                "PWINITIAL=\"\(authorization.initialPasswordFlag)\", " +
+                "token returned: \(authorization.token == nil ? "no" : "yes")."
+        )
+    }
+
     static func logPasswordRejected() {
         print("\(prefix) M0153003 rejected the synchronization credentials.")
     }
@@ -451,11 +459,22 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
         do {
             try await verify(token: trimmedToken, client: client)
         } catch {
-            tokenStore?.deleteToken(for: tokenStoreAccountID)
+            if Self.discardsSavedToken(after: error) {
+                tokenStore?.deleteToken(for: tokenStoreAccountID)
+            }
             throw error
         }
 
         return try await synchronize(client: client, progress: progress)
+    }
+
+    /// Only SAP's answer that the token is no longer valid ends it. A lost
+    /// network, a timeout or an unavailable gateway says nothing about the
+    /// token, so it is kept for the next attempt instead of asking for the
+    /// SAP password again. HTTP 401/403 are left to `SAPDataStore`.
+    static func discardsSavedToken(after error: Error) -> Bool {
+        if case SAPReadError.tokenInvalidOrExpired = error { return true }
+        return false
     }
 
     private func synchronize(
@@ -490,6 +509,10 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             SAPSynchronizationDiagnostics.logRequestFailure(method: "M0153003", error: error)
             throw error
         }
+        SAPSynchronizationDiagnostics.logPasswordCheckAnswer(authorization)
+        // An initial password is reported with `PWINITIAL` whatever `CHECKPW`
+        // says, so it is read first. Should the old password be wrong after
+        // all, `M0153002` rejects the change.
         if authorization.requiresInitialPasswordChange {
             let error = SAPReadError.initialPasswordChangeRequired
             SAPSynchronizationDiagnostics.logInitialPasswordChangeRequired()
@@ -532,9 +555,12 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
 }
 
 /// The `DATAEXCHANGESet` calls of one synchronization session.
-private struct SAPLiveLegacyDataExchangeClient: SAPLegacyDataExchangeClient {
+struct SAPLiveLegacyDataExchangeClient: SAPLegacyDataExchangeClient {
     /// The app, build and database version ABAP checks (`gAppVersion`).
     private static let downloadSchemaVersion = "1.3.8-58-358"
+    /// Password and token calls: short timeout, and no request trace, since
+    /// their parameters carry passwords.
+    private static let authenticationMethods: Set<String> = ["M0153002", "M0153003", "M0155003"]
     let connection: SAPReadConnection
     let sapWorkerID: String
 
@@ -727,7 +753,7 @@ private struct SAPLiveLegacyDataExchangeClient: SAPLegacyDataExchangeClient {
     ) async throws -> String? {
         let fromRequestID = ["M0002003", "MMTFM003", "MMTFM005"].contains(method) ? parameters.PARAMETER2 : ""
         let toRequestID = ["M0002001", "MMTFM001", "MMTFM002", "MMTFM008"].contains(method) ? parameters.PARAMETER2 : ""
-        if !["M0153003", "M0155003"].contains(method) {
+        if !Self.authenticationMethods.contains(method) {
             SAPSynchronizationDiagnostics.logDownloadRequest(method: method, fromRequestID: fromRequestID, toRequestID: toRequestID)
         }
 
@@ -747,7 +773,7 @@ private struct SAPLiveLegacyDataExchangeClient: SAPLegacyDataExchangeClient {
         } else {
             ivData = try SAPLegacyDataExchangeCodec.pack(method: method, parameters: parameters)
         }
-        let isAuthentication = (method == "M0153003" || method == "M0155003")
+        let isAuthentication = Self.authenticationMethods.contains(method)
         let timeout: TimeInterval = isAuthentication ? 60 : 300
         let request = try dataExchangeRequest(ivData: ivData, timeoutInterval: timeout)
         let data: Data
@@ -828,7 +854,7 @@ private struct SAPDataExchangeRequest: Encodable {
     let IvKey: Bool
 }
 
-private struct SAPReadParameters: Encodable {
+struct SAPReadParameters: Encodable {
     let PARAMETER1: String
     let PARAMETER2: String
     let PARAMETER3: String
@@ -858,6 +884,9 @@ struct SAPReadAuthorization {
     let isAccepted: Bool
     let requiresInitialPasswordChange: Bool
     let token: String?
+    /// SAP's raw `CHECKPW` and `PWINITIAL`, for the debug trace only.
+    var checkPasswordFlag = ""
+    var initialPasswordFlag = ""
 }
 
 enum SAPLegacyDataExchangeCodec {
@@ -1249,9 +1278,11 @@ enum SAPLegacyDataExchangeCodec {
             }
 
             return SAPReadAuthorization(
-                isAccepted: isSAPTrue(checkPassword) || requiresInitialChange,
+                isAccepted: isSAPTrue(checkPassword),
                 requiresInitialPasswordChange: requiresInitialChange,
-                token: extractedToken
+                token: extractedToken,
+                checkPasswordFlag: checkPassword,
+                initialPasswordFlag: initialPassword
             )
         }
         throw SAPReadError.malformedPayload

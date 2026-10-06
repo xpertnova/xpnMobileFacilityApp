@@ -272,19 +272,16 @@ private struct NotificationSearchBar: UIViewRepresentable {
         symbol.contentMode = .scaleAspectFit
 
         let textField = UITextField()
-        textField.placeholder = String(localized: "notifications.search", bundle: .appLanguage)
         textField.font = .preferredFont(forTextStyle: .body)
         textField.textColor = .label
         textField.autocorrectionType = .no
         textField.autocapitalizationType = .none
         textField.returnKeyType = .search
         textField.delegate = context.coordinator
-        textField.accessibilityLabel = String(localized: "notifications.search", bundle: .appLanguage)
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let button = UIButton(type: .system)
-        button.setTitle(String(localized: "notifications.search.action", bundle: .appLanguage), for: .normal)
         button.setImage(UIImage(systemName: "magnifyingglass"), for: .normal)
         button.tintColor = .white
         button.setTitleColor(.white, for: .normal)
@@ -295,7 +292,6 @@ private struct NotificationSearchBar: UIViewRepresentable {
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
         button.backgroundColor = UIColor(FacilityTheme.accent)
         button.layer.cornerRadius = 12
-        button.accessibilityLabel = String(localized: "notifications.search.action", bundle: .appLanguage)
         button.addTarget(context.coordinator, action: #selector(Coordinator.submitSearch), for: .touchUpInside)
 
         [symbol, textField, button].forEach {
@@ -316,16 +312,35 @@ private struct NotificationSearchBar: UIViewRepresentable {
             button.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
         context.coordinator.textField = textField
+        context.coordinator.searchButton = button
+        context.coordinator.applyLocalizedText()
         return container
     }
 
     func updateUIView(_: UIView, context: Context) {
         context.coordinator.onSearch = onSearch
+        // Runs when `\.locale` changes, so a language picked while this
+        // screen stays open beneath the profile settings reaches UIKit too.
+        context.coordinator.applyLocalizedText()
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         var onSearch: (String) -> Void
         weak var textField: UITextField?
+        weak var searchButton: UIButton?
+        private var appliedLanguage: AppLanguage?
+
+        func applyLocalizedText() {
+            let language = AppLanguage.current
+            guard language != appliedLanguage else { return }
+            appliedLanguage = language
+            let placeholder = String(localized: "notifications.search", bundle: language.bundle)
+            let action = String(localized: "notifications.search.action", bundle: language.bundle)
+            textField?.placeholder = placeholder
+            textField?.accessibilityLabel = placeholder
+            searchButton?.setTitle(action, for: .normal)
+            searchButton?.accessibilityLabel = action
+        }
 
         init(onSearch: @escaping (String) -> Void) {
             self.onSearch = onSearch
@@ -449,11 +464,11 @@ private struct NotificationListContent: View, Equatable {
                 }
             }
 
-            if let notification = demo.selectedNotification, demo.selectedNotificationDetail == nil {
+            // Demo notifications without a form open nothing; the card only
+            // tells production users that SAP holds no form for the row.
+            if !demo.isDemoMode, let notification = demo.selectedNotification, demo.selectedNotificationDetail == nil {
                 notificationListRow(bottomInset: 28) {
-                    NotificationDetailCard(notification: notification, isReadOnly: !demo.isDemoMode) {
-                        demo.finishChecks(for: notification)
-                    }
+                    NotificationDetailCard(notification: notification)
                 }
             }
         }
@@ -1179,8 +1194,6 @@ struct NotificationStatusBadges: View {
 
 private struct NotificationDetailCard: View {
     let notification: MaintenanceNotification
-    let isReadOnly: Bool
-    let finish: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1203,31 +1216,9 @@ private struct NotificationDetailCard: View {
                 }
             }
             Divider()
-            if isReadOnly {
-                Label("sap.notifications.readOnly", systemImage: "lock")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(1...notification.totalChecks, id: \.self) { index in
-                    HStack(spacing: 12) {
-                        Image(systemName: index <= notification.completedChecks ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(index <= notification.completedChecks ? FacilityTheme.accent : .secondary)
-                        Text("\(index). \(index == 1 ? "Visual condition and access" : "Equipment inspection point")")
-                            .font(.subheadline)
-                        Spacer()
-                        Text(index <= notification.completedChecks ? "status.complete" : "status.open")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 3)
-                }
-                HStack {
-                    Spacer()
-                    Button("notifications.detail.finish", action: finish)
-                        .buttonStyle(.borderedProminent)
-                        .tint(FacilityTheme.accent)
-                }
-            }
+            Label("sap.notifications.readOnly", systemImage: "lock")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
         .facilityCard()
     }

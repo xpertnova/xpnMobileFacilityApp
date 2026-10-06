@@ -41,13 +41,12 @@ final class NotificationRowCacheTests: XCTestCase {
     func testDemoRowsFollowDemoDataMutatedInPlace() throws {
         let viewModel = makeViewModel(isDemoMode: true)
         let target = try XCTUnwrap(viewModel.visibleNotifications.first { $0.status == .open })
-        XCTAssertNotEqual(target.completedChecks, target.totalChecks)
+        let index = try XCTUnwrap(viewModel.notifications.firstIndex { $0.id == target.id })
 
-        viewModel.finishChecks(for: target)
+        viewModel.notifications[index].status = .attention
 
         let updated = try XCTUnwrap(viewModel.visibleNotifications.first { $0.id == target.id })
-        XCTAssertEqual(updated.status, .draft, "a cached row must not survive the demo mutation")
-        XCTAssertEqual(updated.completedChecks, updated.totalChecks)
+        XCTAssertEqual(updated.status, .attention, "a cached row must not survive the demo mutation")
     }
 
     @MainActor

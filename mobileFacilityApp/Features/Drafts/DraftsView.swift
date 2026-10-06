@@ -23,7 +23,7 @@ struct DraftsView: View {
                 PageHeader(
                     "drafts.title",
                     subtitle: "drafts.subtitle",
-                    trailing: demo.isDemoMode ? nil : AnyView(syncControl)
+                    trailing: AnyView(syncControl)
                 )
 
                 switch demo.offlineWorkStore.state {
@@ -95,7 +95,7 @@ struct DraftsView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(FacilityTheme.navy)
-        .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
+        .disabled(!demo.canSync)
     }
 
     private var emptyState: some View {
@@ -167,9 +167,9 @@ struct DraftsView: View {
             if let collection = item.payload.photoCollection, !collection.attachments.isEmpty {
                 LocalWorkTemplateRow(
                     icon: "📷",
-                    title: Text(collection.scope.displayTitle.isEmpty
+                    title: Text(collection.scope.localizedTitle.isEmpty
                         ? String(localized: "photos.workspace.title", bundle: .appLanguage)
-                        : collection.scope.displayTitle),
+                        : collection.scope.localizedTitle),
                     subtitle: Text(photoCollectionSubtitle(collection)),
                     status: demo.isDemoMode ? .demoLocal : .offline(.draft),
                     syncError: nil,
@@ -181,7 +181,7 @@ struct DraftsView: View {
 
     private func photoCollectionSubtitle(_ collection: PhotoCollectionDraftPayload) -> String {
         let count = String(format: String(localized: "photos.workspace.count", bundle: .appLanguage), collection.attachments.count)
-        return [collection.scope.displaySubtitle, count]
+        return [collection.scope.localizedSubtitle, count]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
     }

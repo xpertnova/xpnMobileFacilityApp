@@ -98,6 +98,16 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         )
     }
 
+    /// Another worker's cache, only when they synchronized on this device
+    /// before. It never creates an empty cache for a worker who has none.
+    static func existingProduction(workerID: String) throws -> SQLiteSAPDataCacheRepository {
+        let url = try productionDatabaseURL(workerID: workerID)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw SAPReadError.serviceUnavailable
+        }
+        return try SQLiteSAPDataCacheRepository(databaseURL: url, workerID: workerID)
+    }
+
     static func productionDatabaseURL(workerID: String) throws -> URL {
         let directory = try FileManager.default.url(
             for: .applicationSupportDirectory,
@@ -1343,6 +1353,24 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
                 )
             }
             for row in meterReadings { try Self.insert(row: row, into: meterReadingSchema, on: database) }
+            try Self.execute(on: database, "COMMIT")
+        } catch {
+            try? Self.execute(on: database, "ROLLBACK")
+            throw error
+        }
+    }
+
+    func discardNotificationOutgoingRows() async throws {
+        guard let database else { throw SAPReadError.serviceUnavailable }
+        let tables = try [
+            "TO_T0281", "TO_T0283", "TO_T0282", "TO_T0266", "TO_T0265", "TO_T0211",
+            "TO_T0284", "TO_T0285", "TO_T0300", "TO_T0302", "TO_T0286"
+        ].map { try Self.schema(named: $0).name }
+        try Self.execute(on: database, "BEGIN IMMEDIATE TRANSACTION")
+        do {
+            for table in tables {
+                try Self.execute(on: database, "DELETE FROM \(table)")
+            }
             try Self.execute(on: database, "COMMIT")
         } catch {
             try? Self.execute(on: database, "ROLLBACK")

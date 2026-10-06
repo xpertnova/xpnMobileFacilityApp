@@ -60,11 +60,16 @@ final class FacilityDemoViewModel {
     /// from a technical place. Read once by that form's load task, like
     /// `pendingDefectObject`.
     var shouldPresentSAPRefresh = false
-    var shouldPresentDraftWarningBeforeSync = false
+    /// Set while the worker confirms a synchronization that deletes local
+    /// work, like the legacy `DialogBeforeSync`.
+    var shouldConfirmSynchronization = false
+    /// Set when the temporarily saved forms could not be deleted; the
+    /// synchronization then does not start, as in the legacy app.
+    var synchronizationCleanupFailed = false
     var notifications = MockFacilityData.notifications {
         didSet { demoNotificationRevision &+= 1 }
     }
-    /// Demo rows are mutated in place (`finishChecks`, `resetDemo`). This is
+    /// Demo rows are replaced in place (`resetDemo`). This is
     /// observable on purpose: a view that only reads the cached
     /// `visibleNotifications` still has to be told when they change.
     private(set) var demoNotificationRevision = 0
@@ -636,32 +641,64 @@ final class FacilityDemoViewModel {
         selection = returnDestination
     }
 
+    /// Demo has no SAP. Its sync button plays a short sync and then restores
+    /// the demo data to its starting state.
+    private(set) var isResettingDemo = false
+
+    var isSyncing: Bool {
+        isDemoMode ? isResettingDemo : sapDataStore.isRefreshing
+    }
+
+    var canSync: Bool {
+        isDemoMode ? !isResettingDemo : sapDataStore.isRefreshAvailable && !sapDataStore.isRefreshing
+    }
+
+    /// The local work a synchronization deletes: in production the forms
+    /// saved with "Zwischenspeichern" (legacy `REQID = 'X'`), in the demo
+    /// everything the reset clears. Completed work is sent, not deleted.
+    var synchronizationDeletionCount: Int {
+        isDemoMode ? offlineWorkStore.activeQueueCount : offlineWorkStore.temporarilySavedFormItems.count
+    }
+
+    /// Like the legacy `check4TempMeldungen`: asks first when the
+    /// synchronization would delete local work, and starts at once otherwise.
     func requestSAPRefresh() {
-        guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
-        sapDataStore.dismissError()
-        proceedWithSAPRefresh()
+        guard canSync else { return }
+        if synchronizationDeletionCount > 0 {
+            shouldConfirmSynchronization = true
+        } else {
+            startSynchronization()
+        }
     }
 
-    /// Cancels the synchronization and closes the dialog. A request SAP may
-    /// already hold is settled by the next synchronization.
-    func cancelSAPRefresh() {
-        sapDataStore.cancelRefresh()
-        shouldPresentSAPRefresh = false
-        Task { await offlineWorkStore.load() }
+    /// "Ja" of the legacy dialog: the temporarily saved forms are deleted
+    /// first, and the synchronization starts only once they are gone.
+    func confirmSynchronization() {
+        shouldConfirmSynchronization = false
+        if isDemoMode {
+            simulateDemoSync()
+            return
+        }
+        Task {
+            do {
+                try await offlineWorkStore.deleteTemporarilySavedForms(photoStore: photoAttachmentStore)
+                proceedWithSAPRefresh()
+            } catch {
+                synchronizationCleanupFailed = true
+            }
+        }
     }
 
-    func confirmDiscardDraftsAndSync() {
-        shouldPresentDraftWarningBeforeSync = false
-        proceedWithSAPRefresh()
+    func cancelSynchronization() {
+        shouldConfirmSynchronization = false
     }
 
-    func dismissDraftWarning() {
-        shouldPresentDraftWarningBeforeSync = false
-    }
-
-    func keepDraftsAndNavigate() {
-        shouldPresentDraftWarningBeforeSync = false
-        open(.drafts)
+    private func startSynchronization() {
+        if isDemoMode {
+            simulateDemoSync()
+        } else {
+            proceedWithSAPRefresh()
+        }
     }
 
     private func proceedWithSAPRefresh() {
@@ -672,8 +709,10 @@ final class FacilityDemoViewModel {
             shouldPresentSAPRefresh = true
             Task {
                 let success = await sapDataStore.refreshWithSavedToken()
+                // A failed or stopped synchronization may still have sent or
+                // failed local work, so the pending count is read again too.
+                await offlineWorkStore.load()
                 if success {
-                    await offlineWorkStore.load()
                     shouldPresentSAPRefresh = false
                 }
             }
@@ -682,11 +721,14 @@ final class FacilityDemoViewModel {
         }
     }
 
-    func finishChecks(for notification: MaintenanceNotification) {
-        guard isDemoMode else { return }
-        guard let index = notifications.firstIndex(where: { $0.id == notification.id }) else { return }
-        notifications[index].completedChecks = notifications[index].totalChecks
-        notifications[index].status = .draft
+    private func simulateDemoSync() {
+        guard isDemoMode, !isResettingDemo else { return }
+        isResettingDemo = true
+        Task {
+            try? await Task.sleep(for: .milliseconds(900))
+            resetDemo()
+            isResettingDemo = false
+        }
     }
 
     func resetDemo() {

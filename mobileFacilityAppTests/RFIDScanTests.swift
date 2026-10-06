@@ -297,7 +297,7 @@ final class RFIDScanViewModelTests: XCTestCase {
             localWorkerID: "w1"
         )
         await store.loadCachedData()
-        return ScanViewModel(sapDataStore: store, rfidReader: reader, isDemoMode: false, openSingleMatch: openSingleMatch)
+        return ScanViewModel(sapDataStore: store, rfidReader: reader, openSingleMatch: openSingleMatch)
     }
 }
 

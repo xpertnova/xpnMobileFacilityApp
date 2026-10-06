@@ -201,8 +201,8 @@ struct LocalDocumentWorkspace: View {
                 Text("documents.workspace.title")
                     .font(.title2.bold())
                     .foregroundStyle(FacilityTheme.ink)
-                if !model.scope.displaySubtitle.isEmpty {
-                    Text(model.scope.displaySubtitle)
+                if !model.scope.localizedSubtitle.isEmpty {
+                    Text(model.scope.localizedSubtitle)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)

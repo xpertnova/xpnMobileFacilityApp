@@ -72,11 +72,27 @@ enum SAPMeterReadingUploadError: LocalizedError {
     }
 }
 
-enum SAPNotificationReviewUploadError: Error {
+enum SAPNotificationReviewUploadError: LocalizedError {
     case invalidReview(String)
     case missingSourceNotification(String)
     case missingDocumentMapping(String)
     case missingPhoto(String)
+    case missingWorkerCache(String)
+
+    var errorDescription: String? {
+        switch self {
+        case let .invalidReview(id):
+            "Ungültige Prüfung für Meldung \(id)."
+        case let .missingSourceNotification(id):
+            "Quellmeldung \(id) nicht gefunden."
+        case let .missingDocumentMapping(formNumber):
+            "Keine Dokumentklasse für Formular \(formNumber)."
+        case let .missingPhoto(id):
+            "Foto \(id) nicht gefunden."
+        case let .missingWorkerCache(workerID):
+            "Keine SAP-Daten von \(workerID.uppercased()) auf diesem Gerät."
+        }
+    }
 }
 
 enum SAPNotificationReviewUploadBuilder {
@@ -333,187 +349,52 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
     let cacheRepository: any SAPDataCacheRepository
     let outgoingStore: any SAPNotificationOutgoingStore
     let photoStore: any PhotoAttachmentStore
+    /// Opens the SAP cache another worker synchronized on this device. With
+    /// it, the closed work every worker left here goes with this request, as
+    /// in the legacy app, whose `copyToTempTbl` sent the whole device-wide
+    /// `TO_*` tables whoever synchronized. Their rows are built from their
+    /// own cache and carry their own user, as the legacy rows written when
+    /// they closed the work did. Without it only this worker's work is sent.
+    var otherWorkerCache: (@Sendable (_ workerID: String) throws -> any SAPDataCacheRepository)?
 
     func hasPendingWork() async throws -> Bool {
-        try await offlineRepository.loadWork(for: workerID).contains(where: Self.isSendable)
+        if try await offlineRepository.loadWork(for: workerID).contains(where: \.isReadyForSynchronization) {
+            return true
+        }
+        return await otherWorkersWork().contains(where: \.isReadyForSynchronization)
     }
 
     func prepare() async throws -> SAPNotificationOutgoingBatch {
-        let allWork = try await offlineRepository.loadWork(for: workerID)
-        let pending = allWork.filter(Self.isSendable)
+        let ownWork = try await offlineRepository.loadWork(for: workerID)
+        let othersWork = await otherWorkersWork()
+        let pending = (ownWork + othersWork).filter(\.isReadyForSynchronization)
+        // The rows of every waiting work item are built again below. Rows left
+        // from an earlier attempt of work that was deleted since, or that can
+        // no longer be built, must not go with the request.
+        try await outgoingStore.discardNotificationOutgoingRows()
         guard !pending.isEmpty else { return .empty }
-        let pendingIDs = Set(pending.map(\.id))
 
-        // An instruction form that cannot be built, such as one closed before
-        // its report was kept, is marked failed on its own instead of holding
-        // back every other form.
+        // Work that cannot be built, such as an instruction form closed before
+        // its report was kept, a defect saved before it had a category or a
+        // review whose source notification or photo is gone, is marked failed
+        // on its own instead of holding back every other item.
         var rejected: [(item: OfflineWorkItem, error: Error)] = []
         do {
             var batches: [SAPNotificationOutgoingBatch] = []
-            for item in pending {
-                switch item.payload {
-                case .briefing, .proofOfQualification, .electricalSafety, .firePermit:
-                    do {
-                        batches.append(try await instructionFormBatch(for: item))
-                    } catch {
-                        rejected.append((item, error))
-                    }
-                case let .defect(defect):
-                    // A defect that cannot be built, such as one saved before
-                    // it had a category, fails on its own.
-                    do {
-                        batches.append(try await defectBatch(for: item, defect: defect))
-                    } catch {
-                        rejected.append((item, error))
-                    }
-                case let .notificationReview(review):
-                    let page = try await cacheRepository.loadNotifications(
-                        for: workerID, matching: review.notificationID,
-                        structuralFilter: .empty, limit: 20, offset: 0
-                    )
-                    guard let source = page.notifications.first(where: { $0.id == review.notificationID }) else {
-                        throw SAPNotificationReviewUploadError.missingSourceNotification(review.notificationID)
-                    }
-                    var photos: [String: Data] = [:]
-                    for attachment in review.photoAttachments {
-                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
-                    }
-                    let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
-                    let detail = SAPNotificationDetail(summary: source)
-                    let report = NotificationReviewReportPDF.render(NotificationReviewReportPayload(
-                        formCode: detail.formCode,
-                        notificationID: review.notificationID,
-                        fields: NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON),
-                        // `addReportTableWN` prints only rows with a Befund.
-                        items: detail.inspectionItems.filter { !$0.isMeasuringPointEntry },
-                        results: review.results,
-                        comments: review.comments,
-                        performedOn: review.performedOn,
-                        worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: syncUserID)
-                    ))
-                    let measuringDocument = try measuringDocument(
-                        for: source, in: allWork.filter { pendingIDs.contains($0.id) }
-                    )
-                    var batch = try SAPNotificationReviewUploadBuilder.build(
-                        workItem: item, source: source, syncUserID: syncUserID, photoData: photos,
-                        reportPDF: report, measuringDocument: measuringDocument
-                    )
-                    try await addI2Notifications(review.i2Requests, source: source, to: &batch)
-                    batches.append(batch)
-                case let .elevatorInspection(inspection):
-                    let page = try await cacheRepository.loadNotifications(
-                        for: workerID, matching: inspection.notificationID,
-                        structuralFilter: .empty, limit: 20, offset: 0
-                    )
-                    guard let source = page.notifications.first(where: { $0.id == inspection.notificationID }) else {
-                        throw SAPEquipmentInspectionUploadError.missingSourceNotification(inspection.notificationID)
-                    }
-                    var photos: [String: Data] = [:]
-                    for attachment in inspection.photoAttachments {
-                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
-                    }
-                    var pdfData = inspection.pdfBytes ?? Data()
-                    if pdfData.isEmpty {
-                        let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
-                        let form = inspection.form
-                        let items = ElevatorInspectionDecoder.decodeItems(from: source.rawPayloadJSON)
-                        let hasMat = form.supportsMaterial && items.contains { $0.hasMaterial }
-                        var res: [String: String] = [:]
-                        var acts: [String: String] = [:]
-                        var mats: [String: Bool] = [:]
-                        var notes: [String: String] = [:]
-                        for itm in items {
-                            res[itm.id] = inspection.elementValues[itm.resultElementID] ?? ""
-                            if let actID = itm.actionElementID { acts[itm.id] = inspection.elementValues[actID] ?? "" }
-                            if let matID = itm.materialElementID { mats[itm.id] = inspection.materialFlags[matID] ?? false }
-                            notes[itm.id] = inspection.comments[itm.commentElementID] ?? inspection.comments[itm.id] ?? ""
-                        }
-                        let fields = NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON)
-                        let payload = ElevatorInspectionPDFPayload(
-                            formTitle: form.reportTitleFallback,
-                            masterDataTitle: form.reportMasterDataTitle,
-                            notificationID: inspection.notificationID,
-                            notificationTitle: fields["PLTXT"].isEmpty ? source.title : fields["PLTXT"],
-                            functionalLocation: source.functionalLocationID,
-                            equipmentID: source.equipmentID.isEmpty ? nil : source.equipmentID,
-                            equipmentName: fields["EQKTX"],
-                            locationCity: fields["CITY1_TO"],
-                            locationStreet: fields["STREET_TO"],
-                            weGe: "\(fields["TPWEH"])/ \(fields["TPGEB"])",
-                            workerName: [userProfile?.firstName, userProfile?.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "),
-                            workerID: userProfile?.personalNumber ?? workerID,
-                            company: userProfile?.company ?? "",
-                            orgUnit: fields["GEWRK"],
-                            plant: fields["IWERK"],
-                            performedAt: inspection.performedOn,
-                            items: items,
-                            results: res,
-                            actions: acts,
-                            materials: mats,
-                            notes: notes,
-                            hasMaterialColumn: hasMat,
-                            outOfOperationComment: inspection.isOutOfOperation == true
-                                ? inspection.outOfOperationComment ?? "" : nil
-                        )
-                        pdfData = (try? ElevatorInspectionPDFRenderer.render(payload).data) ?? Data()
-                    }
-                    var batch = try SAPEquipmentInspectionUploadBuilder.build(
-                        workItem: item, source: source, syncUserID: syncUserID,
-                        photoData: photos, pdfData: pdfData
-                    )
-                    // An out-of-service inspection has no positions left to
-                    // report a fault for.
-                    if !(inspection.isOutOfOperation ?? false) {
-                        try await addI2Notifications(inspection.i2Requests ?? [], source: source, to: &batch)
-                    }
-                    batches.append(batch)
-                case let .mobileLadder(draft):
-                    var photos: [String: Data] = [:]
-                    for attachment in draft.photoAttachments {
-                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
-                    }
-                    var batch = try SAPMobileLadderUploadBuilder.build(
-                        workItem: item, draft: draft, syncUserID: syncUserID, photoData: photos
-                    )
-                    let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
-                        guard let collection = candidate.payload.photoCollection,
-                              collection.scope.workflow == .mobileLadder,
-                              collection.scope.ownerID == draft.localDraftID else { return nil }
-                        return candidate.id
-                    }
-                    batch = batch.addingCleanupWorkItemIDs(photoWorkIDs)
-                    batches.append(batch)
-                case let .subdistribution(draft):
-                    var photos: [String: Data] = [:]
-                    for attachment in draft.photoAttachments {
-                        photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
-                    }
-                    var batch = try SAPSubdistributionUploadBuilder.build(
-                        workItem: item, draft: draft, syncUserID: syncUserID, photoData: photos
-                    )
-                    let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
-                        guard let collection = candidate.payload.photoCollection,
-                              collection.scope.workflow == .subdistribution,
-                              collection.scope.ownerID == draft.localDraftID else { return nil }
-                        return candidate.id
-                    }
-                    batch = batch.addingCleanupWorkItemIDs(photoWorkIDs)
-                    batches.append(batch)
-                default:
-                    continue
-                }
-            }
-            let meterItems = pending.filter { $0.payload.meterReading != nil }
-            if !meterItems.isEmpty {
-                let meterOutput = try SAPMeterReadingUploadBuilder.build(items: meterItems, syncUserID: syncUserID)
-                var meterBatch = SAPNotificationOutgoingBatch(
-                    workItemIDs: meterOutput.workItemIDs, attachmentIDs: [], processIDs: [], equipmentIDs: [],
-                    headers: [], values: [], documents: [], equipment: []
-                )
-                meterBatch.meterReadings = meterOutput.rows
-                batches.append(meterBatch)
-                for item in meterItems where !meterOutput.workItemIDs.contains(item.id) {
-                    rejected.append((item, SAPMeterReadingUploadError.missingTechnicalPlace))
+            let own = try await buildBatches(allWork: ownWork)
+            batches += own.batches
+            rejected += own.rejected
+            let othersByWorker = Dictionary(grouping: othersWork, by: \.workerID)
+            for (otherWorkerID, work) in othersByWorker.sorted(by: { $0.key < $1.key }) {
+                let otherPending = work.filter(\.isReadyForSynchronization)
+                guard !otherPending.isEmpty else { continue }
+                do {
+                    let coordinator = try coordinator(for: otherWorkerID)
+                    let output = try await coordinator.buildBatches(allWork: work)
+                    batches += output.batches
+                    rejected += output.rejected
+                } catch {
+                    rejected += otherPending.map { ($0, error) }
                 }
             }
             let merged = SAPNotificationOutgoingBatch(
@@ -575,6 +456,217 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         }
     }
 
+    /// The batches of this worker's waiting work and the work that could not
+    /// be built. `allWork` is all of this worker's local work.
+    private func buildBatches(
+        allWork: [OfflineWorkItem]
+    ) async throws -> (batches: [SAPNotificationOutgoingBatch], rejected: [(item: OfflineWorkItem, error: Error)]) {
+        let pending = allWork.filter(\.isReadyForSynchronization)
+        guard !pending.isEmpty else { return ([], []) }
+        let pendingIDs = Set(pending.map(\.id))
+        var batches: [SAPNotificationOutgoingBatch] = []
+        var rejected: [(item: OfflineWorkItem, error: Error)] = []
+        for item in pending {
+            do {
+                if let batch = try await batch(for: item, allWork: allWork, pendingIDs: pendingIDs) {
+                    batches.append(batch)
+                }
+            } catch {
+                rejected.append((item, error))
+            }
+        }
+        let meterItems = pending.filter { $0.payload.meterReading != nil }
+        if !meterItems.isEmpty {
+            let meterOutput = try SAPMeterReadingUploadBuilder.build(items: meterItems, syncUserID: syncUserID)
+            var meterBatch = SAPNotificationOutgoingBatch(
+                workItemIDs: meterOutput.workItemIDs, attachmentIDs: [], processIDs: [], equipmentIDs: [],
+                headers: [], values: [], documents: [], equipment: []
+            )
+            meterBatch.meterReadings = meterOutput.rows
+            batches.append(meterBatch)
+            for item in meterItems where !meterOutput.workItemIDs.contains(item.id) {
+                rejected.append((item, SAPMeterReadingUploadError.missingTechnicalPlace))
+            }
+        }
+        return (batches, rejected)
+    }
+
+    /// The local work of the other workers. A failure to read it must not
+    /// stop this worker's synchronization, so it reads as none.
+    private func otherWorkersWork() async -> [OfflineWorkItem] {
+        guard otherWorkerCache != nil else { return [] }
+        return (try? await offlineRepository.loadWorkOfOtherWorkers(excluding: workerID)) ?? []
+    }
+
+    /// Builds another worker's rows exactly as their own synchronization
+    /// would: from their cache and with their legacy synchronization user,
+    /// which is the worker ID they logged in with.
+    private func coordinator(for otherWorkerID: String) throws -> SAPNotificationReviewOutgoingCoordinator {
+        guard let otherWorkerCache else { throw SAPReadError.serviceUnavailable }
+        let cache: any SAPDataCacheRepository
+        do {
+            cache = try otherWorkerCache(otherWorkerID)
+        } catch {
+            throw SAPNotificationReviewUploadError.missingWorkerCache(otherWorkerID)
+        }
+        return SAPNotificationReviewOutgoingCoordinator(
+            workerID: otherWorkerID,
+            syncUserID: otherWorkerID,
+            offlineRepository: offlineRepository,
+            cacheRepository: cache,
+            outgoingStore: outgoingStore,
+            photoStore: photoStore
+        )
+    }
+
+    /// The rows of one waiting work item, or nil for work that goes with the
+    /// request in another way (meter readings) or not at all.
+    private func batch(
+        for item: OfflineWorkItem,
+        allWork: [OfflineWorkItem],
+        pendingIDs: Set<UUID>
+    ) async throws -> SAPNotificationOutgoingBatch? {
+        switch item.payload {
+        case .briefing, .proofOfQualification, .electricalSafety, .firePermit:
+            return try await instructionFormBatch(for: item)
+        case let .defect(defect):
+            return try await defectBatch(for: item, defect: defect)
+        case let .notificationReview(review):
+            let page = try await cacheRepository.loadNotifications(
+                for: workerID, matching: review.notificationID,
+                structuralFilter: .empty, limit: 20, offset: 0
+            )
+            guard let source = page.notifications.first(where: { $0.id == review.notificationID }) else {
+                throw SAPNotificationReviewUploadError.missingSourceNotification(review.notificationID)
+            }
+            var photos: [String: Data] = [:]
+            for attachment in review.photoAttachments {
+                photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+            }
+            let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
+            let detail = SAPNotificationDetail(summary: source)
+            let report = NotificationReviewReportPDF.render(NotificationReviewReportPayload(
+                formCode: detail.formCode,
+                notificationID: review.notificationID,
+                fields: NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON),
+                // `addReportTableWN` prints only rows with a Befund.
+                items: detail.inspectionItems.filter { !$0.isMeasuringPointEntry },
+                results: review.results,
+                comments: review.comments,
+                performedOn: review.performedOn,
+                worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: syncUserID)
+            ))
+            let measuringDocument = try measuringDocument(
+                for: source, in: allWork.filter { pendingIDs.contains($0.id) }
+            )
+            var batch = try SAPNotificationReviewUploadBuilder.build(
+                workItem: item, source: source, syncUserID: syncUserID, photoData: photos,
+                reportPDF: report, measuringDocument: measuringDocument
+            )
+            try await addI2Notifications(review.i2Requests, source: source, to: &batch)
+            return batch
+        case let .elevatorInspection(inspection):
+            let page = try await cacheRepository.loadNotifications(
+                for: workerID, matching: inspection.notificationID,
+                structuralFilter: .empty, limit: 20, offset: 0
+            )
+            guard let source = page.notifications.first(where: { $0.id == inspection.notificationID }) else {
+                throw SAPEquipmentInspectionUploadError.missingSourceNotification(inspection.notificationID)
+            }
+            var photos: [String: Data] = [:]
+            for attachment in inspection.photoAttachments {
+                photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+            }
+            var pdfData = inspection.pdfBytes ?? Data()
+            if pdfData.isEmpty {
+                let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
+                let form = inspection.form
+                let items = ElevatorInspectionDecoder.decodeItems(from: source.rawPayloadJSON)
+                let hasMat = form.supportsMaterial && items.contains { $0.hasMaterial }
+                var res: [String: String] = [:]
+                var acts: [String: String] = [:]
+                var mats: [String: Bool] = [:]
+                var notes: [String: String] = [:]
+                for itm in items {
+                    res[itm.id] = inspection.elementValues[itm.resultElementID] ?? ""
+                    if let actID = itm.actionElementID { acts[itm.id] = inspection.elementValues[actID] ?? "" }
+                    if let matID = itm.materialElementID { mats[itm.id] = inspection.materialFlags[matID] ?? false }
+                    notes[itm.id] = inspection.comments[itm.commentElementID] ?? inspection.comments[itm.id] ?? ""
+                }
+                let fields = NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON)
+                let payload = ElevatorInspectionPDFPayload(
+                    formTitle: form.reportTitleFallback,
+                    masterDataTitle: form.reportMasterDataTitle,
+                    notificationID: inspection.notificationID,
+                    notificationTitle: fields["PLTXT"].isEmpty ? source.title : fields["PLTXT"],
+                    functionalLocation: source.functionalLocationID,
+                    equipmentID: source.equipmentID.isEmpty ? nil : source.equipmentID,
+                    equipmentName: fields["EQKTX"],
+                    locationCity: fields["CITY1_TO"],
+                    locationStreet: fields["STREET_TO"],
+                    weGe: "\(fields["TPWEH"])/ \(fields["TPGEB"])",
+                    workerName: [userProfile?.firstName, userProfile?.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " "),
+                    workerID: userProfile?.personalNumber ?? workerID,
+                    company: userProfile?.company ?? "",
+                    orgUnit: fields["GEWRK"],
+                    plant: fields["IWERK"],
+                    performedAt: inspection.performedOn,
+                    items: items,
+                    results: res,
+                    actions: acts,
+                    materials: mats,
+                    notes: notes,
+                    hasMaterialColumn: hasMat,
+                    outOfOperationComment: inspection.isOutOfOperation == true
+                        ? inspection.outOfOperationComment ?? "" : nil
+                )
+                pdfData = (try? ElevatorInspectionPDFRenderer.render(payload).data) ?? Data()
+            }
+            var batch = try SAPEquipmentInspectionUploadBuilder.build(
+                workItem: item, source: source, syncUserID: syncUserID,
+                photoData: photos, pdfData: pdfData
+            )
+            // An out-of-service inspection has no positions left to
+            // report a fault for.
+            if !(inspection.isOutOfOperation ?? false) {
+                try await addI2Notifications(inspection.i2Requests ?? [], source: source, to: &batch)
+            }
+            return batch
+        case let .mobileLadder(draft):
+            var photos: [String: Data] = [:]
+            for attachment in draft.photoAttachments {
+                photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+            }
+            let batch = try SAPMobileLadderUploadBuilder.build(
+                workItem: item, draft: draft, syncUserID: syncUserID, photoData: photos
+            )
+            let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
+                guard let collection = candidate.payload.photoCollection,
+                      collection.scope.workflow == .mobileLadder,
+                      collection.scope.ownerID == draft.localDraftID else { return nil }
+                return candidate.id
+            }
+            return batch.addingCleanupWorkItemIDs(photoWorkIDs)
+        case let .subdistribution(draft):
+            var photos: [String: Data] = [:]
+            for attachment in draft.photoAttachments {
+                photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
+            }
+            let batch = try SAPSubdistributionUploadBuilder.build(
+                workItem: item, draft: draft, syncUserID: syncUserID, photoData: photos
+            )
+            let photoWorkIDs = allWork.compactMap { candidate -> UUID? in
+                guard let collection = candidate.payload.photoCollection,
+                      collection.scope.workflow == .subdistribution,
+                      collection.scope.ownerID == draft.localDraftID else { return nil }
+                return candidate.id
+            }
+            return batch.addingCleanupWorkItemIDs(photoWorkIDs)
+        default:
+            return nil
+        }
+    }
+
     func complete(_ batch: SAPOutgoingBatchManifest) async throws {
         try await offlineRepository.delete(ids: batch.workItemIDs)
         for id in batch.attachmentIDs { try? await photoStore.delete(id: id) }
@@ -582,7 +674,7 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
 
     func fail(_ batch: SAPOutgoingBatchManifest, error: Error) async {
         guard !batch.workItemIDs.isEmpty else { return }
-        let work = (try? await offlineRepository.loadWork(for: workerID)) ?? []
+        let work = ((try? await offlineRepository.loadWork(for: workerID)) ?? []) + (await otherWorkersWork())
         // A cancelled synchronization is not a failure of the work itself.
         let isCancelled = error is CancellationError
         for item in work where batch.workItemIDs.contains(item.id) {
@@ -590,26 +682,6 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
                 ? copy(item, status: .pendingSynchronization, error: nil)
                 : copy(item, status: .failed, error: error.localizedDescription))
         }
-    }
-
-    private static func isSendable(_ item: OfflineWorkItem) -> Bool {
-        guard [.pendingSynchronization, .failed, .synchronizing].contains(item.status) else {
-            return false
-        }
-        if let review = item.payload.notificationReview { return review.isClosedLocally }
-        if let inspection = item.payload.elevatorInspection { return inspection.isClosedLocally }
-        if let ladder = item.payload.mobileLadder { return ladder.isClosedLocally == true }
-        if let subdistribution = item.payload.subdistribution { return subdistribution.isClosedLocally }
-        if let briefing = item.payload.briefing { return briefing.completedAt != nil }
-        if let qualification = item.payload.proofOfQualification { return qualification.completedAt != nil }
-        if let electricalSafety = item.payload.electricalSafety { return electricalSafety.completedAt != nil }
-        if item.payload.firePermit != nil { return true }
-        // A defect is saved as pending only when it is reported.
-        if item.payload.defect != nil { return true }
-        // `MeasurePoints.onPressSave` writes `TO_T0286` straight away;
-        // a reading is sent with the next synchronization.
-        if item.payload.meterReading != nil { return true }
-        return false
     }
 
     private func copy(_ item: OfflineWorkItem, status: OfflineWorkStatus, error: String?) -> OfflineWorkItem {

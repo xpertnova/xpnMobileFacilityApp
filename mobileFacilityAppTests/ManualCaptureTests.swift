@@ -16,10 +16,17 @@ final class ManualCaptureTests: XCTestCase {
         XCTAssertNil(MeterReadingViewModel.parseDecimal(""))
     }
 
-    func testMeterReadingInputKeepsAtMostFifteenDigits() {
-        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12345678901234567890"), "123456789012345")
-        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234567890123,4567"), "1234567890123,45")
+    func testMeterReadingInputKeepsAtMostTenDigits() {
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12345678901234567890"), "1234567890")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12345678,4567"), "12345678,45")
         XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12.5a"), "12,5")
+    }
+
+    func testMeterReadingIntegerPartLeavesRoomForDecim() {
+        // `TFM_ZAEHLER_STROM`: 10 characters, 2 decimal places.
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234567890", maximumFractionDigits: 2), "12345678")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("12345678,99", maximumFractionDigits: 2), "12345678,99")
+        XCTAssertEqual(MeterReadingViewModel.sanitizeInput("1234567890", maximumFractionDigits: 0), "1234567890")
     }
 
     func testMeterReadingInputKeepsAtMostDecimFractionDigits() {

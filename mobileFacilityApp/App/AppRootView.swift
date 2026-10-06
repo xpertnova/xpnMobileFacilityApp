@@ -78,20 +78,7 @@ struct AppRootView: View {
                 if let testSession = Self.debugLoginBypassSession {
                     enterProductionWorkspace(for: testSession)
                 } else {
-                    authenticationWorkspace = FacilityDemoViewModel(
-                        isDemoMode: false,
-                        offlineWorkStore: OfflineWorkStore(
-                            repository: InMemoryOfflineWorkRepository(),
-                            workerID: "unauthenticated"
-                        ),
-                        sapDataStore: SAPDataStore(
-                            repository: InMemorySAPDataCacheRepository(),
-                            refreshService: nil,
-                            localWorkerID: "unauthenticated"
-                        ),
-                        meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
-                        photoAttachmentStore: InMemoryPhotoAttachmentStore()
-                    )
+                    authenticationWorkspace = Self.makeAuthenticationWorkspace()
                     phase = .authentication
                 }
             case .demo:
@@ -112,14 +99,25 @@ struct AppRootView: View {
         }
     }
 
+    /// Returns to the SAP welcome screen, like leaving the demo. The saved
+    /// onboarding is forgotten so it is not silently restored straight back
+    /// to the login.
     private func signOut() {
+        LocalDataDiagnostics.log("Logout.")
         productionSession = nil
         productionWorkspace = nil
-        phase = .authentication
+        authenticationWorkspace = nil
+        SAPOnboardingPersistence.forget()
+        onboarding = SAPOnboardingState()
+        phase = .launching
     }
 
     private func enterProductionWorkspace(for session: FacilityUserSession) {
-        guard !isPreparingProductionWorkspace else { return }
+        guard !isPreparingProductionWorkspace else {
+            LocalDataDiagnostics.log("Login ignored: a workspace is still being prepared.")
+            return
+        }
+        LocalDataDiagnostics.log("Login as \(LocalDataDiagnostics.redacted(session.workerID)) in phase \(phase).")
         isPreparingProductionWorkspace = true
         let workerID = session.workerID
         Task {
@@ -128,7 +126,10 @@ struct AppRootView: View {
             let storage = await Task.detached(priority: .userInitiated) {
                 ProductionStorage(workerID: workerID)
             }.value
-            guard phase == .authentication || phase == .launching else { return }
+            guard phase == .authentication || phase == .launching else {
+                LocalDataDiagnostics.log("Workspace discarded: phase changed to \(phase) while opening storage.")
+                return
+            }
             productionSession = session
             let sapDataStore = productionSAPDataStore(
                 for: session,
@@ -187,7 +188,26 @@ struct AppRootView: View {
         #endif
     }
 
-    private static func makeDemoWorkspace() -> FacilityDemoViewModel {
+    /// The dimmed workspace behind the login. Nobody is signed in yet, so it
+    /// is mock-only like the demo and never reaches SAP or SQLite.
+    static func makeAuthenticationWorkspace() -> FacilityDemoViewModel {
+        FacilityDemoViewModel(
+            isDemoMode: false,
+            offlineWorkStore: OfflineWorkStore(
+                repository: InMemoryOfflineWorkRepository(),
+                workerID: "unauthenticated"
+            ),
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(),
+                refreshService: nil,
+                localWorkerID: "unauthenticated"
+            ),
+            meterReferenceProvider: FrontendPreviewMeterReferenceProvider(),
+            photoAttachmentStore: InMemoryPhotoAttachmentStore()
+        )
+    }
+
+    static func makeDemoWorkspace() -> FacilityDemoViewModel {
         FacilityDemoViewModel(
             isDemoMode: true,
             offlineWorkStore: OfflineWorkStore(
@@ -219,6 +239,7 @@ struct AppRootView: View {
         if let repository = cacheRepository {
             let tokenStore = KeychainSAPSyncTokenStore()
             guard let connection = onboarding.readConnection else {
+                LocalDataDiagnostics.log("No SAP read connection after login; the SAP cache is not used.")
                 return SAPDataStore(
                     repository: UnavailableSAPDataCacheRepository(),
                     refreshService: nil,
@@ -245,12 +266,34 @@ struct AppRootView: View {
                     offlineRepository: offlineWorkRepository,
                     cacheRepository: repository,
                     outgoingStore: repository,
-                    photoStore: photoAttachmentStore
+                    photoStore: photoAttachmentStore,
+                    otherWorkerCache: { workerID in
+                        try SQLiteSAPDataCacheRepository.existingProduction(workerID: workerID)
+                    }
                 )
             )
+            let passwordService = SAPLiveSyncPasswordService(
+                connection: connection,
+                synchronizationUserID: synchronizationUserID
+            )
+            #if DEBUG
+            if SAPForcedInitialPasswordChange.isEnabled {
+                // The saved token would skip the password the dialog follows.
+                return SAPDataStore(
+                    repository: repository,
+                    refreshService: SAPForcedInitialPasswordChange.refreshService(wrapping: refreshService),
+                    passwordService: SAPForcedInitialPasswordChange.passwordService,
+                    tokenStore: nil,
+                    localWorkerID: session.workerID,
+                    synchronizationUserID: synchronizationUserID,
+                    tokenStoreAccountID: tokenStoreAccountID
+                )
+            }
+            #endif
             return SAPDataStore(
                 repository: repository,
                 refreshService: refreshService,
+                passwordService: passwordService,
                 tokenStore: tokenStore,
                 localWorkerID: session.workerID,
                 synchronizationUserID: synchronizationUserID,
@@ -275,10 +318,13 @@ private struct ProductionStorage: Sendable {
     let cacheRepository: SQLiteSAPDataCacheRepository?
 
     init(workerID: String) {
-        if let repository = try? SQLiteOfflineWorkRepository() {
-            offlineWorkRepository = repository
-        } else {
+        let worker = LocalDataDiagnostics.redacted(workerID)
+        do {
+            offlineWorkRepository = try SQLiteOfflineWorkRepository()
+            LocalDataDiagnostics.log("Opened offline work database for \(worker).")
+        } catch {
             offlineWorkRepository = UnavailableOfflineWorkRepository()
+            LocalDataDiagnostics.log("Offline work database unavailable for \(worker): \(error)")
         }
         if let store = try? FilePhotoAttachmentStore() {
             photoAttachmentStore = store
@@ -290,7 +336,13 @@ private struct ProductionStorage: Sendable {
         } else {
             documentAttachmentStore = UnavailableDocumentAttachmentStore()
         }
-        cacheRepository = try? SQLiteSAPDataCacheRepository.production(workerID: workerID)
+        do {
+            cacheRepository = try SQLiteSAPDataCacheRepository.production(workerID: workerID)
+            LocalDataDiagnostics.log("Opened SAP cache database for \(worker).")
+        } catch {
+            cacheRepository = nil
+            LocalDataDiagnostics.log("SAP cache database unavailable for \(worker): \(error)")
+        }
     }
 }
 

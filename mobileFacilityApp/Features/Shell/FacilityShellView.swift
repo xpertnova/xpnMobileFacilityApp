@@ -7,10 +7,13 @@ struct FacilityShellView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.facilityLayout) private var layout
     @State private var sapPassword = ""
+    /// The password SAP accepted as initial, offered as the old one.
+    @State private var initialSAPPassword = ""
     @State private var notificationFilterPresentation: NotificationStructuralFilterPresentationState
     @State private var networkReachability = NetworkReachabilityMonitor(startMonitoring: false)
     @State private var hasStartedNetworkMonitoring = false
     @State private var isShowingUserMenu = false
+    @State private var isLogoutConfirmationPresented = false
 
     private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
     private let workDestinations: [AppDestination] = [
@@ -179,23 +182,27 @@ struct FacilityShellView: View {
                 presentation: notificationFilterPresentation
             )
 
-            if !demo.isDemoMode, demo.shouldPresentDraftWarningBeforeSync {
+            if demo.shouldConfirmSynchronization {
+                synchronizationConfirmation
+                    .transition(.opacity)
+                    .zIndex(5)
+            }
+
+            if !demo.isDemoMode, demo.shouldPresentSAPRefresh, requiresInitialPasswordChange {
                 Color.black.opacity(0.42)
                     .ignoresSafeArea()
                     .transition(.opacity)
-                    .zIndex(5)
-                SAPPreSyncDraftWarningDialog(
-                    draftCount: demo.offlineWorkStore.localWorkCount,
-                    confirm: demo.confirmDiscardDraftsAndSync,
-                    keepDrafts: demo.keepDraftsAndNavigate,
-                    cancel: demo.dismissDraftWarning
+                    .zIndex(3)
+                SAPInitialPasswordDialog(
+                    userName: demo.sapDataStore.synchronizationUserID,
+                    initialOldPassword: initialSAPPassword,
+                    save: changeInitialSAPPassword,
+                    cancel: dismissSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
-                .zIndex(6)
-            }
-
-            if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
+                .zIndex(4)
+            } else if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
                 Color.black.opacity(0.42)
                     .ignoresSafeArea()
                     .transition(.opacity)
@@ -207,8 +214,7 @@ struct FacilityShellView: View {
                     error: demo.sapDataStore.refreshError,
                     failureContext: demo.sapDataStore.refreshFailureContext,
                     refresh: refreshSAPData,
-                    cancel: dismissSAPRefresh,
-                    cancelRefresh: demo.cancelSAPRefresh
+                    cancel: dismissSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.scale(scale: 0.95).combined(with: .opacity))
@@ -217,7 +223,29 @@ struct FacilityShellView: View {
         }
         .background(FacilityTheme.canvas)
         .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.18), value: demo.shouldConfirmSynchronization)
+        .facilityConfirmationDialog(
+            isPresented: $isLogoutConfirmationPresented,
+            titleKey: demo.isDemoMode ? "logout.confirm.demo.title" : "logout.confirm.title",
+            messageKey: demo.isDemoMode ? "logout.confirm.demo.message" : "logout.confirm.message",
+            confirmTitleKey: "profile.menu.logout",
+            symbol: "rectangle.portrait.and.arrow.right",
+            tint: FacilityTheme.red,
+            isDestructive: true
+        ) {
+            onLogout?()
+        }
+        .facilityConfirmationDialog(
+            isPresented: $demo.synchronizationCleanupFailed,
+            titleKey: "sync.cleanupFailed.title",
+            messageKey: "sync.cleanupFailed.message",
+            symbol: "exclamationmark.circle",
+            tint: FacilityTheme.red,
+            cancelTitleKey: nil,
+            actions: [FacilityDialogAction(titleKey: "common.ok", emphasis: .primary) {}]
+        )
         .task(id: demo.offlineWorkStore.workerID) {
+            LocalDataDiagnostics.log("Workspace appeared for \(LocalDataDiagnostics.redacted(demo.offlineWorkStore.workerID)), demo: \(demo.isDemoMode).")
             let restoredFilter = NotificationStructuralFilterPreferences.load(
                 workerID: demo.sapDataStore.localWorkerID,
                 isDemoMode: demo.isDemoMode
@@ -430,14 +458,12 @@ struct FacilityShellView: View {
             .scrollIndicators(.hidden)
             .padding(.bottom, 12)
 
-            if !demo.isDemoMode {
-                Divider()
-                    .frame(width: 32)
-                    .padding(.bottom, 12)
+            Divider()
+                .frame(width: 32)
+                .padding(.bottom, 12)
 
-                compactSAPRefreshButton(networkStatus: networkStatus)
-                    .padding(.bottom, 8)
-            }
+            compactSAPRefreshButton(networkStatus: networkStatus)
+                .padding(.bottom, 8)
 
             compactProfileButton
         }
@@ -448,8 +474,9 @@ struct FacilityShellView: View {
     }
 
     private func compactSAPRefreshButton(networkStatus: NetworkReachabilityStatus) -> some View {
-        let isRefreshing = demo.sapDataStore.isRefreshing
-        let isEnabled = demo.sapDataStore.isRefreshAvailable && networkStatus == .connected && !isRefreshing
+        let isRefreshing = demo.isSyncing
+        // The demo sync only resets local demo data, so it needs no network.
+        let isEnabled = demo.canSync && (demo.isDemoMode || networkStatus == .connected)
 
         return Button {
             demo.requestSAPRefresh()
@@ -561,6 +588,40 @@ struct FacilityShellView: View {
             .transition(.scale(scale: 0.95, anchor: .bottomLeading).combined(with: .opacity))
     }
 
+    /// The legacy `DialogBeforeSync` in the shared dialog chrome. The count
+    /// says how much local work the synchronization deletes.
+    private var synchronizationConfirmation: some View {
+        ZStack {
+            Color.black.opacity(0.32)
+                .ignoresSafeArea()
+                .onTapGesture { demo.cancelSynchronization() }
+
+            FacilityConfirmationDialog(
+                titleKey: demo.isDemoMode ? "sync.confirm.demo.title" : "sync.confirm.title",
+                messageKey: demo.isDemoMode ? "sync.confirm.demo.message" : "sync.confirm.message",
+                tint: FacilityTheme.red,
+                actions: [
+                    FacilityDialogAction(
+                        titleKey: "sync.confirm.action",
+                        emphasis: .destructive,
+                        perform: demo.confirmSynchronization
+                    )
+                ],
+                cancel: demo.cancelSynchronization
+            ) {
+                Label(
+                    String(localized: "sync.confirm.count \(demo.synchronizationDeletionCount)", bundle: .appLanguage),
+                    systemImage: "trash"
+                )
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(FacilityTheme.red)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(FacilityTheme.red.opacity(0.12), in: Capsule())
+            }
+        }
+    }
+
     private var userActionMenu: some View {
         VStack(spacing: 4) {
             userMenuButton(
@@ -589,7 +650,9 @@ struct FacilityShellView: View {
                 withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
                     isShowingUserMenu = false
                 }
-                onLogout?()
+                // The menu item sits right under the settings entry, so a
+                // stray tap must not end the session on its own.
+                isLogoutConfirmationPresented = true
             }
             .disabled(onLogout == nil)
         }
@@ -649,20 +712,24 @@ struct FacilityShellView: View {
                     .font(.subheadline.weight(.bold))
             }
 
-            if !demo.isDemoMode {
-                Button {
-                    demo.requestSAPRefresh()
-                } label: {
+            Button {
+                demo.requestSAPRefresh()
+            } label: {
+                if demo.isDemoMode, demo.isSyncing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
                     Label("sap.refresh.sidebarAction", systemImage: "arrow.triangle.2.circlepath")
                 }
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .opacity(demo.sapDataStore.isRefreshAvailable && !demo.sapDataStore.isRefreshing ? 1 : 0.45)
-                .disabled(!demo.sapDataStore.isRefreshAvailable || demo.sapDataStore.isRefreshing)
             }
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .buttonStyle(.plain)
+            .foregroundStyle(.white)
+            .background(FacilityTheme.navy, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .opacity(demo.canSync || demo.isSyncing ? 1 : 0.45)
+            .disabled(!demo.canSync)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -687,8 +754,13 @@ struct FacilityShellView: View {
         Task {
             await demo.sapDataStore.refresh(sapPassword: password)
             sapPassword = ""
+            if requiresInitialPasswordChange {
+                initialSAPPassword = password
+            }
+            // A failed or stopped synchronization may still have sent or
+            // failed local work, so the pending count is read again as well.
+            await demo.offlineWorkStore.load()
             if demo.sapDataStore.refreshError == nil {
-                await demo.offlineWorkStore.load()
                 demo.shouldPresentSAPRefresh = false
             }
         }
@@ -697,8 +769,29 @@ struct FacilityShellView: View {
     private func dismissSAPRefresh() {
         guard !demo.sapDataStore.isRefreshing else { return }
         sapPassword = ""
+        initialSAPPassword = ""
         demo.sapDataStore.dismissError()
         demo.shouldPresentSAPRefresh = false
+    }
+
+    /// SAP accepted the password, but as an initial one (`PWINITIAL`).
+    private var requiresInitialPasswordChange: Bool {
+        if case .initialPasswordChangeRequired = demo.sapDataStore.refreshError { return true }
+        return false
+    }
+
+    /// `_afterCallPasswordChange`: the new password's token is kept and the
+    /// synchronization starts again with it once the confirmation was shown.
+    /// Without a token, the password dialog asks for the new password.
+    private func changeInitialSAPPassword(oldPassword: String, newPassword: String) async throws {
+        try await demo.sapDataStore.changeInitialPassword(oldPassword: oldPassword, newPassword: newPassword)
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            initialSAPPassword = ""
+            demo.sapDataStore.dismissError()
+            demo.shouldPresentSAPRefresh = false
+            demo.requestSAPRefresh()
+        }
     }
 
     private func sidebarToggleButton(

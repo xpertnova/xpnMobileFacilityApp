@@ -44,6 +44,11 @@ final class OfflineWorkStore {
         activeQueueItems.count
     }
 
+    /// Forms saved with "Zwischenspeichern", which a synchronization deletes.
+    var temporarilySavedFormItems: [OfflineWorkItem] {
+        items.filter(\.isTemporarilySavedForm)
+    }
+
     var savedNotificationItems: [OfflineWorkItem] {
         activeQueueItems.filter { $0.type == .notificationReview || $0.type == .elevatorInspection }
     }
@@ -271,10 +276,12 @@ final class OfflineWorkStore {
             items = try await repository.loadWork(for: workerID)
             hasLoaded = true
             state = items.isEmpty ? .empty : .loaded
+            LocalDataDiagnostics.log("Loaded \(items.count) local work items for \(LocalDataDiagnostics.redacted(workerID)) from \(type(of: repository)).")
         } catch is CancellationError {
             return
         } catch {
             state = .failed
+            LocalDataDiagnostics.log("Local work load for \(LocalDataDiagnostics.redacted(workerID)) failed: \(error)")
         }
     }
 
@@ -594,6 +601,33 @@ final class OfflineWorkStore {
         try await repository.save(item)
         await load()
         return item
+    }
+
+    /// Deletes the temporarily saved forms and their photos before a
+    /// synchronization, like the legacy `deleteTempMeldung` LUW behind
+    /// `DialogBeforeSync`.
+    func deleteTemporarilySavedForms(photoStore: any PhotoAttachmentStore) async throws {
+        let forms = temporarilySavedFormItems
+        guard !forms.isEmpty else { return }
+        // A mobile ladder or subdistribution keeps its row photos in
+        // collections owned by its local draft ID.
+        let photoOwners = Set(forms.compactMap { form -> LocalPhotoScope.Owner? in
+            if let ladder = form.payload.mobileLadder { return .init(workflow: .mobileLadder, ownerID: ladder.localDraftID) }
+            if let subdistribution = form.payload.subdistribution {
+                return .init(workflow: .subdistribution, ownerID: subdistribution.localDraftID)
+            }
+            return nil
+        })
+        let photoCollections = items.filter { item in
+            guard let scope = item.payload.photoCollection?.scope else { return false }
+            return photoOwners.contains(.init(workflow: scope.workflow, ownerID: scope.ownerID))
+        }
+        let deleted = forms + photoCollections
+        try await repository.delete(ids: deleted.map(\.id))
+        for id in Set(deleted.flatMap(\.ownPhotoAttachmentIDs)) {
+            try? await photoStore.delete(id: id)
+        }
+        await load()
     }
 
     func reset() async {
