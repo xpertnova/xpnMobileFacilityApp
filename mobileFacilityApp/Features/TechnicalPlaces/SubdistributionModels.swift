@@ -72,6 +72,9 @@ struct SubdistributionLegacyTemplate: Codable, Equatable, Identifiable, Sendable
     let equipmentDataJSON: String
     let characteristics: [SubdistributionCharacteristic]
     let inspectionItems: [SubdistributionInspectionDefinition]
+    /// The `T0267` plan row without `T_PLPOD`. Optional to keep drafts saved
+    /// before it was captured readable.
+    var planDataJSON: String? = nil
 }
 
 enum SubdistributionCharacteristicKind: String, Codable, Sendable {
@@ -216,6 +219,9 @@ struct SubdistributionDraftPayload: Codable, Equatable, Sendable {
     /// attached at close time and sent with `TFM7-pdf`.
     var reportPDF: Data?
     var pdfDocumentID: String?
+    /// When the report was rendered, i.e. the form was closed: its
+    /// `Bericht_<dd_MM_yyyy_HH_mm_ss_SSS>` document name.
+    var reportCreatedAt: Date?
     /// A pre-TFM7 draft may not conform to the structured payload introduced
     /// here. Preserve that valid JSON unchanged so an old local record cannot
     /// prevent the worker's complete offline queue from loading.
@@ -240,6 +246,7 @@ struct SubdistributionDraftPayload: Codable, Equatable, Sendable {
         legacyIdentifiers = nil
         reportPDF = nil
         pdfDocumentID = nil
+        reportCreatedAt = nil
         legacyJSONData = nil
     }
 
@@ -258,6 +265,7 @@ struct SubdistributionDraftPayload: Codable, Equatable, Sendable {
         legacyIdentifiers = nil
         reportPDF = nil
         pdfDocumentID = nil
+        reportCreatedAt = nil
         legacyJSONData = jsonData
     }
 }

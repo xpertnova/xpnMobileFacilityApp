@@ -298,7 +298,7 @@ final class MobileLadderTests: XCTestCase {
             "position": 2, "name": "TFMMOBLEITER_BAUART", "title": "Mob.Leitern Bauart",
             "unit": "", "required": true,
             "values": [["value": "PLATTFORMLEITER", "title": "Plattformleiter"]]
-        ]])
+        ]], planDataJSON: #"{"STRAT":"TFMWP1","MPTYP":"N1","ABRHO":3,"HUNIT":"JHR","IWERK":"9999"}"#)
         draft.material = "Aluminium"
         draft.constructionType = "Plattformleiter"
         draft.manufacturer = "ZARGES"
@@ -338,7 +338,8 @@ final class MobileLadderTests: XCTestCase {
         )
         let work = OfflineWorkItem(
             id: UUID(), workerID: "S50828", type: .mobileLadder, status: .pendingSynchronization,
-            payload: .mobileLadder(draft), createdAt: .now, updatedAt: .now, syncError: nil
+            payload: .mobileLadder(draft), createdAt: Date(timeIntervalSince1970: 1_699_963_200),
+            updatedAt: .now, syncError: nil
         )
 
         let batch = try SAPMobileLadderUploadBuilder.build(
@@ -352,7 +353,11 @@ final class MobileLadderTests: XCTestCase {
         XCTAssertEqual(header["QMART"], "I1")
         XCTAssertEqual(header["FORMNR"], "TFM5")
         XCTAssertEqual(header["QMNUM"], "NEU-12345678")
-        XCTAssertEqual(header["USTXT"], "dem")
+        XCTAssertEqual(header["USTXT"], "Mnot", "Demontiert is deficient; dem is the equipment status")
+        XCTAssertEqual(header["IWERK"], "1000", "the context's plant wins over the merged plan row")
+        let headerPayload = try XCTUnwrap(SAPLegacyDataExchangeCodec.decodedFeldwertObject(try XCTUnwrap(header["FELDWERT"] ?? nil)))
+        XCTAssertEqual(headerPayload["STRAT"] as? String, "TFMWP1", "the T0267 maintenance plan fields")
+        XCTAssertEqual(headerPayload["HUNIT"] as? String, "JHR")
         XCTAssertEqual(batch.values.filter { ($0["ELEMENTNR"] ?? nil)?.hasSuffix("-1") == true }.count, 8)
         let disassembledComment = try XCTUnwrap(batch.values.first { $0["ELEMENTNR"] == "TFM5-0000-9B" })
         XCTAssertEqual(disassembledComment["FELDWERT"], "Removed for repair")
@@ -361,6 +366,11 @@ final class MobileLadderTests: XCTestCase {
         let packed = try XCTUnwrap(equipment["FELDWERT"] ?? nil)
         let equipmentPayload = try XCTUnwrap(SAPLegacyDataExchangeCodec.decodedFeldwertObject(packed))
         XCTAssertEqual(equipmentPayload["EQART_TO"] as? String, "TFMLEITERN")
+        XCTAssertEqual(equipmentPayload["EQUNR_TO"] as? String, "NEU-12345678901234")
+        XCTAssertEqual(equipmentPayload["MANDT_TO"] as? String, "100")
+        XCTAssertEqual(equipmentPayload["ERDAT_TO"] as? String, "2023-11-14", "getBerichtDatum() of the new equipment")
+        XCTAssertEqual(equipmentPayload["AEDAT_TO"] as? String, "2023-11-14")
+        XCTAssertEqual(equipmentPayload["ERNAM_TO"] as? String, "S50828")
         let classData = try XCTUnwrap(equipmentPayload["T_CLASS_EQ"] as? [String: Any])
         XCTAssertEqual(classData["KLASSE"] as? String, "TFMMOBLEITER")
         let classValues = try XCTUnwrap(classData["T_CLOBJDAT"] as? [[String: Any]])
@@ -392,7 +402,7 @@ final class MobileLadderTests: XCTestCase {
             .appendingPathComponent("cache.sqlite")
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         let repository = try SQLiteSAPDataCacheRepository(databaseURL: url, workerID: "S50828")
-        let plan = try SAPLegacyDataExchangeCodec.packedFeldwert(["T_PLPOD": [[
+        let plan = try SAPLegacyDataExchangeCodec.packedFeldwert(["STRAT": "TFMWP1", "T_PLPOD": [[
             "USR00": "POSITION", "STEUS": "TFM5", "VORNR": "0010",
             "LTXA1": "Rails", "LTXA2": "Visual check"
         ]]])
@@ -418,10 +428,14 @@ final class MobileLadderTests: XCTestCase {
             ],
             "T_CHARVAL": [["ATNAM": "TFMMOBLEITER_WERKSTOFF", "ATWRT": "AL", "ATWTB": "Aluminium"]]
         ])
-        let equipment = try SAPLegacyDataExchangeCodec.packedFeldwert(["EQART_TO": "TFMLEITERN"])
+        // The generic new-equipment row SAP delivers: untyped, every field empty.
+        let equipment = try SAPLegacyDataExchangeCodec.packedFeldwert(["EQART_TO": "", "ERDAT_TO": ""])
         try await repository.insertLegacyRows([["EQART": "TFMLEITERN", "PLNTY": "A", "PLNNR": "00040015", "IWERK": "1000", "INGRP": "001", "FELDWERT": plan]], into: "FROM_T0267")
         try await repository.insertLegacyRows([["EQART": "TFMLEITERN", "KLART": "002", "CLASS": "TFMMOBLEITER", "FELDWERT": classData]], into: "FROM_T0263")
-        try await repository.insertLegacyRows([["LKEY": "EQUIPMENT", "LPAR": "TFMLEITERN", "FELDWERT": equipment]], into: "FROM_T0268")
+        try await repository.insertLegacyRows([
+            ["LKEY": "MELDUNG", "LPAR": "MELDUNG", "FELDWERT": try SAPLegacyDataExchangeCodec.packedFeldwert(["QMART": ""])],
+            ["LKEY": "EQUIPMENT", "LPAR": "EQUIPMENT", "FELDWERT": equipment]
+        ], into: "FROM_T0268")
         try await repository.insertLegacyRows([[
             "MANDT": "100", "TPGSG": "350", "TPUSG": "", "EQART": "TFMLEITERN", "KTX01": "Leitern"
         ]], into: "FROM_T0269")
@@ -462,6 +476,10 @@ final class MobileLadderTests: XCTestCase {
         XCTAssertEqual(context.legacyContext.trade, "350")
         XCTAssertEqual(data.contexts.first?.legacyContext.functionalLocation, "DE-ESS-100-01-350")
         XCTAssertEqual(data.contexts.first?.legacyContext.template.formCode, "TFM5")
+        let template = try XCTUnwrap(data.contexts.first?.legacyContext.template)
+        XCTAssertTrue(template.equipmentDataJSON.contains("ERDAT_TO"), "the EQUIPMENT row, not MELDUNG")
+        XCTAssertTrue(template.planDataJSON?.contains("TFMWP1") == true)
+        XCTAssertFalse(template.planDataJSON?.contains("T_PLPOD") == true)
         XCTAssertEqual(data.catalog.options(for: .material), ["Aluminium"])
         XCTAssertEqual(
             data.catalog.options(for: .constructionType),
@@ -501,7 +519,8 @@ final class MobileLadderTests: XCTestCase {
     /// The demo context with SAP class characteristics.
     private nonisolated func withCharacteristics(
         _ context: MobileLadderCreationContext,
-        _ characteristics: [[String: Any]]
+        _ characteristics: [[String: Any]],
+        planDataJSON: String? = nil
     ) throws -> MobileLadderCreationContext {
         var object = try XCTUnwrap(
             JSONSerialization.jsonObject(with: JSONEncoder().encode(context)) as? [String: Any]
@@ -509,6 +528,7 @@ final class MobileLadderTests: XCTestCase {
         var legacyContext = try XCTUnwrap(object["legacyContext"] as? [String: Any])
         var template = try XCTUnwrap(legacyContext["template"] as? [String: Any])
         template["characteristics"] = characteristics
+        template["planDataJSON"] = planDataJSON
         legacyContext["template"] = template
         object["legacyContext"] = legacyContext
         return try JSONDecoder().decode(

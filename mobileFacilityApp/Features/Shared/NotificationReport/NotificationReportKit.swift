@@ -24,7 +24,7 @@ struct NotificationReportOrganization: Equatable, Sendable {
 
     let name: String
     let logo: Logo
-    let footer: Footer
+    private(set) var footer: Footer
 
     init(company: String, plant: String, personnelNumber: String) {
         let name: String
@@ -66,6 +66,15 @@ struct NotificationReportOrganization: Equatable, Sendable {
     }
 
     var logoImage: UIImage? { UIImage(named: logo.rawValue) }
+
+    /// The company footer of the app's other report templates (briefing,
+    /// safety forms, qualification), which always carry one: Westnetz keeps
+    /// its own, every other company gets E.ON Service's.
+    func withCompanyFooter() -> Self {
+        var organization = self
+        if organization.footer == .none { organization.footer = .eon }
+        return organization
+    }
 
     /// Left and middle footer columns.
     var footerColumns: (left: String, middle: String) {

@@ -133,6 +133,13 @@ struct DraftsView: View {
                     subtitle: Text(ladder.context?.legacyContext.functionalLocation ?? String(localized: "mobileLadder.address.notSelected", bundle: .appLanguage)),
                     status: demo.isDemoMode ? .demoLocal : .offline(item.status),
                     syncError: item.syncError,
+                    report: ladder.isClosedLocally == true
+                        ? FormReportPDFArtifact(
+                            id: item.id.uuidString,
+                            fileName: NotificationReportFormat.legacyReportName(ladder.reportCreatedAt ?? item.updatedAt) + ".pdf",
+                            data: ladder.reportPDF
+                        )
+                        : nil,
                     action: { demo.openMobileLadder(item.id) }
                 )
             }
@@ -152,6 +159,13 @@ struct DraftsView: View {
                     subtitle: Text(subdistribution.context?.legacyContext.functionalLocation ?? String(localized: "subdistribution.context.notSelected", bundle: .appLanguage)),
                     status: demo.isDemoMode ? .demoLocal : .offline(item.status),
                     syncError: item.syncError,
+                    report: subdistribution.isClosedLocally
+                        ? FormReportPDFArtifact(
+                            id: item.id.uuidString,
+                            fileName: NotificationReportFormat.legacyReportName(subdistribution.reportCreatedAt ?? item.updatedAt) + ".pdf",
+                            data: subdistribution.reportPDF
+                        )
+                        : nil,
                     action: { demo.openSubdistribution(item.id) }
                 )
             }

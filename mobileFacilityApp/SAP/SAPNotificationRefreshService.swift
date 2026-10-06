@@ -1038,12 +1038,15 @@ enum SAPLegacyDataExchangeCodec {
             )
         }
 
+        // `runGetNewMasterData4Header` reads the generic `EQUIPMENT` row of
+        // `FROM_T0268`. It is not typed: its `EQART_TO` is empty.
         let equipmentPayload = equipmentRows.compactMap { row -> [String: Any]? in
-            guard let decoded = feldwertValue(
+            let key = firstSAPString(["LKEY"], from: row).uppercased()
+            let parameter = firstSAPString(["LPAR"], from: row).uppercased()
+            guard key == "EQUIPMENT" || parameter == "EQUIPMENT" else { return nil }
+            return firstDictionary(in: feldwertValue(
                 from: stringValue(value(named: "FELDWERT", in: row))
-            ) as? [String: Any] else { return nil }
-            let type = firstSAPString(["EQART", "EQART_TO"], from: row, fallback: decoded)
-            return type.uppercased() == "TFMLEITERN" ? decoded : nil
+            ))
         }.first ?? [:]
         let equipmentJSON = jsonStringValue(equipmentPayload) ?? "{}"
 
@@ -1076,6 +1079,10 @@ enum SAPLegacyDataExchangeCodec {
             let planType = firstSAPString(["PLNTY"], from: row, fallback: payload)
             let planNumber = firstSAPString(["PLNNR"], from: row, fallback: payload)
             let planVersion = firstSAPString(["PLNAL", "ZAEHL"], from: row, fallback: payload)
+            // `getItemNewMeldung` merges the whole `T0267` row into the new
+            // notification, including the maintenance plan fields (`STRAT`,
+            // `MPTYP`, `ABRHO`, `HUNIT`). `T_PLPOD` is rebuilt on upload.
+            let planData = jsonStringValue(payload.filter { $0.key.uppercased() != "T_PLPOD" }) ?? "{}"
             return MobileLadderLegacyTemplate(
                 id: [equipmentType, planType, planNumber, planVersion].joined(separator: "|"),
                 equipmentType: equipmentType, formCode: formCode, planType: planType,
@@ -1088,7 +1095,8 @@ enum SAPLegacyDataExchangeCodec {
                 classType: firstSAPString(["KLART"], from: classRow ?? [:], fallback: classPayload).ifEmpty("002"),
                 classGroup: firstSAPString(["KLAGR"], from: classPayload).ifEmpty("TFM"),
                 classDataJSON: classJSON, equipmentDataJSON: equipmentJSON,
-                characteristics: characteristics, inspectionItems: positions
+                characteristics: characteristics, inspectionItems: positions,
+                planDataJSON: planData
             )
         }
     }
@@ -1219,6 +1227,9 @@ enum SAPLegacyDataExchangeCodec {
             else { return nil }
             let formCode = "TFM7"
             let planVersion = firstSAPString(["PLNAL", "ZAEHL"], from: row, fallback: payload)
+            // As for TFM5: `getItemNewMeldung` merges the whole `T0267` row
+            // into the new notification.
+            let planData = jsonStringValue(payload.filter { $0.key.uppercased() != "T_PLPOD" }) ?? "{}"
             return SubdistributionLegacyTemplate(
                 id: [equipmentType, planType, planNumber, planVersion].joined(separator: "|"),
                 equipmentType: equipmentType, formCode: formCode, planType: planType, planNumber: planNumber,
@@ -1230,7 +1241,8 @@ enum SAPLegacyDataExchangeCodec {
                 classType: firstSAPString(["KLART"], from: classRow, fallback: classPayload),
                 classGroup: firstSAPString(["KLAGR"], from: classPayload),
                 classDataJSON: classJSON, equipmentDataJSON: equipmentJSON,
-                characteristics: characteristics, inspectionItems: positions
+                characteristics: characteristics, inspectionItems: positions,
+                planDataJSON: planData
             )
         }
     }
