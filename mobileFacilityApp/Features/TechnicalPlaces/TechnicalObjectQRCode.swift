@@ -93,11 +93,13 @@ enum TechnicalObjectQRCode {
 /// the hierarchy that the segment's prefix belongs to.
 ///
 /// The segments come from splitting the real identifier, and the names come
-/// from the breadcrumb rows — nothing is assumed about the customer's naming
-/// scheme beyond the separators the identifier itself contains.
+/// from the breadcrumb rows. Only an RE-FX place, whose scheme the customer
+/// confirmed, also gets the level each segment stands for.
 struct TechnicalObjectIdentifierSegment: Identifiable, Equatable {
     let position: Int
     let value: String
+    /// The RE-FX level this segment names, for a place of that scheme.
+    let level: TechnicalPlaceStructureLevel?
     /// The ancestor whose identifier equals this segment's cumulative prefix,
     /// when the hierarchy holds one.
     let objectName: String?
@@ -106,7 +108,8 @@ struct TechnicalObjectIdentifierSegment: Identifiable, Equatable {
 
     static func segments(
         of identifier: String,
-        breadcrumbs: [TechnicalObjectNode]
+        breadcrumbs: [TechnicalObjectNode],
+        isStructured: Bool = false
     ) -> [TechnicalObjectIdentifierSegment] {
         let separators = CharacterSet(charactersIn: "-/_.")
         let components = identifier
@@ -116,8 +119,10 @@ struct TechnicalObjectIdentifierSegment: Identifiable, Equatable {
         // would just repeat the identifier above it.
         guard components.count > 1 else { return [] }
 
+        // A placeholder level without a name of its own would only repeat
+        // its identifier.
         let namesByIdentifier = Dictionary(
-            breadcrumbs.map { ($0.reference.objectID, $0.displayName) },
+            breadcrumbs.filter { !$0.name.isEmpty }.map { ($0.reference.objectID, $0.displayName) },
             uniquingKeysWith: { first, _ in first }
         )
         // The separator is taken from the identifier so the rebuilt prefixes
@@ -131,7 +136,8 @@ struct TechnicalObjectIdentifierSegment: Identifiable, Equatable {
             return TechnicalObjectIdentifierSegment(
                 position: index + 1,
                 value: component,
-                objectName: namesByIdentifier[prefix]
+                level: isStructured ? TechnicalPlaceStructureLevel(rawValue: index + 1) : nil,
+                objectName: namesByIdentifier[prefix].flatMap { $0 == component ? nil : $0 }
             )
         }
     }

@@ -31,6 +31,129 @@ struct TechnicalObjectReference: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+/// The levels of the customer's RE-FX identifier scheme,
+/// `XX-XXX-XXXXX-XX-XXX-XXX`: country (`TPLND`), city (`TPORT`), business
+/// entity (`TPWEH`), building (`TPGEB`), DIN 276 cost group (`TPGSG`) and
+/// the final object. The raw value is the number of segments.
+enum TechnicalPlaceStructureLevel: Int, CaseIterable, Sendable {
+    case country = 1, city, businessEntity, building, costGroup, finalObject
+
+    var nameKey: String {
+        switch self {
+        case .country: "places.level.country"
+        case .city: "places.level.city"
+        case .businessEntity: "places.level.businessEntity"
+        case .building: "places.level.building"
+        case .costGroup: "places.level.costGroup"
+        case .finalObject: "places.level.object"
+        }
+    }
+}
+
+/// Builds the technical places tree from the RE-FX identifier itself: a place
+/// hangs under the place one segment shorter. SAP's own `TPLMA` cannot be used
+/// for this — it points at country and city places SAP never sends to the
+/// device, which left nearly every place unassigned.
+enum TechnicalPlaceStructure {
+    static let indicator = "RE-FX"
+    static let separator = "-"
+
+    /// The identifier's segments when it fits the scheme, nil otherwise.
+    static func segments(of identifier: String) -> [String]? {
+        let segments = identifier.components(separatedBy: separator)
+        guard segments.count <= TechnicalPlaceStructureLevel.allCases.count,
+              !segments.contains(where: \.isEmpty)
+        else { return nil }
+        return segments
+    }
+
+    /// The country a first segment stands for. Some companies key Germany as
+    /// `D` plus a character of their own — `D1`, `D2`, `D8`, `DR`, `DW` — so
+    /// every such segment is Germany (confirmed by the SAP side), unless it is
+    /// another country's ISO code such as `DK`.
+    static func country(of segment: String) -> String {
+        let code = segment.uppercased()
+        guard code.hasPrefix("D"), !isoRegionCodes.contains(code) else { return code }
+        return "DE"
+    }
+
+    private static let isoRegionCodes = Set(Locale.Region.isoRegions.map(\.identifier))
+
+    /// The cost group segment, when the identifier reaches that level.
+    static func costGroup(of identifier: String) -> String? {
+        guard let segments = segments(of: identifier),
+              segments.count >= TechnicalPlaceStructureLevel.costGroup.rawValue
+        else { return nil }
+        return segments[TechnicalPlaceStructureLevel.costGroup.rawValue - 1]
+    }
+
+    /// Gives every RE-FX place the place one segment shorter as its parent,
+    /// creating placeholders for the levels the cache does not hold — country
+    /// and city are never sent, deeper levels sometimes are not. A city hangs
+    /// under its country's ISO code, so `D1-HAM` and `DE-ESS` share one
+    /// Germany. Equipment
+    /// whose superior equipment is not cached moves to its own place, and
+    /// equipment on an uncached place of a known RE-FX country gets that
+    /// place as a placeholder too.
+    static func attach(_ nodes: inout [TechnicalObjectReference: TechnicalObjectNode]) {
+        let ordered = nodes.values.sorted { $0.reference.id < $1.reference.id }
+        let places = ordered.filter { $0.structureLevel != nil && !$0.isSynthetic }
+        let countries = Set(places.compactMap { segments(of: $0.reference.objectID)?.first.map(country(of:)) })
+        // Equipment counts too: some cities are only reached through it.
+        var cityNames: [String: String] = [:]
+        for node in ordered where !node.isSynthetic && !node.cityName.isEmpty {
+            guard let segments = segments(of: node.functionalLocationID), segments.count >= 2 else { continue }
+            let city = segments.prefix(2).joined(separator: separator)
+            if cityNames[city] == nil { cityNames[city] = node.cityName }
+        }
+        func place(_ identifier: String) -> TechnicalObjectReference {
+            let reference = TechnicalObjectReference(kind: .functionalLocation, objectID: identifier)
+            guard nodes[reference] == nil else { return reference }
+            let city = identifier.components(separatedBy: separator).prefix(2).joined(separator: separator)
+            var placeholder = TechnicalObjectNode.structurePlaceholder(identifier, cityName: cityNames[city] ?? "")
+            if let parentID = parentID(of: identifier) {
+                placeholder.parent = place(parentID)
+            }
+            nodes[reference] = placeholder
+            return reference
+        }
+
+        for original in places {
+            var node = original
+            node.parent = nil
+            if let parentID = parentID(of: node.reference.objectID) {
+                node.parent = place(parentID)
+            }
+            node.isUnassigned = false
+            nodes[node.reference] = node
+        }
+
+        for original in ordered where original.reference.kind == .equipment {
+            var node = original
+            if let parent = node.parent, parent.kind == .equipment, nodes[parent] != nil { continue }
+            let locationID = node.functionalLocationID
+            let location = TechnicalObjectReference(kind: .functionalLocation, objectID: locationID)
+            if nodes[location] != nil {
+                node.parent = location
+            } else if let segments = segments(of: locationID), countries.contains(country(of: segments[0])) {
+                node.parent = place(locationID)
+            } else {
+                continue
+            }
+            node.isUnassigned = false
+            nodes[node.reference] = node
+        }
+    }
+
+    private static func parentID(of identifier: String) -> String? {
+        guard let segments = segments(of: identifier), segments.count > 1 else { return nil }
+        if segments.count == TechnicalPlaceStructureLevel.city.rawValue {
+            return country(of: segments[0])
+        }
+        return segments.dropLast().joined(separator: separator)
+    }
+}
+
 struct TechnicalLocationKey: Hashable, Sendable {
     let countryCode: String
     let locationCode: String
@@ -218,6 +341,59 @@ struct TechnicalObjectNode: Codable, Equatable, Identifiable, Sendable {
 
     var isUnassignedGroup: Bool {
         reference == .unassigned
+    }
+
+    /// The level of a place in the RE-FX identifier scheme; nil for equipment
+    /// and for places of any other structure indicator.
+    var structureLevel: TechnicalPlaceStructureLevel? {
+        guard reference.kind == .functionalLocation,
+              structureIndicator == TechnicalPlaceStructure.indicator,
+              let segments = TechnicalPlaceStructure.segments(of: reference.objectID)
+        else { return nil }
+        return TechnicalPlaceStructureLevel(rawValue: segments.count)
+    }
+
+    /// A level of the RE-FX scheme the cache holds no row for, kept so the
+    /// places under it still sit in the tree. It carries only what its
+    /// identifier says and never opens a detail.
+    static func structurePlaceholder(_ identifier: String, cityName: String) -> TechnicalObjectNode {
+        let segments = TechnicalPlaceStructure.segments(of: identifier) ?? []
+        func segment(_ level: TechnicalPlaceStructureLevel) -> String {
+            segments.count >= level.rawValue ? segments[level.rawValue - 1] : ""
+        }
+        // A city SAP sends no name for is titled by its own code, so it
+        // reads and sorts like the named ones.
+        let isCity = segments.count == TechnicalPlaceStructureLevel.city.rawValue
+        let cityTitle = cityName.isEmpty ? segment(.city) : cityName
+        return TechnicalObjectNode(
+            reference: TechnicalObjectReference(kind: .functionalLocation, objectID: identifier),
+            parent: nil,
+            client: "",
+            name: isCity ? cityTitle : "",
+            functionalLocationID: identifier,
+            countryCode: segment(.country),
+            locationCode: segment(.city),
+            cityName: cityName,
+            hierarchyLevel: "",
+            category: "",
+            structureIndicator: TechnicalPlaceStructure.indicator,
+            businessEntityCode: segment(.businessEntity),
+            buildingCode: segment(.building),
+            tradeCode: segment(.costGroup),
+            equipmentCategory: "",
+            equipmentType: "",
+            manufacturer: "",
+            modelType: "",
+            serialNumber: "",
+            systemStatus: "",
+            userStatus: "",
+            dinGroup: TechnicalDIN276.detect(explicitValue: segment(.costGroup), label: ""),
+            sourceFingerprint: "",
+            directChildCount: 0,
+            directEquipmentCount: 0,
+            isUnassigned: false,
+            isSynthetic: true
+        )
     }
 
     static let unassignedRoot = TechnicalObjectNode(
@@ -422,6 +598,7 @@ enum TechnicalObjectHierarchyNormalizer {
         for node in source where nodes[node.reference] == nil {
             nodes[node.reference] = node
         }
+        TechnicalPlaceStructure.attach(&nodes)
         let references = Set(nodes.keys)
 
         for reference in Array(nodes.keys) {
@@ -576,10 +753,15 @@ enum SAPTechnicalObjectMapper {
         let parentID = string("TPLMA", in: row)
         let name = string("PLTXT", in: row)
         let location = locationIdentity(in: row)
-        let dinGroup = TechnicalDIN276.detect(
-            explicitValue: firstString(["DIN276", "DIN_KG", "KOSTENGRUPPE"], in: row),
-            label: id
-        )
+        let explicitDIN = firstString(["DIN276", "DIN_KG", "KOSTENGRUPPE"], in: row)
+        // An RE-FX place names its cost group in the fifth segment only; a
+        // final object numbered like a cost group must not count as one.
+        let dinGroup = string("TPLKZ", in: row) == TechnicalPlaceStructure.indicator
+            ? TechnicalDIN276.detect(
+                explicitValue: explicitDIN.isEmpty ? TechnicalPlaceStructure.costGroup(of: id) ?? "" : explicitDIN,
+                label: ""
+            )
+            : TechnicalDIN276.detect(explicitValue: explicitDIN, label: id)
         let values = [
             id, parentID, name, string("LEVELID", in: row), string("FLTYP", in: row),
             string("TPLKZ", in: row), string("STTXT", in: row), string("USTXT", in: row),

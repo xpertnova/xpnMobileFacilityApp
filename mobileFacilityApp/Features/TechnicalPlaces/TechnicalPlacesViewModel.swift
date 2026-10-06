@@ -186,7 +186,10 @@ final class TechnicalPlacesViewModel {
     }
 
     func displayName(for node: TechnicalObjectNode) -> String {
-        pendingEdit(for: node)?.payload.technicalObjectEdit?.designation ?? node.displayName
+        if node.isSynthetic, node.structureLevel == .country {
+            return AppLanguage.current.locale.localizedString(forRegionCode: node.countryCode) ?? node.displayName
+        }
+        return pendingEdit(for: node)?.payload.technicalObjectEdit?.designation ?? node.displayName
     }
 
     func hasMoreChildren(of reference: TechnicalObjectReference) -> Bool {
@@ -232,8 +235,22 @@ final class TechnicalPlacesViewModel {
             hasLoadedTotalCount = true
             dinCounts = try await groupCounts
             let loadedRoots = try await roots
+            // The country rows open on their cities, so the first screen
+            // lists cities rather than a handful of countries.
+            var countryPages: [TechnicalObjectReference: TechnicalObjectPage] = [:]
+            for country in loadedRoots.objects where country.structureLevel == .country {
+                countryPages[country.reference] = try await sapDataStore.technicalObjectChildren(
+                    of: country.reference, limit: pageSize, offset: 0
+                )
+            }
             withAnimation(.smooth(duration: 0.24)) {
-                applyRootPage(loadedRoots)
+                batchingTreeChanges {
+                    applyRootPage(loadedRoots)
+                    for (country, page) in countryPages {
+                        applyChildPage(page, of: country, offset: 0)
+                        expanded.insert(country)
+                    }
+                }
                 state = rootReferences.isEmpty ? .empty : .loaded
             }
         } catch is CancellationError {
@@ -390,25 +407,29 @@ final class TechnicalPlacesViewModel {
         do {
             let page = try await sapDataStore.technicalObjectChildren(of: parent, limit: pageSize, offset: offset)
             withAnimation(.smooth(duration: 0.24)) {
-                batchingTreeChanges {
-                    page.objects.forEach { nodesByID[$0.reference] = $0 }
-                    let new = page.objects.map(\.reference)
-                    if offset == 0 {
-                        childReferences[parent] = new
-                    } else {
-                        // A page boundary can shift between requests when the
-                        // cache is rebuilt, so a reference that is already
-                        // there is kept once — a repeated id breaks the list.
-                        var existing = childReferences[parent, default: []]
-                        let known = Set(existing)
-                        existing.append(contentsOf: new.filter { !known.contains($0) })
-                        childReferences[parent] = existing
-                    }
-                    nextOffsets[parent] = page.nextOffset
-                }
+                applyChildPage(page, of: parent, offset: offset)
             }
         } catch {
             state = .failed
+        }
+    }
+
+    private func applyChildPage(_ page: TechnicalObjectPage, of parent: TechnicalObjectReference, offset: Int) {
+        batchingTreeChanges {
+            page.objects.forEach { nodesByID[$0.reference] = $0 }
+            let new = page.objects.map(\.reference)
+            if offset == 0 {
+                childReferences[parent] = new
+            } else {
+                // A page boundary can shift between requests when the
+                // cache is rebuilt, so a reference that is already
+                // there is kept once — a repeated id breaks the list.
+                var existing = childReferences[parent, default: []]
+                let known = Set(existing)
+                existing.append(contentsOf: new.filter { !known.contains($0) })
+                childReferences[parent] = existing
+            }
+            nextOffsets[parent] = page.nextOffset
         }
     }
 

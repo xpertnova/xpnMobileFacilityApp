@@ -837,7 +837,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         for localWorkerID: String
     ) async throws -> [TechnicalObjectDINCount] {
         let counts = Dictionary(
-            grouping: try technicalObjects(for: localWorkerID).compactMap(\.dinGroup),
+            grouping: try technicalObjects(for: localWorkerID).filter { !$0.isSynthetic }.compactMap(\.dinGroup),
             by: { $0 }
         )
         return TechnicalDIN276.supportedCodes.compactMap { code in
@@ -887,7 +887,7 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         for localWorkerID: String,
         kind: TechnicalObjectKind
     ) async throws -> Int {
-        try technicalObjects(for: localWorkerID).filter { $0.reference.kind == kind }.count
+        try technicalObjects(for: localWorkerID).filter { $0.reference.kind == kind && !$0.isSynthetic }.count
     }
 
     func pendingSynchronization() async throws -> SAPPendingSynchronization? {
@@ -1614,8 +1614,11 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
         let equipmentRows = try rows(in: "FROM_T0262", on: database)
         let notificationRows = try rows(in: "FROM_T0271", on: database)
         let aliases = SAPTechnicalObjectMapper.functionalLocationAliases(from: functionalRows)
+        // The directory tables cover cities the worker's own rows name nowhere;
+        // the own rows come last so their names win.
         let cityNames = SAPTechnicalObjectMapper.cityNames(
-            from: notificationRows + functionalRows + equipmentRows
+            from: try cityRows(in: "FROM_T0272", on: database) + cityRows(in: "FROM_T0273", on: database)
+                + notificationRows + functionalRows + equipmentRows
         )
         let mapped = functionalRows.compactMap(SAPTechnicalObjectMapper.functionalLocation(from:))
             + equipmentRows.compactMap(SAPTechnicalObjectMapper.equipment(from:))
@@ -1742,6 +1745,18 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
             "INSERT INTO \(schema.name) (\(columns.joined(separator: ", "))) VALUES (\(placeholders))",
             bindings: bindings
         )
+    }
+
+    /// Only the identifier and city of a directory table: they are thousands
+    /// of rows wide, and the city name is all the hierarchy takes from them.
+    private static func cityRows(in tableName: String, on database: OpaquePointer) throws -> [[String: Any]] {
+        let schema = try schema(named: tableName)
+        return try query(
+            on: database,
+            "SELECT STRNO, CITY1 FROM \(schema.name) WHERE CITY1 <> ''"
+        ) { statement in
+            ["STRNO": string(at: 0, from: statement), "CITY1": string(at: 1, from: statement)]
+        }
     }
 
     private static func rows(in tableName: String, on database: OpaquePointer) throws -> [[String: Any]] {

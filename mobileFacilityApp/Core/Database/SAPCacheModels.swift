@@ -1286,7 +1286,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
         for localWorkerID: String
     ) async throws -> [TechnicalObjectDINCount] {
         let all = dataByWorkerID[localWorkerID]?.technicalObjects ?? []
-        let counts = Dictionary(grouping: all.compactMap(\.dinGroup), by: { $0 })
+        let counts = Dictionary(grouping: all.filter { !$0.isSynthetic }.compactMap(\.dinGroup), by: { $0 })
         return TechnicalDIN276.supportedCodes.compactMap { code in
             guard let values = counts[code] else { return nil }
             return TechnicalObjectDINCount(code: code, count: values.count)
@@ -1331,7 +1331,7 @@ actor InMemorySAPDataCacheRepository: SAPDataCacheRepository, I2NotificationRead
         for localWorkerID: String,
         kind: TechnicalObjectKind
     ) async throws -> Int {
-        dataByWorkerID[localWorkerID]?.technicalObjects.filter { $0.reference.kind == kind }.count ?? 0
+        dataByWorkerID[localWorkerID]?.technicalObjects.filter { $0.reference.kind == kind && !$0.isSynthetic }.count ?? 0
     }
 
     func replace(
