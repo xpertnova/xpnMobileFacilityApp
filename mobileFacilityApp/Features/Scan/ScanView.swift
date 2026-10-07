@@ -579,7 +579,7 @@ private struct ScanResultRow: View {
     }
 
     private var titleLine: String {
-        "\(notification.title) · \(String(localized: "notifications.detail.number", bundle: .appLanguage)) \(notification.id)"
+        "\(notification.title) · \(String(localized: "notifications.detail.number", bundle: .appLanguage)) \(notification.id.withoutSAPLeadingZeros)"
     }
 
     private var technicalObjectLine: String {
@@ -625,15 +625,5 @@ private extension ScanViewModel.ScannedCode {
     private static func objectDescription(_ functionalLocationID: String, equipmentID: String?) -> String {
         guard let equipmentID else { return functionalLocationID }
         return "\(functionalLocationID) · \(String(localized: "notifications.detail.equipment", bundle: .appLanguage)) \(equipmentID.withoutSAPLeadingZeros)"
-    }
-}
-
-private extension String {
-    /// SAP pads numeric equipment numbers with zeros; the legacy notification
-    /// list showed them without the padding.
-    var withoutSAPLeadingZeros: String {
-        guard !isEmpty, allSatisfy({ $0.isASCII && $0.isNumber }) else { return self }
-        let trimmed = drop(while: { $0 == "0" })
-        return trimmed.isEmpty ? "0" : String(trimmed)
     }
 }

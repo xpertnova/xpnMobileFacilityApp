@@ -23,7 +23,7 @@ struct DefectObjectOption: Identifiable, Equatable, Sendable {
     }
 
     var id: String { reference.id }
-    var label: String { "\(reference.objectID) · \(name)" }
+    var label: String { "\(reference.displayID) · \(name)" }
 }
 
 @MainActor

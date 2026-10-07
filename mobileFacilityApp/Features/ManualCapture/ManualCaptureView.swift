@@ -380,7 +380,7 @@ struct ManualCaptureView: View {
                     titleKey: "manual.defect.parent",
                     iconName: "doc.text",
                     options: defectModel.parentOptions.map {
-                        FacilityDropdownOption(id: $0.id, title: [$0.id, $0.title].filter { !$0.isEmpty }.joined(separator: " · "))
+                        FacilityDropdownOption(id: $0.id, title: [$0.id.withoutSAPLeadingZeros, $0.title].filter { !$0.isEmpty }.joined(separator: " · "))
                     },
                     selectedID: defectModel.selectedParentID,
                     width: 520,
@@ -691,7 +691,7 @@ struct ManualCaptureView: View {
             } label: {
                 HStack(spacing: 10) {
                     if let selected = meterModel.selectedReference {
-                        Text("\(selected.id) · \(selected.technicalPlaceName)")
+                        Text("\(selected.id.withoutSAPLeadingZeros) · \(selected.technicalPlaceName)")
                             .foregroundStyle(FacilityTheme.ink)
                             .lineLimit(1)
                             .id(selected.id)
@@ -969,13 +969,13 @@ struct ManualCaptureView: View {
                                         .frame(width: 24)
 
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(object.name.isEmpty ? object.reference.objectID : object.name)
+                                        Text(object.name.isEmpty ? object.reference.displayID : object.name)
                                             .font(.body.weight(.medium))
                                             .foregroundStyle(FacilityTheme.ink)
                                             .lineLimit(1)
 
                                         HStack(spacing: 8) {
-                                            Text(object.reference.objectID)
+                                            Text(object.reference.displayID)
                                                 .font(.caption.monospaced())
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)
@@ -1103,13 +1103,13 @@ struct ManualCaptureView: View {
                                         .frame(width: 24)
 
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(meter.technicalPlaceName.isEmpty ? meter.id : meter.technicalPlaceName)
+                                        Text(meter.technicalPlaceName.isEmpty ? meter.id.withoutSAPLeadingZeros : meter.technicalPlaceName)
                                             .font(.body.weight(.medium))
                                             .foregroundStyle(FacilityTheme.ink)
                                             .lineLimit(1)
 
                                         HStack(spacing: 8) {
-                                            Text(meter.id)
+                                            Text(meter.id.withoutSAPLeadingZeros)
                                                 .font(.caption.monospaced())
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)

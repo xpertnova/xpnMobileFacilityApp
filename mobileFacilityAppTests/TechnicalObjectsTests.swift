@@ -21,6 +21,16 @@ final class TechnicalObjectsTests: XCTestCase {
         XCTAssertEqual(equipment.manufacturer, "Maker")
     }
 
+    /// Screens show equipment numbers without SAP's zero padding; the
+    /// reference itself keeps the full `EQUNR`.
+    func testEquipmentDisplayIDDropsSAPZeroPadding() {
+        let equipment = TechnicalObjectReference(kind: .equipment, objectID: "000000000600301259")
+        XCTAssertEqual(equipment.displayID, "600301259")
+        XCTAssertEqual(equipment.objectID, "000000000600301259")
+        XCTAssertEqual(TechnicalObjectReference(kind: .equipment, objectID: "NEU0001").displayID, "NEU0001")
+        XCTAssertEqual(TechnicalObjectReference(kind: .functionalLocation, objectID: "0815").displayID, "0815")
+    }
+
     /// The creation forms address a building by `TPLND` / `TPWEH` / `TPGEB`,
     /// so those have to survive mapping and normalization; equipment rows
     /// carry none of them.

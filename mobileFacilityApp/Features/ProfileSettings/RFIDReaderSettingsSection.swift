@@ -44,7 +44,9 @@ struct RFIDReaderSettingsSection: View {
             messageKey: "profile.settings.rfid.remove.message",
             confirmTitleKey: "profile.settings.rfid.remove.confirm",
             isDestructive: true
-        ) {
+        ) { [deviceToRemove] in
+            // Captured while the dialog is shown: confirming dismisses it
+            // first, which clears `deviceToRemove` before this runs.
             if let deviceToRemove { reader.remove(deviceToRemove) }
         }
     }

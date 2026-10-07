@@ -18,6 +18,12 @@ struct TechnicalObjectReference: Codable, Hashable, Identifiable, Sendable {
 
     var id: String { "\(kind.rawValue):\(objectID)" }
 
+    /// The identifier as the screens show it. Only the display drops the
+    /// padding: SAP, the cache and QR payloads keep the full `EQUNR`.
+    var displayID: String {
+        kind == .equipment ? objectID.withoutSAPLeadingZeros : objectID
+    }
+
     static let unassigned = TechnicalObjectReference(
         kind: .functionalLocation,
         objectID: "__unassigned__"
@@ -28,6 +34,17 @@ struct TechnicalObjectReference: Codable, Hashable, Identifiable, Sendable {
             kind: .functionalLocation,
             objectID: "__city__:\(countryCode.uppercased())|\(locationCode.uppercased())"
         )
+    }
+}
+
+extension String {
+    /// SAP pads numeric keys — equipment, notification and measuring point
+    /// numbers — with zeros; the legacy lists showed them without the
+    /// padding. For display only: SAP and the cache need the padded key.
+    var withoutSAPLeadingZeros: String {
+        guard !isEmpty, allSatisfy({ $0.isASCII && $0.isNumber }) else { return self }
+        let trimmed = drop(while: { $0 == "0" })
+        return trimmed.isEmpty ? "0" : String(trimmed)
     }
 }
 
@@ -305,7 +322,7 @@ struct TechnicalObjectNode: Codable, Equatable, Identifiable, Sendable {
     var id: String { reference.id }
 
     var displayName: String {
-        name.isEmpty ? reference.objectID : name
+        name.isEmpty ? reference.displayID : name
     }
 
     var displayStatus: String {
