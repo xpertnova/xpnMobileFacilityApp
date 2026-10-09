@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DraftsView: View {
     let demo: FacilityDemoViewModel
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var showsUnavailableNotificationAlert = false
     @State private var photoWorkspaceScope: LocalPhotoScope?
 
@@ -15,7 +14,7 @@ struct DraftsView: View {
                     photoStore: demo.photoAttachmentStore,
                     close: { self.photoWorkspaceScope = nil }
                 )
-                .transition(PhotoWorkspaceMotion.destination)
+                .transition(FacilityMotion.push)
                 .zIndex(1)
             } else {
                 ScrollView {
@@ -70,13 +69,10 @@ struct DraftsView: View {
                     }
                     .facilityPageContent()
                 }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceScope
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceScope)
         .task {
             await demo.offlineWorkStore.load()
         }

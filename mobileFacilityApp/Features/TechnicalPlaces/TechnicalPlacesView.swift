@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TechnicalPlacesView: View {
     let demo: FacilityDemoViewModel
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var documentWorkspaceScope: LocalPhotoScope?
 
@@ -11,16 +10,16 @@ struct TechnicalPlacesView: View {
         ZStack {
             if case let .createMobileLadder(anchor) = demo.technicalPlacesRoute {
                 MobileLadderCreationView(demo: demo, itemID: nil, anchor: anchor, close: demo.closeMobileLadder)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
             } else if case let .mobileLadderDraft(itemID) = demo.technicalPlacesRoute {
                 MobileLadderCreationView(demo: demo, itemID: itemID, close: demo.closeMobileLadder)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
             } else if case let .createSubdistribution(anchor) = demo.technicalPlacesRoute {
                 SubdistributionCreationView(demo: demo, itemID: nil, anchor: anchor, close: demo.closeSubdistribution)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
             } else if case let .subdistributionDraft(itemID) = demo.technicalPlacesRoute {
                 SubdistributionCreationView(demo: demo, itemID: itemID, close: demo.closeSubdistribution)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
             } else if let photoWorkspaceScope {
                 LocalPhotoWorkspace(
                     scope: photoWorkspaceScope,
@@ -28,7 +27,7 @@ struct TechnicalPlacesView: View {
                     photoStore: demo.photoAttachmentStore,
                     close: { self.photoWorkspaceScope = nil }
                 )
-                .transition(PhotoWorkspaceMotion.destination)
+                .transition(FacilityMotion.push)
                 .zIndex(1)
             } else if let documentWorkspaceScope {
                 LocalDocumentWorkspace(
@@ -37,7 +36,7 @@ struct TechnicalPlacesView: View {
                     documentStore: demo.documentAttachmentStore,
                     close: { self.documentWorkspaceScope = nil }
                 )
-                .transition(PhotoWorkspaceMotion.destination)
+                .transition(FacilityMotion.push)
                 .zIndex(1)
             } else {
                 Group {
@@ -72,18 +71,12 @@ struct TechnicalPlacesView: View {
                         hierarchy(model)
                     }
                 }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
-        .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.selectedDetail != nil)
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceScope
-        )
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: documentWorkspaceScope
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: model.selectedDetail != nil)
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceScope)
+        .facilityAnimation(FacilityMotion.navigation, value: documentWorkspaceScope)
         .task { if model.state == .idle { await model.load() } }
         .task(id: model.query) {
             do { try await Task.sleep(for: .milliseconds(350)); await model.updateSearch() } catch { }
@@ -126,7 +119,10 @@ struct TechnicalPlacesView: View {
 
     private func hierarchy(_ model: TechnicalPlacesViewModel) -> some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
+            // A plain stack: the page has only a handful of sections, and the
+            // tree inside is the one lazy stack, so its rows stay lazy against
+            // the scroll view instead of sitting in a second lazy stack.
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("places.title")
@@ -145,18 +141,18 @@ struct TechnicalPlacesView: View {
                         .textInputAutocapitalization(.never).submitLabel(.search)
                     if !model.query.isEmpty {
                         Button {
-                            withAnimation(accessibilityReduceMotion ? nil : .smooth(duration: 0.18)) {
+                            withFacilityAnimation {
                                 model.query = ""
                             }
                         } label: { Image(systemName: "xmark.circle.fill") }
                             .buttonStyle(.plain)
                             .accessibilityLabel("places.search.clear")
-                            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+                            .transition(FacilityMotion.pop())
                     }
                 }
                 .padding(.horizontal, 16).frame(minHeight: 50)
                 .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.18), value: model.query.isEmpty)
+                .facilityAnimation(FacilityMotion.standard, value: model.query.isEmpty)
 
                 // The bar wraps instead of scrolling sideways so every cost
                 // group stays visible in a narrow window.
@@ -173,7 +169,7 @@ struct TechnicalPlacesView: View {
                         }
                     }
                 }
-                .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: model.selectedDINGroup)
+                .facilityAnimation(FacilityMotion.standard, value: model.selectedDINGroup)
                 if let refreshedAt = demo.sapDataStore.lastSuccessfulRefreshAt,
                    Date().timeIntervalSince(refreshedAt) > 86_400 {
                     Label("places.stale", systemImage: "clock.arrow.circlepath")
@@ -183,7 +179,7 @@ struct TechnicalPlacesView: View {
                         .transition(.opacity)
                 }
                 hierarchyContent(model)
-                    .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24), value: model.state)
+                    .facilityAnimation(FacilityMotion.standard, value: model.state)
                     // Scoped to the results: the search field above stays
                     // usable while a query runs. `.idle` is the state the
                     // model starts in, so the frame is up on the first render.
@@ -192,7 +188,13 @@ struct TechnicalPlacesView: View {
                         titleKey: "places.loading"
                     )
                 namingSchemaCard(model)
-            }.facilityPageContent()
+            }
+            .facilityPageContent()
+            // Opening or closing the sidebar resizes this column. Re-flowing
+            // hundreds of tree rows and the wrapping cost-group chips under
+            // that animation stutters, so the content takes its new width at
+            // once and only the scroll view slides with the sidebar's edge.
+            .transaction(value: demo.isSidebarExpanded) { $0.animation = nil }
         }.scrollDismissesKeyboard(.interactively)
     }
 
@@ -380,13 +382,12 @@ private struct DINChip: View {
                 .overlay(Capsule().stroke(selected ? .clear : Color.secondary.opacity(0.22)))
         }
         .buttonStyle(.plain)
-        .animation(.smooth(duration: 0.2), value: selected)
+        .facilityAnimation(FacilityMotion.standard, value: selected)
     }
 }
 
 private struct TechnicalObjectRow: View {
     let row: TechnicalObjectVisibleRow; let displayName: String; let pendingStatus: OfflineWorkStatus?; let isExpanded: Bool; let canOpenDetail: Bool; let toggle: () -> Void; let open: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
@@ -397,7 +398,7 @@ private struct TechnicalObjectRow: View {
                         .font(.caption.bold())
                         .foregroundStyle(FacilityTheme.ink)
                         .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .animation(accessibilityReduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0), value: isExpanded)
+                        .facilityAnimation(FacilityMotion.standard, value: isExpanded)
                         .frame(width: 30, height: 44)
                 }
                 .buttonStyle(.plain)
@@ -559,7 +560,7 @@ private struct TechnicalObjectRowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(configuration.isPressed ? Color.black.opacity(0.04) : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .facilityAnimation(FacilityMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -587,7 +588,6 @@ private struct TechnicalObjectDetailView: View {
     let openSubdistribution: () -> Void
     let loadInstallOptions: () async -> TechnicalPlaceInstallOptions
     let loadCanReportDefect: () async -> Bool
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     /// Nil while the creation data is read; the install action waits for it
     /// rather than offering a form that may have nothing to choose.
     @State private var installOptions: TechnicalPlaceInstallOptions?
@@ -603,7 +603,7 @@ private struct TechnicalObjectDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Button {
-                    withAnimation(accessibilityReduceMotion ? nil : .smooth(duration: 0.24)) {
+                    withFacilityAnimation(FacilityMotion.navigation) {
                         model.closeDetail()
                     }
                 } label: { Label("places.detail.back", systemImage: "chevron.left") }
@@ -885,8 +885,8 @@ private struct TechnicalObjectDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .facilityCard()
-            .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: installOptions)
-            .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: canReportDefect)
+            .facilityAnimation(FacilityMotion.standard, value: installOptions)
+            .facilityAnimation(FacilityMotion.standard, value: canReportDefect)
         }
     }
 
@@ -1113,7 +1113,6 @@ private struct FunctionalLocationCard: View {
 
 private struct EquipmentEditCard: View {
     @Bindable var model: TechnicalPlacesViewModel
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1145,9 +1144,9 @@ private struct EquipmentEditCard: View {
                 Spacer()
                 Button("places.save") { Task { await model.saveEquipment() } }.buttonStyle(.borderedProminent).disabled(model.saveState == .saving)
             }
-            .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.2), value: model.saveState)
+            .facilityAnimation(FacilityMotion.standard, value: model.saveState)
         }
-        .animation(accessibilityReduceMotion ? nil : .smooth(duration: 0.22), value: model.equipmentDraft?.hasNextInspectionDate)
+        .facilityAnimation(FacilityMotion.standard, value: model.equipmentDraft?.hasNextInspectionDate)
         .frame(maxWidth: .infinity, alignment: .leading)
         .facilityCard()
     }

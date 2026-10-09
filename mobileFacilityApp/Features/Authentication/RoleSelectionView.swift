@@ -132,7 +132,7 @@ struct RoleSelectionView: View {
                     guard keyboardOverlap > 0, let focusedField else { return }
                     // Scroll after the keyboard-sized viewport has been laid
                     // out; scrolling on the notification can use its old size.
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withFacilityAnimation {
                         scrollProxy.scrollTo(focusedField, anchor: .center)
                     }
                 }
@@ -141,7 +141,7 @@ struct RoleSelectionView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: focusedField) { _, field in
                     guard let field else { return }
-                    withAnimation(.easeOut(duration: 0.2)) {
+                    withFacilityAnimation {
                         scrollProxy.scrollTo(field, anchor: .center)
                     }
                 }
@@ -512,7 +512,7 @@ private struct XPNMark: View {
                 radius: isHovering ? 14 : 0,
                 y: isHovering ? 8 : 0
             )
-            .animation(.snappy(duration: 0.20), value: isHovering)
+            .facilityAnimation(FacilityMotion.standard, value: isHovering)
             .contentShape(shape)
             .onHover { hovering in
                 isHovering = hovering && !reduceMotion

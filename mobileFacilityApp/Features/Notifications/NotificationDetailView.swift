@@ -4,7 +4,6 @@ struct NotificationDetailView: View {
     let detail: SAPNotificationDetail
     let backDestination: AppDestination
     let dismiss: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: NotificationReviewViewModel
     @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
@@ -35,7 +34,7 @@ struct NotificationDetailView: View {
         ZStack {
             if let item = photoWorkspaceItem {
                 photoWorkspace(for: item)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
                     .zIndex(1)
             } else {
                 VStack(spacing: 0) {
@@ -51,19 +50,17 @@ struct NotificationDetailView: View {
                 }
                 .background(FacilityTheme.canvas.ignoresSafeArea())
                 .safeAreaInset(edge: .bottom) { actionBar }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceItemID
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceItemID)
         .overlay {
             if let editingCommentID {
                 NotificationCommentEditorOverlay(
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
                 )
+                .transition(.opacity)
             } else if isMeasuringPointsPresented, let points = model.measuringPoints, !points.isEmpty {
                 MeasuringPointsView(
                     functionalLocationID: model.measuringPointLocationID,
@@ -73,8 +70,11 @@ struct NotificationDetailView: View {
                     save: { await model.saveMeterReadings($0) },
                     dismiss: { isMeasuringPointsPresented = false }
                 )
+                .transition(.opacity)
             }
         }
+        .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
+        .facilityAnimation(FacilityMotion.overlay, value: isMeasuringPointsPresented)
         .task(id: detail.summary.id) { await model.load() }
         .alert(item: $model.feedback) { feedback in
             Alert(

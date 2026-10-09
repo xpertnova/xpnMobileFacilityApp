@@ -53,7 +53,6 @@ struct MetricCard: View {
     let tint: Color
     let action: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -67,7 +66,7 @@ struct MetricCard: View {
                         // a different fresh one, or a sync — rolls to its new
                         // value instead of jumping.
                         .contentTransition(.numericText(value: Double(count ?? 0)))
-                        .animation(accessibilityReduceMotion ? nil : .snappy(duration: 0.35), value: count)
+                        .facilityAnimation(FacilityMotion.standard, value: count)
                         .accessibilityLabel(
                             count.map { Text(verbatim: String($0)) } ?? Text("dashboard.metrics.loading")
                         )
@@ -259,7 +258,7 @@ struct FacilityCommentEditorOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.14)
+            FacilityTheme.dialogScrim
                 .ignoresSafeArea()
                 .onTapGesture(perform: dismiss)
 

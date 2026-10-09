@@ -3,7 +3,6 @@ import UIKit
 
 struct ManualCaptureView: View {
     let demo: FacilityDemoViewModel
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var isSaveDraftConfirmationPresented = false
     @State private var defectModel: DefectCaptureViewModel
     @State private var meterModel: MeterReadingViewModel
@@ -43,7 +42,7 @@ struct ManualCaptureView: View {
                         || (photoWorkspaceScope.workflow == .meterReading && meterModel.isReadOnly),
                     close: { self.photoWorkspaceScope = nil }
                 )
-                .transition(PhotoWorkspaceMotion.destination)
+                .transition(FacilityMotion.push)
                 .zIndex(1)
             } else {
                 ScrollView {
@@ -53,16 +52,13 @@ struct ManualCaptureView: View {
                         selectedForm
                     }
                     .facilityPageContent()
-                    .animation(.snappy(duration: 0.3, extraBounce: 0), value: demo.manualCaptureRoute)
+                    .facilityAnimation(FacilityMotion.standard, value: demo.manualCaptureRoute)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceScope
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceScope)
         .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
             saveDefect(.draft)
         }
@@ -114,7 +110,7 @@ struct ManualCaptureView: View {
             selected: isDefectSelected,
             style: style
         ) {
-            withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
+            withFacilityAnimation {
                 demo.openManualDefect()
             }
         }
@@ -126,7 +122,7 @@ struct ManualCaptureView: View {
             selected: isMeterSelected,
             style: style
         ) {
-            withAnimation(.snappy(duration: 0.32, extraBounce: 0.04)) {
+            withFacilityAnimation {
                 demo.openMeterReading()
             }
         }
@@ -309,7 +305,7 @@ struct ManualCaptureView: View {
                     Button {
                         Task {
                             await defectModel.cancel()
-                            withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
+                            withFacilityAnimation {
                                 demo.closeManualDefect()
                             }
                         }
@@ -331,7 +327,7 @@ struct ManualCaptureView: View {
                     cancel: {
                         Task {
                             await defectModel.cancel()
-                            withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
+                            withFacilityAnimation {
                                 demo.closeManualDefect()
                             }
                         }
@@ -579,7 +575,7 @@ struct ManualCaptureView: View {
                     }
                     .buttonStyle(ScalePressButtonStyle())
                     .disabled(!meterModel.canSave || meterModel.isSaving)
-                    .animation(.easeInOut(duration: 0.2), value: meterModel.canSave)
+                    .facilityAnimation(FacilityMotion.standard, value: meterModel.canSave)
                 }
             }
         }
@@ -587,7 +583,7 @@ struct ManualCaptureView: View {
 
     private func meterFormActionButton(_ key: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.snappy(duration: 0.3, extraBounce: 0)) {
+            withFacilityAnimation {
                 action()
             }
         } label: {
@@ -679,7 +675,7 @@ struct ManualCaptureView: View {
             .padding(3)
             .background(Color(uiColor: .systemGray6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .frame(maxWidth: .infinity, minHeight: 44)
-            .animation(.spring(response: 0.32, dampingFraction: 0.76), value: meterModel.kind)
+            .facilityAnimation(FacilityMotion.standard, value: meterModel.kind)
         }
         .frame(maxWidth: .infinity)
     }
@@ -711,7 +707,7 @@ struct ManualCaptureView: View {
             }
             .buttonStyle(FormFieldPressButtonStyle())
             .disabled(meterModel.references.isEmpty)
-            .animation(.easeInOut(duration: 0.22), value: meterModel.selectedReferenceID)
+            .facilityAnimation(FacilityMotion.standard, value: meterModel.selectedReferenceID)
             .popover(
                 isPresented: $isMeterPointPickerPresented,
                 attachmentAnchor: .rect(.bounds),
@@ -746,7 +742,7 @@ struct ManualCaptureView: View {
                 .id(meterModel.selectedReference?.unit ?? "empty")
                 .transition(.opacity)
                 .meterFieldChrome(isFocused: false)
-                .animation(.easeInOut(duration: 0.22), value: meterModel.selectedReference?.unit)
+                .facilityAnimation(FacilityMotion.standard, value: meterModel.selectedReference?.unit)
         }
         .frame(width: 104)
     }
@@ -1186,7 +1182,7 @@ private struct ManualCaptureActionCard: View {
                         .stroke(selected ? tint : Color.black.opacity(0.06), lineWidth: selected ? 2 : 1)
                 }
                 .shadow(color: selected ? tint.opacity(0.12) : Color.black.opacity(0.06), radius: selected ? 12 : 10, y: 5)
-                .animation(.easeInOut(duration: 0.22), value: selected)
+                .facilityAnimation(FacilityMotion.standard, value: selected)
         }
         .buttonStyle(ScalePressButtonStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
@@ -1242,7 +1238,7 @@ private struct ScalePressButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             .opacity(configuration.isPressed ? 0.88 : 1.0)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+            .facilityAnimation(FacilityMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -1250,7 +1246,7 @@ private struct SegmentPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+            .facilityAnimation(FacilityMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -1259,7 +1255,7 @@ private struct FormFieldPressButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.99 : 1.0)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
-            .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+            .facilityAnimation(FacilityMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -1281,6 +1277,6 @@ private extension View {
                         lineWidth: isFocused ? 1.5 : 1
                     )
             }
-            .animation(.easeInOut(duration: 0.18), value: isFocused)
+            .facilityAnimation(FacilityMotion.standard, value: isFocused)
     }
 }

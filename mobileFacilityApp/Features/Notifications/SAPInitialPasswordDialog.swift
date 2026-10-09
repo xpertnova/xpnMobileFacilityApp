@@ -220,7 +220,7 @@ func sapPasswordChangeErrorMessage(_ error: Error) -> String {
 #if DEBUG
 #Preview("Initial password", traits: .fixedLayout(width: 1_133, height: 744)) {
     ZStack {
-        Color.black.opacity(0.42)
+        FacilityTheme.dialogScrim
         SAPInitialPasswordDialog(
             userName: "S50828",
             initialOldPassword: "Init1234",
@@ -234,7 +234,7 @@ func sapPasswordChangeErrorMessage(_ error: Error) -> String {
 /// An iPad mini with the keyboard up leaves roughly this much room.
 #Preview("iPad mini with keyboard", traits: .fixedLayout(width: 700, height: 330)) {
     ZStack {
-        Color.black.opacity(0.42)
+        FacilityTheme.dialogScrim
         SAPInitialPasswordDialog(
             userName: "S50828",
             initialOldPassword: "",

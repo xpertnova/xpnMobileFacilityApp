@@ -40,7 +40,8 @@ struct FacilityConfirmationDialog<Content: View>: View {
     static var standardWidth: CGFloat { 460 }
 
     let titleKey: String
-    let messageKey: String
+    /// `nil` when the content says everything, as in the comment editor.
+    let messageKey: String?
     var symbol: String
     var tint: Color
     /// `nil` makes this an acknowledgement frame: the sole supplied action is
@@ -53,7 +54,7 @@ struct FacilityConfirmationDialog<Content: View>: View {
 
     init(
         titleKey: String,
-        messageKey: String,
+        messageKey: String?,
         symbol: String = "exclamationmark.triangle.fill",
         tint: Color = FacilityTheme.orange,
         cancelTitleKey: String? = "common.cancel",
@@ -80,14 +81,16 @@ struct FacilityConfirmationDialog<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
-            message
+            if let messageKey {
+                message(messageKey)
+            }
             content
             actionButtons
         }
         .facilityDialogFrame(width: width, padding: 28)
         .background(.white, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        // The same defined edge the other centered overlays use
-        // (`NotificationCommentEditorOverlay`), not a barely-there hairline.
+        // A defined edge, not a barely-there hairline. The comment editor
+        // (`NotificationCommentEditorOverlay`) is built on this frame too.
         .overlay {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(.gray.opacity(0.28), lineWidth: 1)
@@ -120,7 +123,7 @@ struct FacilityConfirmationDialog<Content: View>: View {
         }
     }
 
-    private var message: some View {
+    private func message(_ messageKey: String) -> some View {
         Text(LocalizedStringKey(messageKey))
             .font(.subheadline)
             .foregroundStyle(FacilityTheme.ink)
@@ -222,13 +225,11 @@ private struct FacilityConfirmationDialogModifier: ViewModifier {
     let dismissOnBackdropTap: Bool
     let actions: [FacilityDialogAction]
 
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-
     func body(content: Content) -> some View {
         content.overlay {
             if isPresented {
                 ZStack {
-                    Color.black.opacity(0.32)
+                    FacilityTheme.dialogScrim
                         .ignoresSafeArea()
                         .onTapGesture {
                             guard dismissOnBackdropTap else { return }
@@ -256,10 +257,7 @@ private struct FacilityConfirmationDialogModifier: ViewModifier {
                 .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : .easeOut(duration: 0.18),
-            value: isPresented
-        )
+        .facilityAnimation(FacilityMotion.overlay, value: isPresented)
     }
 }
 

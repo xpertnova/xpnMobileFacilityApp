@@ -86,7 +86,7 @@ struct AppRootView: View {
                 phase = .demo
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: phase)
+        .facilityAnimation(FacilityMotion.navigation, value: phase)
         .facilityLayoutRoot()
     }
 

@@ -83,7 +83,7 @@ private struct ProofOfQualificationFormScreen: View {
           guard message == nil, let issue = viewModel.firstValidationIssue else { return }
           Task { @MainActor in
             try? await Task.sleep(nanoseconds: 180_000_000)
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withFacilityAnimation {
               proxy.scrollTo(issue, anchor: .center)
             }
           }
@@ -127,8 +127,8 @@ private struct ProofOfQualificationFormScreen: View {
         }
       }
     }
-    .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityPicker)
-    .animation(.easeOut(duration: 0.16), value: isShowingPartnerPicker)
+    .facilityAnimation(FacilityMotion.overlay, value: isShowingBusinessEntityPicker)
+    .facilityAnimation(FacilityMotion.overlay, value: isShowingPartnerPicker)
     .overlay {
       if let editingCommentID {
         NotificationCommentEditorOverlay(
@@ -138,8 +138,10 @@ private struct ProofOfQualificationFormScreen: View {
           ),
           dismiss: { self.editingCommentID = nil }
         )
+        .transition(.opacity)
       }
     }
+    .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
     .alert(
       "qualification.form.title",
       isPresented: Binding(

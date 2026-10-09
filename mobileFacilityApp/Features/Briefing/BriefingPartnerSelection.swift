@@ -162,7 +162,7 @@ struct LegacyBriefingPartnerEditorOverlay<Content: View>: View {
                 .frame(height: visibleHeight)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .scrollBounceBehavior(.basedOnSize)
-                .background(Color.black.opacity(0.28).ignoresSafeArea())
+                .background(FacilityTheme.dialogScrim.ignoresSafeArea())
             }
             .background {
                 KeyboardOverlapReader { overlap, duration in
@@ -172,7 +172,7 @@ struct LegacyBriefingPartnerEditorOverlay<Content: View>: View {
                 }
             }
             .ignoresSafeArea(.keyboard)
-            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            .transition(.opacity)
             .zIndex(10)
         }
     }
@@ -192,7 +192,7 @@ struct LegacyBriefingSignatureOverlay<Content: View>: View {
         if isPresented {
             GeometryReader { geometry in
                 ZStack {
-                    Color.black.opacity(0.55).ignoresSafeArea()
+                    FacilityTheme.dialogScrim.ignoresSafeArea()
                     content
                         .frame(
                             // The legacy briefing sheet is a compact, centered iPad
@@ -206,7 +206,7 @@ struct LegacyBriefingSignatureOverlay<Content: View>: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            .transition(.opacity)
             .zIndex(20)
         }
     }
@@ -303,7 +303,6 @@ struct BriefingPartnerSelectionTable: View {
     @Binding var searchTerm2: String
     private let hasBoundSearchTerm2: Bool
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var sort = Sort.nameAscending
     @State private var activeColumnMenu: Column?
@@ -405,7 +404,7 @@ struct BriefingPartnerSelectionTable: View {
                             LazyVStack(spacing: 0) {
                                 ForEach(displayedPartners) { partner in
                                     Button {
-                                        withAnimation(reduceMotion ? nil : .snappy(duration: 0.24)) {
+                                        withFacilityAnimation {
                                             selectedPartnerID = partner.id
                                         }
                                     } label: {

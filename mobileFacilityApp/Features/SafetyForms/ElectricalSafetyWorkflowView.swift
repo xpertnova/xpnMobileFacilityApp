@@ -124,16 +124,18 @@ struct ElectricalSafetyWorkflowView: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityPicker)
-        .animation(.easeOut(duration: 0.16), value: isShowingPartnerPicker)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingBusinessEntityPicker)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingPartnerPicker)
         .overlay {
             if isEditingInstructionNotes {
                 NotificationCommentEditorOverlay(
                     comment: $viewModel.draft.instructionNotes,
                     dismiss: { isEditingInstructionNotes = false }
                 )
+                .transition(.opacity)
             }
         }
+        .facilityAnimation(FacilityMotion.overlay, value: isEditingInstructionNotes)
         .fullScreenCover(item: $viewModel.pdfArtifact) { artifact in
             BriefingPDFPreview(artifact: artifact) {
                 Task {
@@ -154,7 +156,7 @@ struct ElectricalSafetyWorkflowView: View {
         guard let issue else { return }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 180_000_000)
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withFacilityAnimation {
                 proxy.scrollTo(issue, anchor: .center)
             }
         }

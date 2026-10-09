@@ -66,7 +66,7 @@ struct NotificationsView: View {
                 // not only its stable SAP number, so the form reloads and
                 // re-evaluates that warning every time.
                 .id(demo.notificationDetailPresentationID)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
+                .transition(FacilityMotion.push)
                 .zIndex(1)
             } else {
                 notificationOverview
@@ -74,7 +74,7 @@ struct NotificationsView: View {
             }
 
         }
-        .animation(.snappy(duration: 0.32, extraBounce: 0), value: demo.selectedNotificationID)
+        .facilityAnimation(FacilityMotion.navigation, value: demo.selectedNotificationID)
     }
 
     private var notificationOverview: some View {
@@ -165,7 +165,7 @@ struct NotificationsView: View {
         .accessibilityAddTraits(
             filterPresentation.appliedFilter.hasBusinessEntity ? .isSelected : []
         )
-        .animation(.smooth(duration: 0.2), value: filterPresentation.appliedFilter.hasBusinessEntity)
+        .facilityAnimation(FacilityMotion.standard, value: filterPresentation.appliedFilter.hasBusinessEntity)
     }
 
     private var filterButtonSymbol: some View {
@@ -191,7 +191,7 @@ struct NotificationsView: View {
     }
 
     private func presentStructuralFilter() {
-        withAnimation(.snappy(duration: 0.32, extraBounce: 0)) {
+        withFacilityAnimation(FacilityMotion.overlay) {
             filterPresentation.pendingFilter = filterPresentation.appliedFilter
             filterPresentation.expandedField = nil
             filterPresentation.isPresented = true
@@ -557,7 +557,7 @@ struct NotificationStructuralFilterOverlay: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.opacity(0.42)
+                FacilityTheme.dialogScrim
                     .ignoresSafeArea()
                     .onTapGesture(perform: dismiss)
 
@@ -666,7 +666,7 @@ struct NotificationStructuralFilterOverlay: View {
                     }
                     .frame(width: controlFrame.width)
                     .offset(x: controlFrame.minX, y: controlFrame.maxY + 4)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+                    .transition(FacilityMotion.pop(from: .top))
                     .zIndex(3)
                 }
             }
@@ -748,7 +748,7 @@ struct NotificationStructuralFilterOverlay: View {
             HStack(spacing: 0) {
                 Button {
                     guard isEnabled else { return }
-                    withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
+                    withFacilityAnimation {
                         presentation.expandedField = presentation.expandedField == field ? nil : field
                     }
                 } label: {
@@ -807,7 +807,7 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private func clear(_ field: StructuralFilterField) {
-        withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
+        withFacilityAnimation {
             switch field {
             case .businessEntity:
                 presentation.pendingFilter = .empty
@@ -844,7 +844,7 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private func select(_ option: NotificationStructuralFilterOption, for field: StructuralFilterField) {
-        withAnimation(.snappy(duration: 0.28, extraBounce: 0)) {
+        withFacilityAnimation {
             switch field {
             case .businessEntity:
                 presentation.pendingFilter.businessEntityID = option.id
@@ -936,7 +936,7 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private func dismiss() {
-        withAnimation(.snappy(duration: 0.32, extraBounce: 0)) {
+        withFacilityAnimation(FacilityMotion.overlay) {
             presentation.pendingFilter = presentation.appliedFilter
             presentation.expandedField = nil
             presentation.isPresented = false
@@ -944,7 +944,7 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private func apply() {
-        withAnimation(.snappy(duration: 0.32, extraBounce: 0)) {
+        withFacilityAnimation(FacilityMotion.overlay) {
             presentation.appliedFilter = presentation.pendingFilter
             NotificationStructuralFilterPreferences.save(presentation.pendingFilter, workerID: demo.sapDataStore.localWorkerID, isDemoMode: demo.isDemoMode)
             presentation.expandedField = nil
@@ -955,7 +955,7 @@ struct NotificationStructuralFilterOverlay: View {
     }
 
     private func clear() {
-        withAnimation(.snappy(duration: 0.32, extraBounce: 0)) {
+        withFacilityAnimation(FacilityMotion.overlay) {
             presentation.pendingFilter = .empty
             presentation.appliedFilter = .empty
             NotificationStructuralFilterPreferences.reset(workerID: demo.sapDataStore.localWorkerID, isDemoMode: demo.isDemoMode)

@@ -18,6 +18,8 @@ enum FacilityTheme {
     static let neutralSoft = Color(red: 0.463, green: 0.463, blue: 0.502).opacity(0.12)
     static let orange = Color(red: 0.87, green: 0.43, blue: 0.0)
     static let red = Color(red: 0.83, green: 0.18, blue: 0.16)
+    /// The dimmed backdrop behind every centered dialog and picker.
+    static let dialogScrim = Color.black.opacity(0.32)
 }
 
 extension View {

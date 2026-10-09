@@ -31,7 +31,6 @@ private struct I2DefectSelectionDialogModifier: ViewModifier {
     let accept: () -> Void
     let cancel: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     func body(content: Content) -> some View {
         content.overlay {
@@ -39,7 +38,7 @@ private struct I2DefectSelectionDialogModifier: ViewModifier {
                 ZStack {
                     // The I1 is already closed, so the only ways out are the
                     // two buttons — the legacy dialog has no backdrop dismiss.
-                    Color.black.opacity(0.32)
+                    FacilityTheme.dialogScrim
                         .ignoresSafeArea()
 
                     FacilityConfirmationDialog(
@@ -58,10 +57,7 @@ private struct I2DefectSelectionDialogModifier: ViewModifier {
                 .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : .easeOut(duration: 0.18),
-            value: selection.isPresented
-        )
+        .facilityAnimation(FacilityMotion.overlay, value: selection.isPresented)
     }
 }
 

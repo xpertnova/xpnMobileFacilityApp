@@ -7,7 +7,6 @@ struct WartungsplanDetailView: View {
     let backDestination: AppDestination
     let dismiss: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: WartungsplanViewModel
     @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
@@ -39,7 +38,7 @@ struct WartungsplanDetailView: View {
         ZStack {
             if let item = photoWorkspaceItem {
                 photoWorkspace(for: item)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
                     .zIndex(1)
             } else {
                 VStack(spacing: 0) {
@@ -54,21 +53,20 @@ struct WartungsplanDetailView: View {
                 }
                 .background(FacilityTheme.canvas.ignoresSafeArea())
                 .safeAreaInset(edge: .bottom) { actionBar }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceItemID
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceItemID)
         .overlay {
             if let editingCommentID {
                 NotificationCommentEditorOverlay(
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
                 )
+                .transition(.opacity)
             }
         }
+        .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
         .task(id: detail.summary.id) { await model.load() }
         .facilitySaveDraftConfirmation(isPresented: $isSaveDraftConfirmationPresented) {
             Task {

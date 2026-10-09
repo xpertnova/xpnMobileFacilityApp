@@ -5,6 +5,7 @@ struct ScanView: View {
     let demo: FacilityDemoViewModel
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var mode: ScanMode = .qrCode
     /// Every scan in demo mode only plays the scan animation.
     @State private var simulationState: SimulatedScanState = .ready
@@ -103,12 +104,12 @@ struct ScanView: View {
                         ))
                         .frame(width: 170, height: 3)
                         .shadow(color: FacilityTheme.accent.opacity(0.8), radius: 12)
-                        .offset(y: isActivelyScanning ? 76 : -76)
+                        // Under Reduce Motion the line rests in the middle
+                        // of the frame instead of sweeping.
+                        .offset(y: accessibilityReduceMotion ? 0 : (isActivelyScanning ? 76 : -76))
                         .opacity(isActivelyScanning ? 1 : 0)
-                        .animation(
-                            isActivelyScanning
-                                ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-                                : .default,
+                        .facilityAnimation(
+                            isActivelyScanning ? FacilityMotion.pulse : FacilityMotion.standard,
                             value: isActivelyScanning
                         )
                 }

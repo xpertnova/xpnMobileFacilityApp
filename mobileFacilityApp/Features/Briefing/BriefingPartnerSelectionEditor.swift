@@ -8,7 +8,6 @@ struct BriefingPartnerSelectionEditor: View {
     let viewModel: BriefingWorkflowViewModel
     let onDismiss: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.briefingEditorKeyboardVisible) private var keyboardVisible
     @Namespace private var panelNamespace
@@ -54,17 +53,17 @@ struct BriefingPartnerSelectionEditor: View {
                             }
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .transition(partnerPanelTransition)
+                        .transition(.opacity)
                     } else {
                         partnerList
-                            .transition(partnerPanelTransition)
+                            .transition(.opacity)
                     }
                 }
             }
             .padding(.horizontal, keyboardVisible ? 12 : 24)
             .padding(.vertical, keyboardVisible ? 8 : 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(partnerPanelAnimation, value: isAddingPartner)
+            .facilityAnimation(FacilityMotion.standard, value: isAddingPartner)
         }
     }
 
@@ -115,14 +114,6 @@ struct BriefingPartnerSelectionEditor: View {
             partnerTable
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-
-    private var partnerPanelAnimation: Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0)
-    }
-
-    private var partnerPanelTransition: AnyTransition {
-        reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 8))
     }
 
     private func selectPartner() {
@@ -371,7 +362,7 @@ struct BriefingPartnerSelectionEditor: View {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 180_000_000)
             guard focusedPartnerField == field else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
+            withFacilityAnimation {
                 proxy.scrollTo(field, anchor: .center)
             }
         }
@@ -389,7 +380,7 @@ struct BriefingPartnerSelectionEditor: View {
     }
 
     private func toggleAddPartner() {
-        withAnimation(partnerPanelAnimation) {
+        withFacilityAnimation {
             if isAddingPartner {
                 isAddingPartner = false
                 return
@@ -411,7 +402,7 @@ struct BriefingPartnerSelectionEditor: View {
             return
         }
         viewModel.addTemporaryPartner(partnerDraft)
-        withAnimation(partnerPanelAnimation) {
+        withFacilityAnimation {
             session.recentlyAddedPartnerID = partnerDraft.id
             selectedPartnerID = partnerDraft.id
             isAddingPartner = false
