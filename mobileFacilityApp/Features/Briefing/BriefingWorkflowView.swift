@@ -86,7 +86,7 @@ private struct BriefingFormScreen: View {
                     guard message == nil, let issue = viewModel.firstValidationIssue else { return }
                     Task { @MainActor in
                         try? await Task.sleep(nanoseconds: 180_000_000)
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withFacilityAnimation {
                             proxy.scrollTo(issue, anchor: .center)
                         }
                     }
@@ -112,8 +112,8 @@ private struct BriefingFormScreen: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.16), value: isShowingPartnerEditor)
-        .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityEditor)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingPartnerEditor)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingBusinessEntityEditor)
         .onChange(of: isShowingPartnerEditor || isShowingBusinessEntityEditor, initial: true) { _, isPresented in
             workspace.isBriefingValueHelpPresented = isPresented
         }
@@ -129,8 +129,10 @@ private struct BriefingFormScreen: View {
                     ),
                     dismiss: { self.editingCommentID = nil }
                 )
+                .transition(.opacity)
             }
         }
+        .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
         .alert("forms.briefing.title", isPresented: Binding(
             get: { viewModel.validationMessage != nil },
             set: { if !$0 { viewModel.validationMessage = nil } }
@@ -280,7 +282,7 @@ private struct BriefingFormScreen: View {
                         let selectedSections = sections.filter { viewModel.selectedOptionalSectionIDs.contains($0.id) }
                         if selectedSections.isEmpty {
                             Button {
-                                withAnimation(.easeInOut(duration: 0.18)) {
+                                withFacilityAnimation {
                                     isOptionalSectionsExpanded.toggle()
                                 }
                             } label: {
@@ -295,7 +297,7 @@ private struct BriefingFormScreen: View {
                                 HStack(spacing: 8) {
                                     ForEach(selectedSections) { section in
                                         Button {
-                                            withAnimation(.easeInOut(duration: 0.18)) {
+                                            withFacilityAnimation {
                                                 viewModel.setOptionalSection(section.id, selected: false)
                                             }
                                         } label: {
@@ -322,7 +324,7 @@ private struct BriefingFormScreen: View {
                         }
                         Spacer(minLength: 0)
                         Button {
-                            withAnimation(.easeInOut(duration: 0.18)) {
+                            withFacilityAnimation {
                                 isOptionalSectionsExpanded.toggle()
                             }
                         } label: {

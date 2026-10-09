@@ -20,7 +20,6 @@ private enum DisassembledTransition: Hashable, Identifiable {
     /// The technical place a new form was opened from.
     let anchor: TechnicalPlaceCreationAnchor?
     let close: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: MobileLadderCreationViewModel
     @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var photoWorkspaceExclusionID: String?
@@ -64,7 +63,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                     maxAttachments: model.remainingPhotoCapacity(excluding: photoWorkspaceExclusionID),
                     close: closePhotoWorkspace
                 )
-                .transition(PhotoWorkspaceMotion.destination)
+                .transition(FacilityMotion.push)
                 .zIndex(1)
             } else {
                 VStack(spacing: 0) {
@@ -75,13 +74,10 @@ private enum DisassembledTransition: Hashable, Identifiable {
                 .safeAreaInset(edge: .bottom) {
                     if model.state == .ready { actionBar }
                 }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceScope?.rowID
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceScope?.rowID)
         .overlay {
             ZStack {
                 LegacyBriefingPartnerEditorOverlay(isPresented: isShowingBusinessEntityEditor) {
@@ -101,6 +97,7 @@ private enum DisassembledTransition: Hashable, Identifiable {
                         comment: commentBinding(for: editingCommentID),
                         dismiss: { self.editingCommentID = nil }
                     )
+                    .transition(.opacity)
                 } else if let field = model.proposalField {
                     MasterDataProposalEditor(
                         fieldTitle: String(localized: String.LocalizationValue(field.titleKey), bundle: .appLanguage),
@@ -110,10 +107,13 @@ private enum DisassembledTransition: Hashable, Identifiable {
                         save: { model.saveProposal($0, for: field) }
                     )
                     .id(field)
+                    .transition(.opacity)
                 }
             }
         }
-        .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityEditor)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingBusinessEntityEditor)
+        .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
+        .facilityAnimation(FacilityMotion.overlay, value: model.proposalField)
         .task { await model.load(preselecting: anchor) }
         .alert(item: $model.feedback) { feedback in
             Alert(

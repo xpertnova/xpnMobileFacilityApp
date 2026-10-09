@@ -2,7 +2,6 @@ import SwiftUI
 
 struct DefectsView: View {
     let demo: FacilityDemoViewModel
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var showsUnavailableNotificationAlert = false
 
     var body: some View {
@@ -31,16 +30,16 @@ struct DefectsView: View {
                         .buttonStyle(.borderedProminent)
                     }
                     .frame(maxWidth: .infinity, minHeight: 240)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                    .transition(.opacity)
                 case .empty, .loaded:
                     defectContent
-                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+                        .transition(.opacity)
                 }
             }
             .facilityPageContent()
-            .animation(defectContentAnimation, value: demo.offlineWorkStore.state)
-            .animation(defectContentAnimation, value: demo.offlineWorkStore.closedDefectNotificationItems)
-            .animation(defectContentAnimation, value: demo.offlineWorkStore.defectItems)
+            .facilityAnimation(FacilityMotion.standard, value: demo.offlineWorkStore.state)
+            .facilityAnimation(FacilityMotion.standard, value: demo.offlineWorkStore.closedDefectNotificationItems)
+            .facilityAnimation(FacilityMotion.standard, value: demo.offlineWorkStore.defectItems)
         }
         .task {
             guard demo.offlineWorkStore.state == .loading else { return }
@@ -86,12 +85,12 @@ struct DefectsView: View {
                         ClosedDefectNotificationCard(item: item, review: review) {
                             open(review)
                         }
-                        .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
+                        .transition(FacilityMotion.pop(from: .topLeading))
                     } else if let inspection = item.payload.elevatorInspection {
                         ClosedDefectNotificationCard(item: item, inspection: inspection) {
                             open(inspection)
                         }
-                        .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .topLeading)))
+                        .transition(FacilityMotion.pop(from: .topLeading))
                     }
                 }
             }
@@ -115,10 +114,6 @@ struct DefectsView: View {
                 return
             }
         }
-    }
-
-    private var defectContentAnimation: Animation? {
-        accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0.04)
     }
 }
 

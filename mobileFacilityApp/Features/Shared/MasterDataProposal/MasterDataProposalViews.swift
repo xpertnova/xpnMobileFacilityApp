@@ -61,7 +61,7 @@ struct MasterDataProposalEditor: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.14)
+            FacilityTheme.dialogScrim
                 .ignoresSafeArea()
                 .onTapGesture(perform: cancel)
 

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct FormsView: View {
     let demo: FacilityDemoViewModel
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var selectedPreviewForm: FacilityForm?
     @State private var selectedActiveForm: FacilityForm?
 
@@ -12,7 +11,7 @@ struct FormsView: View {
         Group {
             if let selectedActiveForm {
                 activeWorkflow(for: selectedActiveForm)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(FacilityMotion.push)
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 22) {
@@ -43,10 +42,7 @@ struct FormsView: View {
                 .transition(.opacity)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0),
-            value: selectedActiveForm?.id
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: selectedActiveForm?.id)
         .sheet(item: $selectedPreviewForm) { form in
             FormWorkflowPreview(form: form)
                 .presentationDetents([.medium, .large])

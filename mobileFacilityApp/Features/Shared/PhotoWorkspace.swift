@@ -4,12 +4,6 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-enum PhotoWorkspaceMotion {
-    static let navigation = Animation.snappy(duration: 0.32, extraBounce: 0)
-    static let destination = AnyTransition.move(edge: .trailing).combined(with: .opacity)
-    static let source = AnyTransition.opacity
-}
-
 enum PhotoLibrarySelectionLimit {
     static let maximumBatchCount = 20
 
@@ -567,7 +561,7 @@ struct PhotoWorkspace: View {
             Button {
                 saveMetadataImmediately()
                 focusedMetadataField = nil
-                withAnimation(PhotoWorkspaceMotion.navigation) {
+                withFacilityAnimation {
                     isMetadataExpanded.toggle()
                 }
             } label: {
@@ -615,7 +609,7 @@ struct PhotoWorkspace: View {
                             .accessibilityLabel(Text("photos.workspace.description"))
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(FacilityMotion.reveal)
             }
         }
         .facilityCard(padding: 18)

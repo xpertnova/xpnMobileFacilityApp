@@ -70,8 +70,6 @@ private struct FacilityBusyOverlayModifier: ViewModifier {
     let titleKey: String
     let cornerRadius: CGFloat
 
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-
     func body(content: Content) -> some View {
         content
             .overlay {
@@ -80,9 +78,6 @@ private struct FacilityBusyOverlayModifier: ViewModifier {
                         .transition(.asymmetric(insertion: .identity, removal: .opacity))
                 }
             }
-            .animation(
-                accessibilityReduceMotion ? nil : .easeOut(duration: 0.18),
-                value: isBusy
-            )
+            .facilityAnimation(FacilityMotion.overlay, value: isBusy)
     }
 }

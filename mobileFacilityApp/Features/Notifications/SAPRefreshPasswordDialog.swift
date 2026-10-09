@@ -18,7 +18,7 @@ struct SAPRefreshPasswordDialog: View {
                 passwordEntry
             }
         }
-        .animation(.snappy(duration: 0.25), value: isRefreshing)
+        .facilityAnimation(FacilityMotion.standard, value: isRefreshing)
     }
 
     private var passwordEntry: some View {
@@ -289,7 +289,7 @@ func sapRefreshErrorMessage(_ error: SAPReadError?) -> String {
 /// An iPad mini with the keyboard up leaves roughly this much room.
 #Preview("iPad mini with keyboard", traits: .fixedLayout(width: 1_133, height: 330)) {
     ZStack {
-        Color.black.opacity(0.42)
+        FacilityTheme.dialogScrim
         SAPRefreshPasswordDialog(
             password: .constant(""),
             isRefreshing: false,

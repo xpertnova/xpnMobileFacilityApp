@@ -66,7 +66,7 @@ struct FacilityDialogSizingLayout: Layout {
 /// An iPad mini with the keyboard up leaves roughly this much room.
 #Preview("Dialog, iPad mini with keyboard", traits: .fixedLayout(width: 1_133, height: 330)) {
     ZStack {
-        Color.black.opacity(0.32)
+        FacilityTheme.dialogScrim
         FacilityConfirmationDialog(
             titleKey: "inspection.masterData.error.title",
             messageKey: "inspection.masterData.error.message",

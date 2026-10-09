@@ -211,7 +211,7 @@ final class TechnicalPlacesViewModel {
         defer { isLoadingMoreRoots = false }
         do {
             let page = try await sapDataStore.technicalObjectRoots(limit: pageSize, offset: offset)
-            withAnimation(.smooth(duration: 0.24)) {
+            withFacilityAnimation {
                 batchingTreeChanges {
                     page.objects.forEach { nodesByID[$0.reference] = $0 }
                     sourceRootReferences.append(contentsOf: page.objects.map(\.reference))
@@ -243,7 +243,7 @@ final class TechnicalPlacesViewModel {
                     of: country.reference, limit: pageSize, offset: 0
                 )
             }
-            withAnimation(.smooth(duration: 0.24)) {
+            withFacilityAnimation {
                 batchingTreeChanges {
                     applyRootPage(loadedRoots)
                     for (country, page) in countryPages {
@@ -271,8 +271,7 @@ final class TechnicalPlacesViewModel {
             let results = try await sapDataStore.searchTechnicalObjects(normalized, dinGroup: selectedDINGroup, limit: 500)
             // A search expands every hit, so a broad query inserts hundreds of
             // rows at once; animating that costs more than the search itself.
-            let animation: Animation? = results.count > 50 ? nil : .smooth(duration: 0.24)
-            withAnimation(animation) {
+            withFacilityAnimation(results.count > 50 ? nil : FacilityMotion.standard) {
                 applySearchResults(results)
                 state = results.isEmpty ? .noResults : .loaded
             }
@@ -284,7 +283,7 @@ final class TechnicalPlacesViewModel {
     }
 
     func selectDIN(_ code: String?) async {
-        withAnimation(.smooth(duration: 0.2)) {
+        withFacilityAnimation {
             selectedDINGroup = selectedDINGroup == code ? nil : code
         }
         await updateSearch()
@@ -292,12 +291,12 @@ final class TechnicalPlacesViewModel {
 
     func toggle(_ node: TechnicalObjectNode) async {
         if expanded.contains(node.reference) {
-            withAnimation(.smooth(duration: 0.22)) {
+            withFacilityAnimation {
                 _ = expanded.remove(node.reference)
             }
             return
         }
-        withAnimation(.smooth(duration: 0.22)) {
+        withFacilityAnimation {
             expanded.insert(node.reference)
         }
         guard !node.isCityGroup else { return }
@@ -333,7 +332,7 @@ final class TechnicalPlacesViewModel {
             // loaded yet — the saved-work list deep links straight into a
             // technical object — so the fetched object decides as well.
             guard canOpenDetail(detail.object) else { return }
-            withAnimation(.smooth(duration: 0.24)) {
+            withFacilityAnimation(FacilityMotion.navigation) {
                 selectedDetail = detail
                 saveState = .idle
             }
@@ -356,7 +355,7 @@ final class TechnicalPlacesViewModel {
     }
 
     func closeDetail() {
-        withAnimation(.smooth(duration: 0.24)) {
+        withFacilityAnimation(FacilityMotion.navigation) {
             selectedDetail = nil
             equipmentDraft = nil
             saveState = .idle
@@ -372,11 +371,11 @@ final class TechnicalPlacesViewModel {
         saveState = .saving
         do {
             _ = try await offlineWorkStore.saveTechnicalObjectEdit(draft.payload)
-            withAnimation(.smooth(duration: 0.2)) {
+            withFacilityAnimation {
                 saveState = .savedPending
             }
         } catch {
-            withAnimation(.smooth(duration: 0.2)) {
+            withFacilityAnimation {
                 saveState = .failed
             }
         }
@@ -406,7 +405,7 @@ final class TechnicalPlacesViewModel {
         defer { loadingChildrenOf.remove(parent) }
         do {
             let page = try await sapDataStore.technicalObjectChildren(of: parent, limit: pageSize, offset: offset)
-            withAnimation(.smooth(duration: 0.24)) {
+            withFacilityAnimation {
                 applyChildPage(page, of: parent, offset: offset)
             }
         } catch {

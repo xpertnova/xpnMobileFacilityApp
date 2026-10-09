@@ -12,7 +12,6 @@ struct SubdistributionCreationView: View {
     /// The technical place a new form was opened from.
     let anchor: TechnicalPlaceCreationAnchor?
     let close: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: SubdistributionCreationViewModel
     @State private var photoWorkspaceScope: LocalPhotoScope?
     @State private var photoWorkspaceExclusionID: String?
@@ -56,7 +55,7 @@ struct SubdistributionCreationView: View {
                     maxAttachments: model.remainingPhotoCapacity(excluding: photoWorkspaceExclusionID),
                     close: closePhotoWorkspace
                 )
-                .transition(PhotoWorkspaceMotion.destination)
+                .transition(FacilityMotion.push)
             } else {
                 VStack(spacing: 0) {
                     header
@@ -66,7 +65,7 @@ struct SubdistributionCreationView: View {
                 .safeAreaInset(edge: .bottom) {
                     if model.state == .ready { actionBar }
                 }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
         }
         .overlay {
@@ -88,10 +87,13 @@ struct SubdistributionCreationView: View {
                         comment: commentBinding(for: editingCommentID),
                         dismiss: { self.editingCommentID = nil }
                     )
+                    .transition(.opacity)
                 }
             }
         }
-        .animation(accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation, value: photoWorkspaceScope?.rowID)
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceScope?.rowID)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingBusinessEntityEditor)
+        .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
         .task { await model.load(preselecting: anchor) }
         .alert(item: $outOfOperationTransition) { transition in
             Alert(
@@ -271,17 +273,10 @@ struct SubdistributionCreationView: View {
                     }
                 }
                 .id(context.legacyContext.functionalLocation)
-                .transition(
-                    accessibilityReduceMotion
-                        ? .opacity
-                        : .opacity.combined(with: .move(edge: .top))
-                )
+                .transition(FacilityMotion.reveal)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : .easeInOut(duration: 0.28),
-            value: model.draft.context?.legacyContext.functionalLocation
-        )
+        .facilityAnimation(FacilityMotion.standard, value: model.draft.context?.legacyContext.functionalLocation)
         .frame(maxWidth: .infinity, alignment: .leading)
         .facilityCard(padding: 22)
     }

@@ -3,7 +3,6 @@ import SwiftUI
 struct FacilityShellView: View {
     let demo: FacilityDemoViewModel
     let onLogout: (() -> Void)?
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.facilityLayout) private var layout
     @State private var sapPassword = ""
@@ -15,7 +14,6 @@ struct FacilityShellView: View {
     @State private var isShowingUserMenu = false
     @State private var isLogoutConfirmationPresented = false
 
-    private let sidebarAnimation = Animation.snappy(duration: 0.28, extraBounce: 0)
     private let workDestinations: [AppDestination] = [
         .overview,
         .scan,
@@ -91,7 +89,7 @@ struct FacilityShellView: View {
                             )
                             .id(demo.notificationDetailPresentationID)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .transition(FacilityMotion.push)
                             .zIndex(1)
                         } else if selectedOfflineNotificationDetail.formCode.uppercased() == "TFM1" {
                             WartungsplanDetailView(
@@ -104,7 +102,7 @@ struct FacilityShellView: View {
                             )
                             .id(demo.notificationDetailPresentationID)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .transition(FacilityMotion.push)
                             .zIndex(1)
                         } else {
                             NotificationDetailView(
@@ -117,7 +115,7 @@ struct FacilityShellView: View {
                             )
                             .id(demo.notificationDetailPresentationID)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .transition(FacilityMotion.push)
                             .zIndex(1)
                         }
                     }
@@ -126,30 +124,21 @@ struct FacilityShellView: View {
                         ProfileSettingsView(demo: demo)
                             .id("profileSettings")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .transition(FacilityMotion.push)
                             .zIndex(2)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(
-                    accessibilityReduceMotion ? nil : .smooth(duration: 0.24),
-                    value: activeMainDestination
-                )
-                .animation(
-                    accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0),
-                    value: demo.selectedOfflineNotificationDetail
-                )
-                .animation(
-                    accessibilityReduceMotion ? nil : .snappy(duration: 0.32, extraBounce: 0),
-                    value: demo.selection == .profileSettings
-                )
+                .facilityAnimation(FacilityMotion.navigation, value: activeMainDestination)
+                .facilityAnimation(FacilityMotion.navigation, value: demo.selectedOfflineNotificationDetail)
+                .facilityAnimation(FacilityMotion.navigation, value: demo.selection == .profileSettings)
             }
 
             if demo.isSidebarExpanded && layout.overlaysExpandedSidebar {
                 Color.black.opacity(0.18)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                        withFacilityAnimation {
                             isShowingUserMenu = false
                         }
                         demo.isSidebarExpanded = false
@@ -167,7 +156,7 @@ struct FacilityShellView: View {
                     .ignoresSafeArea()
                     .padding(.leading, activeSidebarWidth)
                     .onTapGesture {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                        withFacilityAnimation {
                             isShowingUserMenu = false
                         }
                     }
@@ -189,7 +178,7 @@ struct FacilityShellView: View {
             }
 
             if !demo.isDemoMode, demo.shouldPresentSAPRefresh, requiresInitialPasswordChange {
-                Color.black.opacity(0.42)
+                FacilityTheme.dialogScrim
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
@@ -200,10 +189,10 @@ struct FacilityShellView: View {
                     cancel: dismissSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .transition(.opacity)
                 .zIndex(4)
             } else if !demo.isDemoMode, demo.shouldPresentSAPRefresh {
-                Color.black.opacity(0.42)
+                FacilityTheme.dialogScrim
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
@@ -217,13 +206,14 @@ struct FacilityShellView: View {
                     cancel: dismissSAPRefresh
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .transition(.opacity)
                 .zIndex(4)
             }
         }
         .background(FacilityTheme.canvas)
-        .animation(accessibilityReduceMotion ? nil : sidebarAnimation, value: demo.isSidebarExpanded)
-        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.18), value: demo.shouldConfirmSynchronization)
+        .facilityAnimation(FacilityMotion.navigation, value: demo.isSidebarExpanded)
+        .facilityAnimation(FacilityMotion.overlay, value: demo.shouldConfirmSynchronization)
+        .facilityAnimation(FacilityMotion.overlay, value: demo.shouldPresentSAPRefresh)
         .facilityConfirmationDialog(
             isPresented: $isLogoutConfirmationPresented,
             titleKey: demo.isDemoMode ? "logout.confirm.demo.title" : "logout.confirm.title",
@@ -301,7 +291,7 @@ struct FacilityShellView: View {
             DragGesture(minimumDistance: 28)
                 .onEnded { value in
                     if demo.isSidebarExpanded, value.translation.width < -70 {
-                        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                        withFacilityAnimation {
                             isShowingUserMenu = false
                         }
                         demo.isSidebarExpanded = false
@@ -336,7 +326,7 @@ struct FacilityShellView: View {
                 Spacer()
 
                 sidebarToggleButton(symbol: "sidebar.left", labelKey: "sidebar.hide") {
-                    withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                    withFacilityAnimation {
                         isShowingUserMenu = false
                     }
                     demo.isSidebarExpanded = false
@@ -396,7 +386,7 @@ struct FacilityShellView: View {
         .safeAreaPadding(.top, 4)
         .frame(width: layout.expandedSidebarWidth)
         .background(FacilityTheme.sidebar)
-        .animation(.snappy(duration: 0.22, extraBounce: 0), value: isShowingUserMenu)
+        .facilityAnimation(FacilityMotion.standard, value: isShowingUserMenu)
     }
 
     private func compactSidebar(
@@ -424,7 +414,7 @@ struct FacilityShellView: View {
                                 selection: selection,
                                 badge: badge(for: destination)
                             ) {
-                                withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                                withFacilityAnimation {
                                     isShowingUserMenu = false
                                 }
                             }
@@ -442,7 +432,7 @@ struct FacilityShellView: View {
                                 selection: selection,
                                 badge: badge(for: destination)
                             ) {
-                                withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                                withFacilityAnimation {
                                     isShowingUserMenu = false
                                 }
                             }
@@ -516,7 +506,7 @@ struct FacilityShellView: View {
 
     private var profileButton: some View {
         Button {
-            withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+            withFacilityAnimation {
                 isShowingUserMenu.toggle()
             }
         } label: {
@@ -558,7 +548,7 @@ struct FacilityShellView: View {
 
     private var compactProfileButton: some View {
         Button {
-            withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+            withFacilityAnimation {
                 isShowingUserMenu.toggle()
             }
         } label: {
@@ -585,14 +575,14 @@ struct FacilityShellView: View {
             .padding(.leading, demo.isSidebarExpanded ? 16 : layout.compactSidebarWidth + 8)
             .padding(.bottom, demo.isSidebarExpanded ? 76 : 14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .transition(.scale(scale: 0.95, anchor: .bottomLeading).combined(with: .opacity))
+            .transition(FacilityMotion.pop(from: .bottomLeading))
     }
 
     /// The legacy `DialogBeforeSync` in the shared dialog chrome. The count
     /// says how much local work the synchronization deletes.
     private var synchronizationConfirmation: some View {
         ZStack {
-            Color.black.opacity(0.32)
+            FacilityTheme.dialogScrim
                 .ignoresSafeArea()
                 .onTapGesture { demo.cancelSynchronization() }
 
@@ -629,7 +619,7 @@ struct FacilityShellView: View {
                 symbol: "person.crop.circle",
                 hintKey: "profile.menu.settings.hint"
             ) {
-                withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                withFacilityAnimation {
                     isShowingUserMenu = false
                 }
                 if layout.overlaysExpandedSidebar {
@@ -647,7 +637,7 @@ struct FacilityShellView: View {
                 hintKey: "profile.menu.logout.hint",
                 tint: FacilityTheme.red
             ) {
-                withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+                withFacilityAnimation {
                     isShowingUserMenu = false
                 }
                 // The menu item sits right under the settings entry, so a
@@ -837,7 +827,7 @@ struct FacilityShellView: View {
     }
 
     private func didSelectSidebarDestination() {
-        withAnimation(.snappy(duration: 0.22, extraBounce: 0)) {
+        withFacilityAnimation {
             isShowingUserMenu = false
         }
         // A sidebar laid over the screen has done its job once a
@@ -913,7 +903,7 @@ private struct CompactSidebarButton: View {
         .accessibilityLabel(Text(LocalizedStringKey(destination.titleKey)))
         .accessibilityValue(Text(badge.map { String($0) } ?? ""))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .animation(.smooth(duration: 0.2), value: isSelected)
+        .facilityAnimation(FacilityMotion.standard, value: isSelected)
     }
 
     private var badgeTint: Color {
@@ -964,7 +954,7 @@ private struct SidebarButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .animation(.smooth(duration: 0.2), value: isSelected)
+        .facilityAnimation(FacilityMotion.standard, value: isSelected)
     }
 
     private var badgeTint: Color {

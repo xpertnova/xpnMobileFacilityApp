@@ -162,7 +162,7 @@ private struct SAPConnectionBadge: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(tint.opacity(0.11), in: Capsule())
-            .animation(.easeInOut(duration: 0.2), value: status)
+            .facilityAnimation(FacilityMotion.standard, value: status)
             .accessibilityAddTraits(.isStaticText)
     }
 }

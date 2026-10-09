@@ -15,7 +15,6 @@ struct EquipmentInspectionView: View {
     /// normal Back action, which can return an offline draft to its source.
     let dismissForMissingMasterData: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var model: EquipmentInspectionViewModel
     @State private var isSaveDraftConfirmationPresented = false
     @State private var editingCommentID: String?
@@ -51,7 +50,7 @@ struct EquipmentInspectionView: View {
         ZStack {
             if let photoWorkspaceItemID {
                 photoWorkspace(for: photoWorkspaceItemID)
-                    .transition(PhotoWorkspaceMotion.destination)
+                    .transition(FacilityMotion.push)
                     .zIndex(1)
             } else {
                 VStack(spacing: 0) {
@@ -75,7 +74,7 @@ struct EquipmentInspectionView: View {
                 }
                 .background(FacilityTheme.canvas.ignoresSafeArea())
                 .safeAreaInset(edge: .bottom) { actionBar }
-                .transition(PhotoWorkspaceMotion.source)
+                .transition(.opacity)
             }
 
             // This must be in the root ZStack, above the notification and
@@ -83,19 +82,19 @@ struct EquipmentInspectionView: View {
             // intentionally non-dismissible except for its acknowledgement.
             if isMasterDataErrorPresented {
                 masterDataErrorOverlay
+                    .transition(.opacity)
                     .zIndex(100)
             }
         }
-        .animation(
-            accessibilityReduceMotion ? nil : PhotoWorkspaceMotion.navigation,
-            value: photoWorkspaceItemID
-        )
+        .facilityAnimation(FacilityMotion.navigation, value: photoWorkspaceItemID)
+        .facilityAnimation(FacilityMotion.overlay, value: isMasterDataErrorPresented)
         .overlay {
             if let editingCommentID {
                 NotificationCommentEditorOverlay(
                     comment: commentBinding(for: editingCommentID),
                     dismiss: { self.editingCommentID = nil }
                 )
+                .transition(.opacity)
             } else if let characteristic = proposalCharacteristic {
                 MasterDataProposalEditor(
                     fieldTitle: characteristic.title,
@@ -105,8 +104,11 @@ struct EquipmentInspectionView: View {
                     save: { model.saveProposal($0, for: characteristic) }
                 )
                 .id(characteristic.name)
+                .transition(.opacity)
             }
         }
+        .facilityAnimation(FacilityMotion.overlay, value: editingCommentID)
+        .facilityAnimation(FacilityMotion.overlay, value: model.proposalCharacteristicID)
         // If SwiftUI retains this destination while it is navigated away from
         // and opened again, its data may already be unavailable. Re-present
         // the blocking frame on each appearance; the post-load check below
@@ -472,7 +474,7 @@ struct EquipmentInspectionView: View {
 
     private var masterDataErrorOverlay: some View {
         ZStack {
-            Color.black.opacity(0.32)
+            FacilityTheme.dialogScrim
                 .ignoresSafeArea()
 
             FacilityConfirmationDialog(

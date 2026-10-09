@@ -87,8 +87,8 @@ struct FirePermitWorkflowView: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.16), value: isShowingBusinessEntityPicker)
-        .animation(.easeOut(duration: 0.16), value: isShowingPartnerPicker)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingBusinessEntityPicker)
+        .facilityAnimation(FacilityMotion.overlay, value: isShowingPartnerPicker)
         .overlay {
             if viewModel.isRenderingPDF { BriefingPDFRenderingOverlay() }
         }
@@ -112,7 +112,7 @@ struct FirePermitWorkflowView: View {
         guard let issue else { return }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 180_000_000)
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withFacilityAnimation {
                 proxy.scrollTo(issue, anchor: .center)
             }
         }
