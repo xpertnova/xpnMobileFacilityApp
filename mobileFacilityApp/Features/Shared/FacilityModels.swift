@@ -35,7 +35,7 @@ enum AppDestination: String, CaseIterable, Identifiable {
         case .manualCapture: return "pencil.line"
         case .defects: return "exclamationmark.triangle"
         case .technicalPlaces: return "square.3.layers.3d"
-        case .forms: return "document"
+        case .forms: return "doc"
         case .drafts: return "arrow.down.to.line.compact"
         case .profileSettings: return "person.crop.circle"
         }
