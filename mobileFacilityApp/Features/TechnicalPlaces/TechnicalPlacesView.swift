@@ -429,7 +429,7 @@ private struct TechnicalObjectRow: View {
                                 .font(.subheadline.monospaced().weight(.semibold))
                                 .foregroundStyle(.tertiary)
                         } else if !row.node.isSynthetic || (row.node.structureLevel != nil && displayName != row.node.reference.objectID) {
-                            Text(row.node.reference.objectID)
+                            Text(row.node.reference.displayID)
                                 .font(.subheadline.monospaced().weight(.semibold))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
@@ -767,7 +767,7 @@ private struct TechnicalObjectDetailView: View {
                         .foregroundStyle(.tertiary)
                         .frame(width: 176, height: 176)
                 }
-                Text(detail.object.reference.objectID).font(.caption.monospaced()).foregroundStyle(.secondary)
+                Text(detail.object.reference.displayID).font(.caption.monospaced()).foregroundStyle(.secondary)
                 HStack {
                     Button(action: shareLabel) { Label("places.qr", systemImage: "printer") }
                         .buttonStyle(.borderedProminent)
@@ -790,8 +790,8 @@ private struct TechnicalObjectDetailView: View {
                 id: "notification-\(note.id)",
                 symbol: "list.bullet.clipboard",
                 tint: FacilityTheme.blue,
-                title: note.title.isEmpty ? note.id : note.title,
-                meta: [note.id, note.displayDateRange, note.displayStatus]
+                title: note.title.isEmpty ? note.id.withoutSAPLeadingZeros : note.title,
+                meta: [note.id.withoutSAPLeadingZeros, note.displayDateRange, note.displayStatus]
                     .filter { !$0.isEmpty }
                     .joined(separator: " · "),
                 status: nil,
@@ -1086,7 +1086,7 @@ private struct FunctionalLocationCard: View {
             DetailGridLine("places.detail.technicalPlace", detail.object.reference.objectID)
             DetailGridLine("places.detail.designation", detail.object.name)
             DetailGridLine("places.detail.city", detail.object.cityAndLocationDisplay)
-            DetailGridLine("places.detail.parent", detail.object.parent?.objectID ?? "—")
+            DetailGridLine("places.detail.parent", detail.object.parent?.displayID ?? "—")
             DetailGridLine("places.detail.hierarchyLevel", detail.object.hierarchyLevel)
             DetailGridLine("places.detail.category", detail.object.category)
             DetailGridLine("places.detail.structure", detail.object.structureIndicator)
@@ -1102,7 +1102,7 @@ private struct FunctionalLocationCard: View {
                         Image(systemName: child.reference.kind == .equipment ? "gearshape" : "building.2")
                         VStack(alignment: .leading) {
                             Text(child.displayName).font(.subheadline.weight(.semibold))
-                            Text(child.reference.objectID).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            Text(child.reference.displayID).font(.caption.monospaced()).foregroundStyle(.secondary)
                         }
                     }.accessibilityElement(children: .combine)
                 }
@@ -1117,7 +1117,7 @@ private struct EquipmentEditCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("places.detail.masterData").font(.headline)
-            immutable("places.detail.equipmentNumber", model.equipmentDraft?.equipmentID ?? "")
+            immutable("places.detail.equipmentNumber", model.equipmentDraft?.equipmentID.withoutSAPLeadingZeros ?? "")
             immutable("places.detail.technicalPlace", model.equipmentDraft?.functionalLocationID ?? "")
             immutable("places.detail.city", model.equipmentDraft?.cityAndLocationDisplay ?? "")
             edit("places.detail.designation", \.designation)

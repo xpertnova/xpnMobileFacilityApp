@@ -203,7 +203,7 @@ struct DraftsView: View {
                 LocalWorkTemplateRow(
                     icon: "⚠️",
                     title: Text(defect.shortText),
-                    subtitle: Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)"),
+                    subtitle: Text("\(defect.technicalObject.displayID) · \(defect.technicalObjectName)"),
                     status: .for(item),
                     syncError: item.syncError,
                     action: { demo.openManualDefect(item.id) }
@@ -219,7 +219,7 @@ struct DraftsView: View {
                 LocalWorkTemplateRow(
                     icon: reading.meter.kind == .electricity ? "⚡" : (reading.meter.kind == .gas ? "🔥" : "💧"),
                     title: Text("manual.localWork.meter.title"),
-                    subtitle: Text("\(reading.meter.id) · \(MeterReadingViewModel.displayString(reading.value)) \(reading.meter.unit)"),
+                    subtitle: Text("\(reading.meter.id.withoutSAPLeadingZeros) · \(MeterReadingViewModel.displayString(reading.value)) \(reading.meter.unit)"),
                     status: demo.isDemoMode ? .demoLocal : .for(item),
                     syncError: item.syncError,
                     action: { demo.openMeterReading(item.id) }
@@ -311,8 +311,8 @@ struct DraftsView: View {
                             .background(FacilityTheme.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
                         VStack(alignment: .leading, spacing: 4) {
                             Text("drafts.technicalEdit.title").font(.headline).foregroundStyle(FacilityTheme.ink)
-                            Text(edit.designation.isEmpty ? edit.equipmentID : edit.designation).font(.subheadline).foregroundStyle(.secondary)
-                            Text("\(edit.equipmentID) · \(edit.functionalLocationID)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
+                            Text(edit.designation.isEmpty ? edit.equipmentID.withoutSAPLeadingZeros : edit.designation).font(.subheadline).foregroundStyle(.secondary)
+                            Text("\(edit.equipmentID.withoutSAPLeadingZeros) · \(edit.functionalLocationID)").font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(1)
                         }
                         Spacer()
                         if item.type.staysLocal, item.status != .draft {
@@ -384,7 +384,7 @@ private struct SavedEquipmentInspectionRow: View {
         LocalWorkTemplateRow(
             icon: inspection.form.draftIcon,
             title: Text(title),
-            subtitle: Text("\(inspection.notificationID) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks", bundle: .appLanguage))"),
+            subtitle: Text("\(inspection.notificationID.withoutSAPLeadingZeros) · \(inspection.elementValues.count) \(String(localized: "drafts.notification.checks", bundle: .appLanguage))"),
             status: inspection.isClosedLocally ? .closedLocally : .offline(item.status),
             syncError: item.syncError,
             report: report,
@@ -414,7 +414,7 @@ private struct SavedNotificationRow: View {
         LocalWorkTemplateRow(
             icon: "📋",
             title: Text(title),
-            subtitle: Text("\(review.notificationID) · \(review.results.count) \(String(localized: "drafts.notification.checks", bundle: .appLanguage))"),
+            subtitle: Text("\(review.notificationID.withoutSAPLeadingZeros) · \(review.results.count) \(String(localized: "drafts.notification.checks", bundle: .appLanguage))"),
             status: review.isClosedLocally ? .closedLocally : .offline(item.status),
             syncError: item.syncError,
             report: report,

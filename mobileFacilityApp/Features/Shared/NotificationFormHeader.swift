@@ -49,7 +49,7 @@ struct NotificationFormHeaderInfo: Equatable {
     var subtitle: String {
         let identifier = notificationID.isEmpty
             ? ""
-            : "\(String(localized: "notifications.detail.number", bundle: .appLanguage)) \(notificationID)"
+            : "\(String(localized: "notifications.detail.number", bundle: .appLanguage)) \(notificationID.withoutSAPLeadingZeros)"
         return [identifier, dateRange]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
@@ -217,7 +217,7 @@ struct NotificationFormHeaderCard: View {
                 if !info.equipmentID.isEmpty {
                     NotificationMetadataRow(
                         titleKey: "notifications.detail.equipment",
-                        value: info.equipmentID,
+                        value: info.equipmentID.withoutSAPLeadingZeros,
                         monospaced: true
                     )
                 }

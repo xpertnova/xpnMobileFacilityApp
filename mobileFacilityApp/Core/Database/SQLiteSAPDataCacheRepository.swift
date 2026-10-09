@@ -1411,8 +1411,8 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     /// Every technical-place query starts from the full hierarchy, which is
-    /// rebuilt from three whole tables (T0261, T0262, T0271) plus relationship
-    /// resolution. Opening the technical places alone asked for it four times,
+    /// rebuilt from five whole tables (T0261, T0262, T0271, T0272, T0273) plus
+    /// relationship resolution. Opening the technical places alone asked for it four times,
     /// serialised on this actor ahead of the notification queries. The build
     /// is kept until this connection writes anything: it is the only one that
     /// writes this database (the sync service shares this instance), so an
@@ -1648,15 +1648,24 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
     }
 
     private static func technicalObjects(on database: OpaquePointer) throws -> [TechnicalObjectNode] {
-        let functionalRows = try rows(in: "FROM_T0261", on: database)
-        let equipmentRows = try rows(in: "FROM_T0262", on: database)
+        // T0261/T0262 hold only the objects of the worker's notifications;
+        // T0272/T0273 are the full directory Cordova's place and equipment
+        // maps read, with every building. Each side has objects the other
+        // lacks, so both are read, and the own rows come last so they win
+        // for an object both send.
+        let directoryFunctionalRows = try rows(in: "FROM_T0272", on: database)
+            .filter { string("LVORM", in: $0).uppercased() != "X" }
+        let directoryEquipmentRows = try rows(in: "FROM_T0273", on: database)
+        let ownFunctionalRows = try rows(in: "FROM_T0261", on: database)
+        let ownEquipmentRows = try rows(in: "FROM_T0262", on: database)
+        let functionalRows = directoryFunctionalRows + ownFunctionalRows
+        let equipmentRows = directoryEquipmentRows + ownEquipmentRows
         let notificationRows = try rows(in: "FROM_T0271", on: database)
         let aliases = SAPTechnicalObjectMapper.functionalLocationAliases(from: functionalRows)
-        // The directory tables cover cities the worker's own rows name nowhere;
-        // the own rows come last so their names win.
+        // The worker's own rows come last so their city names win.
         let cityNames = SAPTechnicalObjectMapper.cityNames(
-            from: try cityRows(in: "FROM_T0272", on: database) + cityRows(in: "FROM_T0273", on: database)
-                + notificationRows + functionalRows + equipmentRows
+            from: directoryFunctionalRows + directoryEquipmentRows
+                + notificationRows + ownFunctionalRows + ownEquipmentRows
         )
         let mapped = functionalRows.compactMap(SAPTechnicalObjectMapper.functionalLocation(from:))
             + equipmentRows.compactMap(SAPTechnicalObjectMapper.equipment(from:))
@@ -1787,16 +1796,6 @@ actor SQLiteSAPDataCacheRepository: SAPDataCacheRepository, SAPLegacySynchroniza
 
     /// Only the identifier and city of a directory table: they are thousands
     /// of rows wide, and the city name is all the hierarchy takes from them.
-    private static func cityRows(in tableName: String, on database: OpaquePointer) throws -> [[String: Any]] {
-        let schema = try schema(named: tableName)
-        return try query(
-            on: database,
-            "SELECT STRNO, CITY1 FROM \(schema.name) WHERE CITY1 <> ''"
-        ) { statement in
-            ["STRNO": string(at: 0, from: statement), "CITY1": string(at: 1, from: statement)]
-        }
-    }
-
     private static func rows(in tableName: String, on database: OpaquePointer) throws -> [[String: Any]] {
         let schema = try schema(named: tableName)
         return try query(

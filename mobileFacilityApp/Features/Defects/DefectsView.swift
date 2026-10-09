@@ -157,7 +157,7 @@ private struct ManualDefectCard: View {
                         Text(defect.shortText)
                             .font(.headline)
                             .foregroundStyle(FacilityTheme.ink)
-                        Text("\(defect.technicalObject.objectID) · \(defect.technicalObjectName)")
+                        Text("\(defect.technicalObject.displayID) · \(defect.technicalObjectName)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -294,7 +294,7 @@ private struct ClosedDefectNotificationCard: View {
     }
 
     private var notificationMetadata: some View {
-        Text(notificationID)
+        Text(notificationID.withoutSAPLeadingZeros)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .lineLimit(1)

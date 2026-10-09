@@ -1066,7 +1066,7 @@ private struct NotificationRow: View, Equatable {
                 NotificationStatusIcon(status: notification.status)
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("\(notification.title) · Meldung \(notification.id.replacingOccurrences(of: "M-", with: "47100000"))")
+                    Text("\(notification.title) · Meldung \(notification.id.replacingOccurrences(of: "M-", with: "47100000").withoutSAPLeadingZeros)")
                         .font(.headline)
                         .foregroundStyle(FacilityTheme.ink)
                     
@@ -1201,7 +1201,7 @@ private struct NotificationDetailCard: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("notifications.detail.title")
                         .font(.title3.weight(.bold))
-                    Text([notification.id, notification.location].filter { !$0.isEmpty }.joined(separator: " · "))
+                    Text([notification.id.withoutSAPLeadingZeros, notification.location].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

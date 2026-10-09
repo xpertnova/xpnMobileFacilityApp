@@ -369,7 +369,7 @@ struct I2NotificationListPopoverContent: View {
             selectedID = notification.id
         } label: {
             HStack(spacing: I2NotificationListMetrics.columnSpacing) {
-                Text(notification.id)
+                Text(notification.id.withoutSAPLeadingZeros)
                     .font(.subheadline.monospacedDigit())
                     .frame(width: I2NotificationListMetrics.numberColumn, alignment: .leading)
                 Text(notification.shortText)
@@ -382,7 +382,7 @@ struct I2NotificationListPopoverContent: View {
                 Text(dateText(for: notification))
                     .font(.subheadline.monospacedDigit())
                     .frame(width: I2NotificationListMetrics.dateColumn, alignment: .leading)
-                Text(notification.referenceID)
+                Text(notification.referenceID.withoutSAPLeadingZeros)
                     .font(.subheadline.monospacedDigit())
                     .frame(width: I2NotificationListMetrics.referenceColumn, alignment: .leading)
                 statusText(notification.systemStatus)
