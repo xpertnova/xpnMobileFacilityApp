@@ -1040,14 +1040,20 @@ struct SAPRefreshFailureContext: Sendable {
 
 typealias SAPReadRefreshProgressHandler = @MainActor @Sendable (SAPReadRefreshStage) -> Void
 
+/// Runs once SAP accepted the password or token, before anything is sent or
+/// downloaded. An error from it ends the refresh without synchronizing.
+typealias SAPReadBeforeSynchronizationHandler = @MainActor @Sendable () async throws -> Void
+
 protocol SAPNotificationRefreshService: Sendable {
     func refresh(
         sapPassword: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData
 
     func refresh(
         usingToken token: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData
 }
