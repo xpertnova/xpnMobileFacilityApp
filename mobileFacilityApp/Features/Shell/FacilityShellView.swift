@@ -742,7 +742,7 @@ struct FacilityShellView: View {
     private func refreshSAPData() {
         let password = sapPassword
         Task {
-            await demo.sapDataStore.refresh(sapPassword: password)
+            await demo.refreshSAPData(sapPassword: password)
             sapPassword = ""
             if requiresInitialPasswordChange {
                 initialSAPPassword = password

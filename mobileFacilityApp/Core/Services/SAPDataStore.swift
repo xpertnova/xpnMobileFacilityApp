@@ -319,7 +319,12 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         }
     }
 
-    func refresh(sapPassword: String) async {
+    /// `beforeSynchronizing` runs once SAP accepted the password; an error
+    /// from it ends the refresh as a stopped one.
+    func refresh(
+        sapPassword: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler = {}
+    ) async {
         guard let refreshService else {
             refreshFailureContext = nil
             refreshError = .authenticatedConnectionUnavailable
@@ -330,7 +335,10 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         defer { finishRefreshOperation(refreshID) }
         do {
             cachedData = try await runRefresh {
-                try await refreshService.refresh(sapPassword: sapPassword) { [weak self] stage in
+                try await refreshService.refresh(
+                    sapPassword: sapPassword,
+                    beforeSynchronizing: beforeSynchronizing
+                ) { [weak self] stage in
                     self?.refreshStage = stage
                 }
             }
@@ -372,8 +380,11 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     /// Attempts to synchronize using the saved SAP token.
     /// Returns `true` if synchronization succeeded.
     /// Returns `false` if no token exists, connection is unavailable, or token was rejected by SAP (calling code can prompt for password).
+    /// `beforeSynchronizing` runs once SAP accepted the token.
     @discardableResult
-    func refreshWithSavedToken() async -> Bool {
+    func refreshWithSavedToken(
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler = {}
+    ) async -> Bool {
         let refreshID: UUID
         if let preparedID = preparedTokenRefreshID {
             guard activeRefreshID == preparedID else { return false }
@@ -406,7 +417,10 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
         }
         do {
             cachedData = try await runRefresh {
-                try await refreshService.refresh(usingToken: token) { [weak self] stage in
+                try await refreshService.refresh(
+                    usingToken: token,
+                    beforeSynchronizing: beforeSynchronizing
+                ) { [weak self] stage in
                     self?.refreshStage = stage
                 }
             }

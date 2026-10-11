@@ -625,6 +625,119 @@ final class SAPSyncTokenTests: XCTestCase {
         XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
     }
 
+    /// The legacy app asks `check4TempMeldungen` only after SAP accepted the
+    /// password. A rejected password or a closed dialog keeps the forms.
+    @MainActor
+    func testConfirmedFormsAreDeletedOnlyOnceSAPAcceptsThePassword() async throws {
+        let workerID = "TEST_WORKER"
+        let offlineWorkStore = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: workerID)
+        let ladderItem = try await offlineWorkStore.saveMobileLadder(payload: MobileLadderDraftPayload(), status: .draft)
+        let mockService = MockTokenRefreshService()
+        let viewModel = makeSynchronizationViewModel(
+            offlineWorkStore: offlineWorkStore, refreshService: mockService, tokenStore: InMemorySAPSyncTokenStore()
+        )
+
+        viewModel.requestSAPRefresh()
+        viewModel.confirmSynchronization()
+        XCTAssertTrue(viewModel.shouldPresentSAPRefresh)
+        XCTAssertNotNil(offlineWorkStore.item(id: ladderItem.id))
+
+        mockService.passwordRefreshError = .invalidCredentials
+        await viewModel.refreshSAPData(sapPassword: "wrong")
+        XCTAssertEqual(mockService.passwordRefreshCallCount, 1)
+        XCTAssertNotNil(offlineWorkStore.item(id: ladderItem.id))
+
+        // Closing the dialog withdraws the confirmation.
+        viewModel.shouldPresentSAPRefresh = false
+        mockService.passwordRefreshError = nil
+        await viewModel.refreshSAPData(sapPassword: "right")
+        XCTAssertNotNil(offlineWorkStore.item(id: ladderItem.id))
+
+        viewModel.requestSAPRefresh()
+        XCTAssertTrue(viewModel.shouldConfirmSynchronization)
+        viewModel.confirmSynchronization()
+        await viewModel.refreshSAPData(sapPassword: "right")
+        XCTAssertNil(offlineWorkStore.item(id: ladderItem.id))
+        XCTAssertFalse(viewModel.synchronizationCleanupFailed)
+    }
+
+    /// A saved token SAP rejects asks for the password; the confirmed forms
+    /// stay until that password is accepted.
+    @MainActor
+    func testRejectedSavedTokenKeepsConfirmedFormsUntilThePasswordIsAccepted() async throws {
+        let workerID = "TEST_WORKER"
+        let offlineWorkStore = OfflineWorkStore(repository: InMemoryOfflineWorkRepository(), workerID: workerID)
+        let ladderItem = try await offlineWorkStore.saveMobileLadder(payload: MobileLadderDraftPayload(), status: .draft)
+        let tokenStore = InMemorySAPSyncTokenStore()
+        try tokenStore.save(token: "SAVED_TOKEN", for: workerID)
+        let mockService = MockTokenRefreshService()
+        mockService.tokenRefreshError = .tokenInvalidOrExpired
+        let viewModel = makeSynchronizationViewModel(
+            offlineWorkStore: offlineWorkStore, refreshService: mockService, tokenStore: tokenStore
+        )
+
+        viewModel.requestSAPRefresh()
+        viewModel.confirmSynchronization()
+        try await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+        XCTAssertTrue(viewModel.shouldPresentSAPRefresh)
+        XCTAssertNotNil(offlineWorkStore.item(id: ladderItem.id))
+
+        await viewModel.refreshSAPData(sapPassword: "right")
+        XCTAssertNil(offlineWorkStore.item(id: ladderItem.id))
+    }
+
+    /// `_afterRunDeleteTempMeldung`: forms that cannot be deleted stop the
+    /// synchronization before anything is sent or downloaded.
+    @MainActor
+    func testFailedDeletionStopsTheSynchronizationAfterSignIn() async throws {
+        let workerID = "TEST_WORKER"
+        let offlineWorkStore = OfflineWorkStore(repository: UndeletableOfflineWorkRepository(), workerID: workerID)
+        let ladderItem = try await offlineWorkStore.saveMobileLadder(payload: MobileLadderDraftPayload(), status: .draft)
+        let tokenStore = InMemorySAPSyncTokenStore()
+        try tokenStore.save(token: "SAVED_TOKEN", for: workerID)
+        let mockService = MockTokenRefreshService()
+        let viewModel = makeSynchronizationViewModel(
+            offlineWorkStore: offlineWorkStore, refreshService: mockService, tokenStore: tokenStore
+        )
+
+        viewModel.requestSAPRefresh()
+        viewModel.confirmSynchronization()
+        try await Task.sleep(for: .milliseconds(60))
+
+        XCTAssertEqual(mockService.tokenRefreshCallCount, 1)
+        XCTAssertTrue(viewModel.synchronizationCleanupFailed)
+        XCTAssertFalse(viewModel.shouldPresentSAPRefresh)
+        XCTAssertNil(viewModel.sapDataStore.lastSuccessfulRefreshAt)
+        XCTAssertNil(viewModel.sapDataStore.refreshError)
+        XCTAssertNotNil(offlineWorkStore.item(id: ladderItem.id))
+        XCTAssertNotNil(tokenStore.token(for: workerID))
+    }
+
+    @MainActor
+    private func makeSynchronizationViewModel(
+        offlineWorkStore: OfflineWorkStore,
+        refreshService: MockTokenRefreshService,
+        tokenStore: InMemorySAPSyncTokenStore
+    ) -> FacilityDemoViewModel {
+        FacilityDemoViewModel(
+            isDemoMode: false,
+            offlineWorkStore: offlineWorkStore,
+            sapDataStore: SAPDataStore(
+                repository: InMemorySAPDataCacheRepository(workerID: offlineWorkStore.workerID),
+                refreshService: refreshService,
+                tokenStore: tokenStore,
+                localWorkerID: offlineWorkStore.workerID,
+                synchronizationUserID: offlineWorkStore.workerID
+            ),
+            meterReferenceProvider: DemoMeterReferenceProvider(),
+            photoAttachmentStore: InMemoryPhotoAttachmentStore(),
+            workerDisplayName: "Test User",
+            workerRole: .technician
+        )
+    }
+
     @MainActor
     func testConfirmedSynchronizationPreservesDraftsAndProceedsWithSync() async throws {
         let workerID = "TEST_WORKER"
@@ -727,8 +840,11 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
     var suspendsTokenRefresh = false
     private var tokenRefreshContinuation: CheckedContinuation<Void, Never>?
 
+    /// The errors above stand for SAP refusing the sign-in, so
+    /// `beforeSynchronizing` runs only when there is none.
     func refresh(
         sapPassword: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         passwordRefreshCallCount += 1
@@ -738,6 +854,7 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
         if let passwordRefreshError {
             throw passwordRefreshError
         }
+        try await beforeSynchronizing()
         return SAPCachedData(
             notifications: [],
             workerProfile: nil,
@@ -750,6 +867,7 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
 
     func refresh(
         usingToken token: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         tokenRefreshCallCount += 1
@@ -762,6 +880,7 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
             throw tokenRefreshError
         }
         if shouldSucceedWithToken {
+            try await beforeSynchronizing()
             return SAPCachedData(
                 notifications: [],
                 workerProfile: nil,
@@ -778,5 +897,22 @@ private final class MockTokenRefreshService: SAPNotificationRefreshService, @unc
     func finishSuspendedTokenRefresh() {
         tokenRefreshContinuation?.resume()
         tokenRefreshContinuation = nil
+    }
+}
+
+/// Loads and saves, but every deletion fails.
+private struct UndeletableOfflineWorkRepository: OfflineWorkRepository {
+    private let base = InMemoryOfflineWorkRepository()
+
+    func loadWork(for workerID: String) async throws -> [OfflineWorkItem] {
+        try await base.loadWork(for: workerID)
+    }
+
+    func save(_ item: OfflineWorkItem) async throws {
+        try await base.save(item)
+    }
+
+    func resetWork(for workerID: String) async throws {
+        try await base.resetWork(for: workerID)
     }
 }

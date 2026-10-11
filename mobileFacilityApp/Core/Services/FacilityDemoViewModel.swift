@@ -56,13 +56,21 @@ final class FacilityDemoViewModel {
     /// Not observable: it is read once by the defect form's load task and
     /// cleared there, so it must not invalidate any view.
     @ObservationIgnored private var pendingDefectObject: DefectObjectOption?
-    /// The building a creation form should open on, set when it is started
-    /// from a technical place. Read once by that form's load task, like
-    /// `pendingDefectObject`.
-    var shouldPresentSAPRefresh = false
+    /// The synchronization dialog. Closing it without synchronizing also
+    /// withdraws a confirmed deletion of the temporarily saved forms.
+    var shouldPresentSAPRefresh = false {
+        didSet {
+            if !shouldPresentSAPRefresh { deletesTemporarilySavedFormsOnSynchronization = false }
+        }
+    }
     /// Set while the worker confirms a synchronization that deletes local
     /// work, like the legacy `DialogBeforeSync`.
     var shouldConfirmSynchronization = false
+    /// The worker confirmed that this synchronization deletes the temporarily
+    /// saved forms. They go only once SAP accepted the token or password, as
+    /// the legacy `check4TempMeldungen` runs after `_afterCallTokenCheck` /
+    /// `_afterInsertUSER_SYNC`: a cancelled or rejected sign-in keeps them.
+    @ObservationIgnored private var deletesTemporarilySavedFormsOnSynchronization = false
     /// Set when the temporarily saved forms could not be deleted; the
     /// synchronization then does not start, as in the legacy app.
     var synchronizationCleanupFailed = false
@@ -671,22 +679,16 @@ final class FacilityDemoViewModel {
         }
     }
 
-    /// "Ja" of the legacy dialog: the temporarily saved forms are deleted
-    /// first, and the synchronization starts only once they are gone.
+    /// "Ja" of the legacy dialog: the synchronization starts, and the
+    /// temporarily saved forms are deleted once SAP accepted the token or
+    /// password, right before anything is sent.
     func confirmSynchronization() {
         shouldConfirmSynchronization = false
         if isDemoMode {
             simulateDemoSync()
             return
         }
-        Task {
-            do {
-                try await offlineWorkStore.deleteTemporarilySavedForms(photoStore: photoAttachmentStore)
-                proceedWithSAPRefresh()
-            } catch {
-                synchronizationCleanupFailed = true
-            }
-        }
+        proceedWithSAPRefresh(deletingTemporarilySavedForms: true)
     }
 
     func cancelSynchronization() {
@@ -697,28 +699,52 @@ final class FacilityDemoViewModel {
         if isDemoMode {
             simulateDemoSync()
         } else {
-            proceedWithSAPRefresh()
+            proceedWithSAPRefresh(deletingTemporarilySavedForms: false)
         }
     }
 
-    private func proceedWithSAPRefresh() {
+    /// The password dialog's synchronization.
+    func refreshSAPData(sapPassword: String) async {
+        await sapDataStore.refresh(sapPassword: sapPassword, beforeSynchronizing: { [weak self] in
+            try await self?.deleteConfirmedTemporarilySavedForms()
+        })
+    }
+
+    private func proceedWithSAPRefresh(deletingTemporarilySavedForms: Bool) {
         guard !isDemoMode, sapDataStore.isRefreshAvailable, !sapDataStore.isRefreshing else { return }
         sapDataStore.dismissError()
+        deletesTemporarilySavedFormsOnSynchronization = deletingTemporarilySavedForms
         if sapDataStore.hasValidSavedToken {
             guard sapDataStore.beginTokenRefresh() else { return }
             shouldPresentSAPRefresh = true
             Task {
-                let success = await sapDataStore.refreshWithSavedToken()
+                let success = await sapDataStore.refreshWithSavedToken(beforeSynchronizing: { [weak self] in
+                    try await self?.deleteConfirmedTemporarilySavedForms()
+                })
                 // A failed or stopped synchronization may still have sent or
                 // failed local work, so the pending count is read again too.
                 await offlineWorkStore.load()
-                if success {
+                if success || synchronizationCleanupFailed {
                     shouldPresentSAPRefresh = false
                 }
             }
         } else {
             shouldPresentSAPRefresh = true
         }
+    }
+
+    /// `onPressGoOnAtDialog` after SAP accepted the sign-in. A failed deletion
+    /// stops the synchronization before it starts, as
+    /// `_afterRunDeleteTempMeldung` does; the refresh reads it as stopped.
+    private func deleteConfirmedTemporarilySavedForms() async throws {
+        guard deletesTemporarilySavedFormsOnSynchronization else { return }
+        do {
+            try await offlineWorkStore.deleteTemporarilySavedForms(photoStore: photoAttachmentStore)
+        } catch {
+            synchronizationCleanupFailed = true
+            throw CancellationError()
+        }
+        deletesTemporarilySavedFormsOnSynchronization = false
     }
 
     private func simulateDemoSync() {

@@ -45,20 +45,26 @@ private struct ForcedInitialPasswordRefreshService: SAPNotificationRefreshServic
 
     func refresh(
         sapPassword: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         if await state.consume() {
             SAPForcedInitialPasswordChange.log("answering the password as initial without contacting SAP.")
             throw SAPReadError.initialPasswordChangeRequired
         }
-        return try await wrapped.refresh(sapPassword: sapPassword, progress: progress)
+        return try await wrapped.refresh(
+            sapPassword: sapPassword,
+            beforeSynchronizing: beforeSynchronizing,
+            progress: progress
+        )
     }
 
     func refresh(
         usingToken token: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
-        try await wrapped.refresh(usingToken: token, progress: progress)
+        try await wrapped.refresh(usingToken: token, beforeSynchronizing: beforeSynchronizing, progress: progress)
     }
 }
 

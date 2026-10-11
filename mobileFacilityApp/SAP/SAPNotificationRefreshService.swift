@@ -400,6 +400,7 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
 
     func refresh(
         sapPassword: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         let password = sapPassword.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -428,11 +429,15 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             try? tokenStore?.save(token: token, for: tokenStoreAccountID)
         }
 
+        // `_afterInsertUSER_SYNC` → `check4TempMeldungen`: local work the
+        // worker agreed to give up goes only once SAP accepted the password.
+        try await beforeSynchronizing()
         return try await synchronize(client: client, progress: progress)
     }
 
     func refresh(
         usingToken token: String,
+        beforeSynchronizing: @escaping SAPReadBeforeSynchronizationHandler,
         progress: @escaping SAPReadRefreshProgressHandler
     ) async throws -> SAPCachedData {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -465,6 +470,8 @@ struct SAPInboundNotificationRefreshService: SAPNotificationRefreshService {
             throw error
         }
 
+        // `_afterCallTokenCheck` → `check4TempMeldungen`, as for a password.
+        try await beforeSynchronizing()
         return try await synchronize(client: client, progress: progress)
     }
 
