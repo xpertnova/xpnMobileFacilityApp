@@ -506,15 +506,13 @@ struct ManualCaptureView: View {
     private var meterFields: some View {
         VStack(alignment: .leading, spacing: 18) {
             Group {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 20) {
-                        meterKindField
-                        meterPointField
-                    }
-                    VStack(alignment: .leading, spacing: 18) {
-                        meterKindField
-                        meterPointField
-                    }
+                // Side by side while the meter types keep about 100 pt each,
+                // enough for "Electricity" on one line. The choice depends on
+                // the window only: measuring the selected point's name made the
+                // field jump below the types for a meter type with longer names.
+                FacilityColumnsLayout(columnCounts: [2, 1], minimumColumnWidth: 420, spacing: 18) {
+                    meterKindField
+                    meterPointField
                 }
 
                 HStack(alignment: .top, spacing: 16) {
