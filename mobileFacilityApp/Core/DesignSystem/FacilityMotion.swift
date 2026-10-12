@@ -53,8 +53,13 @@ private struct FacilityAnimationModifier<Value: Equatable>: ViewModifier {
 
 /// `withAnimation` that changes the state without animation under Reduce
 /// Motion.
+///
+/// `@inline(never)`: inlined into SwiftUI view closures, this wrapper crashes
+/// the Swift 6.3.3 optimizer (SIL verification error in
+/// OwnershipModelEliminator) in Release builds.
 @MainActor
 @discardableResult
+@inline(never)
 func withFacilityAnimation<Result>(
     _ animation: Animation? = FacilityMotion.standard,
     _ body: () throws -> Result
