@@ -48,6 +48,15 @@ struct FacilityLayoutMetrics: Equatable {
     var pagePadding: CGFloat { isCompact ? 20 : 28 }
     var pageTitleSize: CGFloat { isCompact ? 25 : 29 }
 
+    // MARK: Notifications
+
+    /// The status filter (all / attention / draft) beside the notifications
+    /// title.
+    var notificationStatusFilterWidth: CGFloat { isCompact ? 280 : 330 }
+    /// The structural filter button shows its title only on a regular window;
+    /// on a compact one it keeps the icon and its count badge.
+    var showsNotificationFilterTitle: Bool { !isCompact }
+
     // MARK: Shell
 
     var expandedSidebarWidth: CGFloat { isCompact ? 300 : 340 }

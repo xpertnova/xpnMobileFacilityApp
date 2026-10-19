@@ -91,12 +91,15 @@ struct NotificationsView: View {
         .background(Color(white: 0.97).ignoresSafeArea())
     }
 
-    @ViewBuilder
+    /// One variant, chosen by the window tier. A `ViewThatFits` here, nested
+    /// in `PageHeader`'s own, built and measured four copies of these controls,
+    /// each with a `UISegmentedControl`, and held the main thread for 0.5–1 s
+    /// every time the screen opened.
     private var headerTrailing: some View {
-        ViewThatFits(in: .horizontal) {
-            notificationHeaderControls(showsFilterTitle: true, statusControlWidth: 330)
-            notificationHeaderControls(showsFilterTitle: false, statusControlWidth: 280)
-        }
+        notificationHeaderControls(
+            showsFilterTitle: layout.showsNotificationFilterTitle,
+            statusControlWidth: layout.notificationStatusFilterWidth
+        )
     }
 
     private func notificationHeaderControls(
@@ -120,7 +123,7 @@ struct NotificationsView: View {
     private func structuralFilterButton(showsTitle: Bool) -> some View {
         Button(action: presentStructuralFilter) {
             HStack(spacing: 7) {
-                filterButtonSymbol
+                filterButtonSymbol(isCentered: !showsTitle)
 
                 if showsTitle {
                     Text("notifications.structuralFilter.open")
@@ -168,26 +171,29 @@ struct NotificationsView: View {
         .facilityAnimation(FacilityMotion.standard, value: filterPresentation.appliedFilter.hasBusinessEntity)
     }
 
-    private var filterButtonSymbol: some View {
-        ZStack(alignment: .topTrailing) {
-            Image(systemName: "line.3.horizontal.decrease")
-                .font(.body.weight(.semibold))
-                .frame(width: 24, height: 24, alignment: .bottomLeading)
-
-            if filterPresentation.appliedFilter.hasBusinessEntity {
-                Text(appliedStructuralFilterNotificationCount, format: .number)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(FacilityTheme.accent)
-                    .padding(.horizontal, 5)
-                    .frame(minWidth: 19, minHeight: 19)
-                    .background(.white, in: Capsule())
-                    .offset(x: 7, y: -6)
-                    .accessibilityHidden(true)
+    /// Beside the title the frame keeps the badge's overhang clear of the
+    /// text. Alone in the icon-only button the glyph is centred, and the badge
+    /// overhangs into the button's own padding.
+    private func filterButtonSymbol(isCentered: Bool) -> some View {
+        Image(systemName: "line.3.horizontal.decrease")
+            .font(.body.weight(.semibold))
+            .frame(width: 24, height: 24, alignment: isCentered ? .center : .bottomLeading)
+            .overlay(alignment: .topTrailing) {
+                if filterPresentation.appliedFilter.hasBusinessEntity {
+                    Text(appliedStructuralFilterNotificationCount, format: .number)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(FacilityTheme.accent)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 19, minHeight: 19)
+                        .background(.white, in: Capsule())
+                        .fixedSize()
+                        .offset(x: 7, y: -6)
+                        .accessibilityHidden(true)
+                }
             }
-        }
-        .frame(width: 31, height: 26, alignment: .bottomLeading)
-        .accessibilityHidden(true)
+            .frame(width: isCentered ? 24 : 31, height: isCentered ? 24 : 26, alignment: .bottomLeading)
+            .accessibilityHidden(true)
     }
 
     private func presentStructuralFilter() {
