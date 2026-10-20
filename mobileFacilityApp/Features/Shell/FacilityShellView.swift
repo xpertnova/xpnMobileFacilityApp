@@ -55,10 +55,7 @@ struct FacilityShellView: View {
                         sidebar(selection: $demo.selection)
                             .transition(.opacity)
                     } else {
-                        compactSidebar(
-                            selection: $demo.selection,
-                            networkStatus: networkStatus
-                        )
+                        compactSidebar(selection: $demo.selection)
                             .transition(.opacity)
                     }
                 }
@@ -389,10 +386,7 @@ struct FacilityShellView: View {
         .facilityAnimation(FacilityMotion.standard, value: isShowingUserMenu)
     }
 
-    private func compactSidebar(
-        selection: Binding<AppDestination>,
-        networkStatus: NetworkReachabilityStatus
-    ) -> some View {
+    private func compactSidebar(selection: Binding<AppDestination>) -> some View {
         VStack(spacing: 0) {
             sidebarToggleButton(
                 symbol: "sidebar.right",
@@ -452,7 +446,7 @@ struct FacilityShellView: View {
                 .frame(width: 32)
                 .padding(.bottom, 12)
 
-            compactSAPRefreshButton(networkStatus: networkStatus)
+            compactSAPRefreshButton
                 .padding(.bottom, 8)
 
             compactProfileButton
@@ -463,10 +457,11 @@ struct FacilityShellView: View {
         .background(FacilityTheme.sidebar)
     }
 
-    private func compactSAPRefreshButton(networkStatus: NetworkReachabilityStatus) -> some View {
+    // Like the expanded sidebar's button, this stays enabled offline: the
+    // synchronization itself reports the missing connection.
+    private var compactSAPRefreshButton: some View {
         let isRefreshing = demo.isSyncing
-        // The demo sync only resets local demo data, so it needs no network.
-        let isEnabled = demo.canSync && (demo.isDemoMode || networkStatus == .connected)
+        let isEnabled = demo.canSync
 
         return Button {
             demo.requestSAPRefresh()
