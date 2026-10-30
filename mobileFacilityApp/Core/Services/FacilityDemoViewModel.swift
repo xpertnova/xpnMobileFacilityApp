@@ -115,7 +115,7 @@ final class FacilityDemoViewModel {
         self.meterReferenceProvider = meterReferenceProvider
         self.photoAttachmentStore = photoAttachmentStore
         self.documentAttachmentStore = documentAttachmentStore
-        self.rfidReader = rfidReader ?? (isDemoMode ? .demo() : .production())
+        self.rfidReader = rfidReader ?? (isDemoMode ? .demo() : .production)
         if let mobileLadderCreationProvider {
             self.mobileLadderCreationProvider = mobileLadderCreationProvider
         } else if isDemoMode {

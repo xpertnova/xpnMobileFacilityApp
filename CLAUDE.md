@@ -40,7 +40,7 @@ xcodebuild ... -only-testing:mobileFacilityAppTests/MobileLadderTests/testSometh
 
 There is no SPM `Package.swift` and no CocoaPods/Carthage. External dependencies are the SAP XCFrameworks under `Release-xcframework/`, linked directly in the Xcode project, and Socket Mobile's CaptureSDK for the RFID readers, added to the Xcode project as a Swift package (see [docs/RFID.md](docs/RFID.md)). SQLite access goes through the system `sqlite3` C library (see `SQLiteC` in `Core/Database/SQLiteOfflineWorkRepository.swift`), not a Swift package.
 
-`mobileFacilityApp/ConfigurationProvider.plist` holds local SAP landscape configuration and is gitignored. Without it, SAP onboarding cannot complete, but the app still builds and the demo route still works.
+`mobileFacilityApp/ConfigurationProvider.plist` holds the SAP landscape configuration and is tracked in Git on purpose. Without it, SAP onboarding cannot complete, but the app still builds and the demo route still works.
 
 ### Legacy SQLite schema generator
 

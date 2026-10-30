@@ -91,6 +91,33 @@ final class SubdistributionTests: XCTestCase {
         XCTAssertTrue(model.isReadyToClose)
     }
 
+    func testDefectFollowsTheSharedInspectionRule() {
+        var item = SubdistributionInspectionItem(
+            definition: SubdistributionInspectionDefinition(
+                operation: "0010", title: "", information: "", resultElementID: "TFM7-0010-1",
+                actionElementID: "TFM7-0010-2", commentElementID: "TFM7-0010-3",
+                resultValues: [], actionValues: [], requiresResult: true, requiresPhotoAndComment: nil
+            ),
+            number: 1
+        )
+        XCTAssertFalse(item.isDefective)
+
+        item.result = "1"
+        XCTAssertFalse(item.isDefective)
+        item.result = "5"
+        XCTAssertFalse(item.isDefective)
+        item.result = "2"
+        XCTAssertTrue(item.isDefective)
+        item.result = "4"
+        item.action = "8"
+        XCTAssertTrue(item.isDefective)
+
+        item.result = "3"
+        XCTAssertFalse(item.isDefective)
+        item.action = "1"
+        XCTAssertTrue(item.isDefective)
+    }
+
     @MainActor
     func testOutOfOperationClearsAnswersAndLocksNormalInspectionRows() async throws {
         let photoStore = InMemoryPhotoAttachmentStore()

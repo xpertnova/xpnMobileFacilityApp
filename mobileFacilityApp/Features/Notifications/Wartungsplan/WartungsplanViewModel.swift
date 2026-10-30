@@ -45,6 +45,7 @@ final class WartungsplanViewModel {
     /// I2 notifications SAP already holds for this functional location.
     private(set) var existingI2Notifications: [SAPI2NotificationSummary] = []
     private var canCreateI2 = false
+    private var userProfile: SAPUserProfile?
 
     init(
         detail: SAPNotificationDetail,
@@ -95,7 +96,8 @@ final class WartungsplanViewModel {
         await discardStagedPhotos()
         await offlineWorkStore.load()
         if let sapDataStore {
-            canCreateI2 = await sapDataStore.loadUserProfile()?.canCreateI2 ?? false
+            userProfile = await sapDataStore.loadUserProfile()
+            canCreateI2 = userProfile?.canCreateI2 ?? false
             existingI2Notifications = await sapDataStore.loadI2Notifications(for: detail)
         }
         guard let draft = offlineWorkStore.notificationReview(notificationID: detail.summary.id) else { return }
@@ -224,7 +226,8 @@ final class WartungsplanViewModel {
             photoAttachments: photoAttachments,
             isClosedLocally: closed,
             notificationSnapshot: OfflineNotificationSnapshot(detail: detail),
-            outgoingProcessID: processID
+            outgoingProcessID: processID,
+            pdfData: closed ? reportPDF() : persistedDraft?.pdfData
         )
 
         do {
@@ -250,6 +253,25 @@ final class WartungsplanViewModel {
             feedback = .saveFailed
             return false
         }
+    }
+
+    /// `WartungsPlan.buildPDF` of the closed review, kept with the draft: the
+    /// local-work and defect lists show it and the upload sends it.
+    private func reportPDF() -> Data {
+        NotificationReviewReportPDF.render(
+            NotificationReviewReportPayload(
+                formCode: detail.formCode,
+                notificationID: detail.summary.id,
+                fields: NotificationReportFields(rawPayloadJSON: detail.summary.rawPayloadJSON),
+                items: detail.inspectionItems.filter { !$0.isMeasuringPointEntry },
+                results: results,
+                comments: comments,
+                performedOn: performedOn,
+                worker: NotificationReportWorker(
+                    profile: userProfile, fallbackPersonnelNumber: offlineWorkStore.workerID
+                )
+            )
+        )
     }
 
     /// Stores the notifications chosen in the defect dialog with the closed

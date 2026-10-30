@@ -162,6 +162,82 @@ final class OutgoingWorkIsolationTests: XCTestCase {
         XCTAssertEqual(saved.first?.status, .pendingSynchronization)
     }
 
+    func testFailedRequestLeavesPhotoCollectionsAsDrafts() async throws {
+        let offline = InMemoryOfflineWorkRepository()
+        let cache = try SQLiteSAPDataCacheRepository(
+            databaseURL: directory.appendingPathComponent("cache.sqlite"), workerID: "worker"
+        )
+        let reading = Self.meterReading()
+        let photos = OfflineWorkItem(
+            id: UUID(), workerID: "worker", type: .photoCollection, status: .draft,
+            payload: .photoCollection(.init(
+                scope: LocalPhotoScope(
+                    workflow: .mobileLadder, ownerID: "draft", displayTitleKey: "mobileLadder.photos.title"
+                ),
+                attachments: []
+            )),
+            createdAt: .now, updatedAt: .now, syncError: nil
+        )
+        try await offline.save(reading)
+        try await offline.save(photos)
+
+        await Self.coordinator(offline: offline, cache: cache).fail(
+            SAPOutgoingBatchManifest(workItemIDs: [reading.id, photos.id], attachmentIDs: []),
+            error: SAPNotificationReviewUploadError.missingPhoto("ABC")
+        )
+
+        let saved = Dictionary(uniqueKeysWithValues: try await offline.loadWork(for: "worker").map { ($0.id, $0) })
+        XCTAssertEqual(saved[reading.id]?.status, .failed)
+        XCTAssertEqual(saved[photos.id]?.status, .draft)
+        XCTAssertNil(saved[photos.id]?.syncError)
+    }
+
+    func testANotificationIsFoundBehindOthersThatMentionItsID() async throws {
+        let others = (1...25).map { index in
+            Self.notification(id: "1\(index)", title: "Siehe 4711", startDate: "2026010\(index % 9 + 1)")
+        }
+        let repository = InMemorySAPDataCacheRepository(
+            seed: SAPCachedData(
+                notifications: others + [Self.notification(id: "4711", title: "", startDate: "20261231")],
+                workerProfile: nil,
+                metadata: nil
+            ),
+            workerID: "worker"
+        )
+
+        let found = try await repository.loadNotification(for: "worker", id: "4711")
+        let missing = try await repository.loadNotification(for: "worker", id: "4712")
+
+        XCTAssertEqual(found?.id, "4711")
+        XCTAssertNil(missing)
+    }
+
+    func testTheReportKeptAtCloseIsSentInsteadOfANewOne() async throws {
+        let cache = try SQLiteSAPDataCacheRepository(
+            databaseURL: directory.appendingPathComponent("cache.sqlite"), workerID: "worker"
+        )
+        let coordinator = Self.coordinator(offline: InMemoryOfflineWorkRepository(), cache: cache)
+        let source = SAPNotificationSummary(
+            id: "4711", client: "100", title: "", functionalLocationID: "FL-1",
+            functionalLocationName: "", startDate: "", endDate: "",
+            systemStatus: "", userStatus: "", rawPayloadJSON: "{}"
+        )
+        let kept = Data("kept report".utf8)
+        var draft = NotificationReviewDraftPayload(
+            notificationID: "4711", performedOn: Date(timeIntervalSince1970: 1_700_000_000),
+            results: [:], comments: [:], photoAttachments: [], isClosedLocally: true, pdfData: kept
+        )
+
+        let sent = await coordinator.reviewReport(for: draft, source: source)
+        XCTAssertEqual(sent, kept)
+
+        // Closed before reports were kept: rendered at the synchronization.
+        draft.pdfData = nil
+        let rendered = await coordinator.reviewReport(for: draft, source: source)
+        XCTAssertFalse(rendered.isEmpty)
+        XCTAssertNotEqual(rendered, kept)
+    }
+
     func testReviewUploadErrorsExplainThemselves() {
         XCTAssertEqual(
             SAPNotificationReviewUploadError.missingPhoto("ABC").localizedDescription,
@@ -184,6 +260,14 @@ final class OutgoingWorkIsolationTests: XCTestCase {
             cacheRepository: cache,
             outgoingStore: cache,
             photoStore: InMemoryPhotoAttachmentStore()
+        )
+    }
+
+    private static func notification(id: String, title: String, startDate: String) -> SAPNotificationSummary {
+        SAPNotificationSummary(
+            id: id, client: "100", title: title, functionalLocationID: "FL-1",
+            functionalLocationName: "", startDate: startDate, endDate: startDate,
+            systemStatus: "", userStatus: "", rawPayloadJSON: "{}"
         )
     }
 

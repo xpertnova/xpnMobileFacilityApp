@@ -162,10 +162,7 @@ struct SubdistributionInspectionItem: Codable, Equatable, Identifiable, Sendable
     }
 
     var isDefective: Bool {
-        // Cordova's value help marks code 1 as good.  Other SAP-supplied
-        // result values retain their exact code and are treated as a defect.
-        guard let result else { return false }
-        return result != "1"
+        InspectionFormRules.isDefective(resultCode: result, actionCode: action, style: .dropdown)
     }
 }
 

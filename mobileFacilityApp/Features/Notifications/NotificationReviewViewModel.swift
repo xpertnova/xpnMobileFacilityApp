@@ -263,8 +263,8 @@ final class NotificationReviewViewModel {
     }
 
     /// `Rundgang.buildPDF` / `WartungsPlan.buildPDF` of the closed review,
-    /// kept with the draft so the report stays readable from the local-work
-    /// and defect lists after the form is closed.
+    /// kept with the draft: the local-work and defect lists show it and the
+    /// upload sends it.
     private func reportPDF() -> Data {
         NotificationReviewReportPDF.render(
             NotificationReviewReportPayload(
@@ -275,7 +275,9 @@ final class NotificationReviewViewModel {
                 results: results,
                 comments: comments,
                 performedOn: performedOn,
-                worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: "")
+                worker: NotificationReportWorker(
+                    profile: userProfile, fallbackPersonnelNumber: offlineWorkStore.workerID
+                )
             )
         )
     }

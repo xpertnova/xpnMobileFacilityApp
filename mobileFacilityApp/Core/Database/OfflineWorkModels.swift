@@ -590,9 +590,9 @@ struct NotificationReviewDraftPayload: Codable, Equatable, Sendable {
     /// I2 notifications chosen in the defect dialog after closing. Uploaded
     /// with this review.
     var i2Requests: [I2NotificationRequest] = []
-    /// The report built when the review was closed, kept so the closed form
-    /// can be re-read from the local-work and defect lists. The upload builds
-    /// its own copy from the cached source notification.
+    /// The report built when the review was closed. The closed form is
+    /// re-read from it in the local-work and defect lists, and the upload
+    /// sends these same bytes.
     var pdfData: Data? = nil
 
     init(

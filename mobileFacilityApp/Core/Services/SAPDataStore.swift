@@ -93,18 +93,7 @@ final class SAPDataStore: MobileLadderCreationProviding, ElevatorAssetDataProvid
     /// Looks up one notification directly in the persisted cache without
     /// replacing the list currently shown in the notifications screen.
     func cachedNotification(id: String) async -> SAPNotificationSummary? {
-        do {
-            let page = try await repository.loadNotifications(
-                for: localWorkerID,
-                matching: id,
-                structuralFilter: .empty,
-                limit: 1,
-                offset: 0
-            )
-            return page.notifications.first { $0.id == id }
-        } catch {
-            return nil
-        }
+        try? await repository.loadNotification(for: localWorkerID, id: id)
     }
 
     func technicalObjectRoots(limit: Int, offset: Int) async throws -> TechnicalObjectPage {

@@ -532,30 +532,16 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         case let .defect(defect):
             return try await defectBatch(for: item, defect: defect)
         case let .notificationReview(review):
-            let page = try await cacheRepository.loadNotifications(
-                for: workerID, matching: review.notificationID,
-                structuralFilter: .empty, limit: 20, offset: 0
-            )
-            guard let source = page.notifications.first(where: { $0.id == review.notificationID }) else {
+            guard let source = try await cacheRepository.loadNotification(
+                for: workerID, id: review.notificationID
+            ) else {
                 throw SAPNotificationReviewUploadError.missingSourceNotification(review.notificationID)
             }
             var photos: [String: Data] = [:]
             for attachment in review.photoAttachments {
                 photos[attachment.localAttachmentID] = try await loadPhoto(attachment.localAttachmentID)
             }
-            let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
-            let detail = SAPNotificationDetail(summary: source)
-            let report = NotificationReviewReportPDF.render(NotificationReviewReportPayload(
-                formCode: detail.formCode,
-                notificationID: review.notificationID,
-                fields: NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON),
-                // `addReportTableWN` prints only rows with a Befund.
-                items: detail.inspectionItems.filter { !$0.isMeasuringPointEntry },
-                results: review.results,
-                comments: review.comments,
-                performedOn: review.performedOn,
-                worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: syncUserID)
-            ))
+            let report = await reviewReport(for: review, source: source)
             let measuringDocument = try measuringDocument(
                 for: source, in: allWork.filter { pendingIDs.contains($0.id) }
             )
@@ -566,11 +552,9 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
             try await addI2Notifications(review.i2Requests, source: source, to: &batch)
             return batch
         case let .elevatorInspection(inspection):
-            let page = try await cacheRepository.loadNotifications(
-                for: workerID, matching: inspection.notificationID,
-                structuralFilter: .empty, limit: 20, offset: 0
-            )
-            guard let source = page.notifications.first(where: { $0.id == inspection.notificationID }) else {
+            guard let source = try await cacheRepository.loadNotification(
+                for: workerID, id: inspection.notificationID
+            ) else {
                 throw SAPEquipmentInspectionUploadError.missingSourceNotification(inspection.notificationID)
             }
             var photos: [String: Data] = [:]
@@ -677,7 +661,10 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         let work = ((try? await offlineRepository.loadWork(for: workerID)) ?? []) + (await otherWorkersWork())
         // A cancelled synchronization is not a failure of the work itself.
         let isCancelled = error is CancellationError
-        for item in work where batch.workItemIDs.contains(item.id) {
+        // Photo collections are in the batch only to be deleted with their
+        // form (`addingCleanupWorkItemIDs`). They are never sent, so they stay
+        // the drafts they are.
+        for item in work where batch.workItemIDs.contains(item.id) && item.type != .photoCollection {
             try? await offlineRepository.save(isCancelled
                 ? copy(item, status: .pendingSynchronization, error: nil)
                 : copy(item, status: .failed, error: error.localizedDescription))
@@ -716,6 +703,29 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
 
     /// `insertI3Meldung` for a closed briefing, qualification check,
     /// electrical-safety form or fire permit.
+    /// The report kept when the review was closed, so SAP receives what the
+    /// worker read in the app. Reviews closed before it was kept have none and
+    /// are rendered from the current cache.
+    func reviewReport(
+        for review: NotificationReviewDraftPayload,
+        source: SAPNotificationSummary
+    ) async -> Data {
+        if let saved = review.pdfData, !saved.isEmpty { return saved }
+        let userProfile = try? await cacheRepository.loadUserProfile(for: workerID)
+        let detail = SAPNotificationDetail(summary: source)
+        return NotificationReviewReportPDF.render(NotificationReviewReportPayload(
+            formCode: detail.formCode,
+            notificationID: review.notificationID,
+            fields: NotificationReportFields(rawPayloadJSON: source.rawPayloadJSON),
+            // `addReportTableWN` prints only rows with a Befund.
+            items: detail.inspectionItems.filter { !$0.isMeasuringPointEntry },
+            results: review.results,
+            comments: review.comments,
+            performedOn: review.performedOn,
+            worker: NotificationReportWorker(profile: userProfile, fallbackPersonnelNumber: syncUserID)
+        ))
+    }
+
     private func instructionFormBatch(for item: OfflineWorkItem) async throws -> SAPNotificationOutgoingBatch {
         guard let provider = cacheRepository as? any I3NotificationContextProviding else {
             throw I3NotificationUploadError.contextUnavailable
@@ -832,10 +842,7 @@ struct SAPNotificationReviewOutgoingCoordinator: SAPOutgoingWorkCoordinating {
         guard let parentID = defect.parentNotificationID, !parentID.isEmpty else {
             throw SAPDefectNotificationUploadError.missingParentNotification
         }
-        let page = try await cacheRepository.loadNotifications(
-            for: workerID, matching: parentID, structuralFilter: .empty, limit: 20, offset: 0
-        )
-        guard let source = page.notifications.first(where: { $0.id == parentID }),
+        guard let source = try await cacheRepository.loadNotification(for: workerID, id: parentID),
               let parent = SAPI2NotificationUploadBuilder.parentNotification(from: source)
         else {
             throw SAPDefectNotificationUploadError.parentNotificationUnavailable(parentID)

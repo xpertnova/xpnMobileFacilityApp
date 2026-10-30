@@ -26,13 +26,13 @@ mobileFacilityApp/
 ├── App/                 # Application entry point and root route
 ├── SAP/                 # SwiftUI-to-SAP Fiori onboarding bridge
 ├── Resources/           # English and German String Catalog
-└── ConfigurationProvider.plist  # Local SAP configuration; ignored by Git
+└── ConfigurationProvider.plist  # SAP landscape configuration
 ```
 
 ## Local SAP setup
 
-The project links local SAP SDK XCFrameworks in `Release-xcframework/`. `mobileFacilityApp/ConfigurationProvider.plist` contains landscape-specific configuration and is intentionally ignored by Git. Obtain valid values through the approved secure channel; never commit tenant configuration, credentials, tokens, or production payloads.
+The project links local SAP SDK XCFrameworks in `Release-xcframework/`. `mobileFacilityApp/ConfigurationProvider.plist` contains landscape-specific configuration and is tracked in Git on purpose. Never commit credentials, tokens, or production payloads.
 
 ## Scope boundaries
 
-Hardware work such as QR/RFID scanner integration and mobile label printing is explicitly deferred to a later developer. The present focus is the SwiftUI frontend, core maintenance workflows, SQLite-based temporary persistence, and verified SAP integration slices.
+QR scanning and RFID reads are implemented; RFID tag writes and Bixolon label printing are not. See the current state table in [docs/PROJECT.md](docs/PROJECT.md).

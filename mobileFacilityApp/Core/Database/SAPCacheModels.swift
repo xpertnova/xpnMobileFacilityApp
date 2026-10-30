@@ -774,6 +774,22 @@ protocol SAPDataCacheRepository: TechnicalObjectRepository, QRCodeNotificationRe
     func loadUserProfile(for workerID: String) async throws -> SAPUserProfile?
 }
 
+extension SAPDataCacheRepository {
+    /// The notification with exactly this ID. The search also finds the ID
+    /// inside the titles and places of others, so it can sit on a later page.
+    func loadNotification(for localWorkerID: String, id: String) async throws -> SAPNotificationSummary? {
+        var offset: Int? = 0
+        while let currentOffset = offset {
+            let page = try await loadNotifications(
+                for: localWorkerID, matching: id, structuralFilter: .empty, limit: 20, offset: currentOffset
+            )
+            if let notification = page.notifications.first(where: { $0.id == id }) { return notification }
+            offset = page.nextOffset
+        }
+        return nil
+    }
+}
+
 typealias LegacySAPRow = [String: String?]
 
 struct LegacySAPIncomingPackage: Sendable {

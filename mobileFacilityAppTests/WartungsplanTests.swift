@@ -107,6 +107,10 @@ final class WartungsplanTests: XCTestCase {
         XCTAssertEqual(reopened.feedback, .closedLocally)
         XCTAssertTrue(reopened.isClosedLocally)
         XCTAssertEqual(workStore.savedNotificationItems.first?.status, .pendingSynchronization)
+        // The upload sends this report, so it has to be kept at close.
+        XCTAssertEqual(
+            workStore.notificationReview(notificationID: summary.id)?.pdfData?.isEmpty, false
+        )
     }
 
     @MainActor

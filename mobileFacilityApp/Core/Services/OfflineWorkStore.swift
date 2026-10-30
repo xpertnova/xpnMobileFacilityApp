@@ -148,8 +148,7 @@ final class OfflineWorkStore {
             status: effectiveStatus, payload: .mobileLadder(payload),
             createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -173,8 +172,7 @@ final class OfflineWorkStore {
             status: effectiveStatus, payload: .subdistribution(payload),
             createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -214,8 +212,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
     }
 
     func savePhotoCollection(
@@ -243,8 +240,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -285,6 +281,33 @@ final class OfflineWorkStore {
         }
     }
 
+    private func persist(_ item: OfflineWorkItem) async throws {
+        try await repository.save(item)
+        await reload(keeping: [item])
+    }
+
+    /// Saves look their existing row up in `items`. When the reload fails the
+    /// saved rows still go in there, or the next save of the same work would
+    /// add a second row and SAP would receive both.
+    private func reload(keeping saved: [OfflineWorkItem]) async {
+        await load()
+        guard state != .loaded, state != .empty else { return }
+        for item in saved {
+            if let index = items.firstIndex(where: { $0.id == item.id }) {
+                items[index] = item
+            } else {
+                items.insert(item, at: 0)
+            }
+        }
+    }
+
+    /// For saves that find their row by notification or point rather than by
+    /// id: without one successful read they cannot tell whether it exists.
+    private func requireLoadedItems() async throws {
+        if !hasLoaded { await load() }
+        guard hasLoaded else { throw OfflineWorkRepositoryError.unavailable }
+    }
+
     func saveManualCapture(
         id: UUID? = nil,
         payload: ManualCaptureDraftPayload
@@ -301,8 +324,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -323,8 +345,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -345,8 +366,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -376,6 +396,7 @@ final class OfflineWorkStore {
         points: [SAPMeasuringPoint],
         with entries: [MeasuringPointReadingEntry]
     ) async throws {
+        try await requireLoadedItems()
         let pointsByID = Dictionary(points.map { ($0.pointID, $0) }, uniquingKeysWith: { first, _ in first })
         let existing = meterReadingItems.filter {
             guard let meter = $0.payload.meterReading?.meter else { return false }
@@ -387,6 +408,7 @@ final class OfflineWorkStore {
             try await repository.delete(ids: removed.map(\.id))
         }
         let now = Date()
+        var saved: [OfflineWorkItem] = []
         for entry in entries {
             guard let point = pointsByID[entry.pointID] else { continue }
             let previous = existing.first { $0.payload.meterReading?.meter.id == entry.pointID }
@@ -400,7 +422,7 @@ final class OfflineWorkStore {
                 recordedAt: entry.recordedAt
             )
             guard previous?.payload.meterReading != payload else { continue }
-            try await repository.save(OfflineWorkItem(
+            let item = OfflineWorkItem(
                 id: previous?.id ?? UUID(),
                 workerID: workerID,
                 type: .meterReading,
@@ -409,9 +431,11 @@ final class OfflineWorkStore {
                 createdAt: previous?.createdAt ?? now,
                 updatedAt: now,
                 syncError: nil
-            ))
+            )
+            try await repository.save(item)
+            saved.append(item)
         }
-        await load()
+        await reload(keeping: saved)
     }
 
     func notificationReview(notificationID: String) -> NotificationReviewDraftPayload? {
@@ -421,6 +445,7 @@ final class OfflineWorkStore {
     }
 
     func saveNotificationReview(_ payload: NotificationReviewDraftPayload) async throws -> OfflineWorkItem {
+        try await requireLoadedItems()
         let existing = items.first {
             $0.type == .notificationReview && $0.payload.notificationReview?.notificationID == payload.notificationID
         }
@@ -435,8 +460,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -447,6 +471,7 @@ final class OfflineWorkStore {
     }
 
     func saveElevatorInspection(_ payload: ElevatorInspectionDraftPayload) async throws -> OfflineWorkItem {
+        try await requireLoadedItems()
         let existing = items.first {
             $0.type == .elevatorInspection && $0.payload.elevatorInspection?.notificationID == payload.notificationID
         }
@@ -461,8 +486,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -493,8 +517,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -515,8 +538,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -558,8 +580,7 @@ final class OfflineWorkStore {
             status: status, payload: .technicalObjectEdit(payload),
             createdAt: existing?.createdAt ?? now, updatedAt: now, syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -576,8 +597,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 
@@ -598,8 +618,7 @@ final class OfflineWorkStore {
             updatedAt: now,
             syncError: nil
         )
-        try await repository.save(item)
-        await load()
+        try await persist(item)
         return item
     }
 

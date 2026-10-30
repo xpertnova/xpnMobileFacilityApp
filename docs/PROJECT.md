@@ -15,22 +15,24 @@ The application must not silently invent maintenance, authorization, or SAP busi
 
 ## 2. Current implementation boundary
 
-This repository currently provides the platform foundation, not the complete MFM product.
+The core technician workflows are implemented. "Implemented" means the code exists in this repository; it does not mean every path has been verified on a device against SAP.
 
 | Area | Current state |
 | --- | --- |
-| iPad target | Implemented; iPad-only and landscape-only build settings |
+| iPad target | Implemented; iPad-only, landscape-only, adaptive down to a 700 × 500 pt window |
 | Minimum platform | iOS 17 |
 | SwiftUI application entry | Implemented |
 | SAP Fiori onboarding | Implemented, including restoration and recoverable errors |
-| Demo route | Implemented as a basic route; the required App Store mock-data composition is not yet implemented |
-| Production app login / role selection | Not implemented; initial scope is the technician/worker role only |
-| Dashboard and feature navigation | Starter placeholder only |
-| MVVM feature architecture | Target architecture; not yet present beyond the onboarding state |
-| SQLite temporary storage | Required but not yet implemented here |
-| Maintenance, form, defect, and technical-object workflows | Not yet implemented here |
-| SAP domain data integration | Not yet implemented here; SAP SDK frameworks are linked |
-| QR, RFID, and label-printer integration | Deferred to a later developer |
+| Demo route | Implemented with in-memory mock services and no SAP access |
+| Production app login / role selection | Implemented; all three roles can be chosen, but the role is only displayed and grants no different permissions |
+| Dashboard and feature navigation | Implemented |
+| MVVM feature architecture | Implemented |
+| SQLite temporary storage | Implemented, scoped to the worker ID |
+| Maintenance, form, defect, and technical-object workflows | Implemented, including inspection forms TFM1–TFM8, I2 defects, I3 forms and meter readings. Manual capture, standalone technical-object edits and document collections stay local (`OfflineWorkType.staysLocal`) |
+| SAP domain data integration | Implemented through the legacy `FROM_*` / `TO_*` synchronization |
+| QR | Camera scanning and a PDF label printed through the system share sheet are implemented |
+| RFID | Tag reads and the `T0212` lookup are implemented for Socket Mobile readers; writing tags (`TO_T0212`) is not |
+| Label printer | Bixolon printing is not implemented |
 
 Treat a screen, screenshot, or HTML interaction as a product reference unless it is implemented in this repository. Do not describe a reference feature as already shipped.
 
@@ -186,7 +188,7 @@ Use iOS 17 Swift Observation for UI state. Keep UIKit restricted to SDK or platf
 
 ## 8. SAP and backend integration policy
 
-The app already links SAP Foundation, Fiori, Fiori Flows, and OData SDK frameworks, and its onboarding configuration is local and ignored by Git. This proves the SAP platform boundary is present; it does not prove that a maintenance operation has a verified endpoint or payload.
+The app already links SAP Foundation, Fiori, Fiori Flows, and OData SDK frameworks, and its onboarding configuration is in `ConfigurationProvider.plist`. This proves the SAP platform boundary is present; it does not prove that a maintenance operation has a verified endpoint or payload.
 
 For any backend feature:
 

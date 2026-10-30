@@ -339,9 +339,14 @@ extension RFIDReaderService {
         RFIDReaderService(driver: DemoRFIDReaderDriver())
     }
 
+    /// One service for the whole process, kept across logins. CaptureSDK is a
+    /// singleton that is opened once and reports a connected reader only
+    /// once, so a service built for the next login would never learn of it.
+    static let production = makeProduction()
+
     /// Socket Mobile's CaptureSDK when `SocketMobileCapture.plist` ships with
     /// the build; otherwise an unavailable reader.
-    static func production() -> RFIDReaderService {
+    private static func makeProduction() -> RFIDReaderService {
         switch SocketMobileCaptureConfiguration.load() {
         case let .success(configuration):
             return RFIDReaderService(
