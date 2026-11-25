@@ -56,34 +56,34 @@
 		A10000000000000000000003 /* SAPFioriFlows.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPFioriFlows.xcframework; sourceTree = "<group>"; };
 		A10000000000000000000004 /* SAPFoundation.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPFoundation.xcframework; sourceTree = "<group>"; };
 		A10000000000000000000005 /* SAPOData.xcframework */ = {isa = PBXFileReference; expectedSignature = "AppleDeveloperProgram:7R5ZEU67FQ:SAP SE"; lastKnownFileType = wrapper.xcframework; path = SAPOData.xcframework; sourceTree = "<group>"; };
-		A10000000000000000000006 /* mobileFacilityApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mobileFacilityApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000006 /* xpnMobileFacilityApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = xpnMobileFacilityApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000007 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		A10000000000000000000008 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
-		B20000000000000000000002 /* mobileFacilityAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mobileFacilityAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000002 /* xpnMobileFacilityAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = xpnMobileFacilityAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		EBEBDF3B304730E9005A9D7C /* Exceptions for "mobileFacilityApp" folder in "mobileFacilityApp" target */ = {
+		EBEBDF3B304730E9005A9D7C /* Exceptions for "xpnMobileFacilityApp" folder in "xpnMobileFacilityApp" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = A10000000000000000000071 /* mobileFacilityApp */;
+			target = A10000000000000000000071 /* xpnMobileFacilityApp */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		A10000000000000000000041 /* mobileFacilityApp */ = {
+		A10000000000000000000041 /* xpnMobileFacilityApp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				EBEBDF3B304730E9005A9D7C /* Exceptions for "mobileFacilityApp" folder in "mobileFacilityApp" target */,
+				EBEBDF3B304730E9005A9D7C /* Exceptions for "xpnMobileFacilityApp" folder in "xpnMobileFacilityApp" target */,
 			);
-			path = mobileFacilityApp;
+			path = xpnMobileFacilityApp;
 			sourceTree = "<group>";
 		};
-		B20000000000000000000003 /* mobileFacilityAppTests */ = {
+		B20000000000000000000003 /* xpnMobileFacilityAppTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = mobileFacilityAppTests;
+			path = xpnMobileFacilityAppTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -117,8 +117,8 @@
 		A10000000000000000000061 = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000041 /* mobileFacilityApp */,
-				B20000000000000000000003 /* mobileFacilityAppTests */,
+				A10000000000000000000041 /* xpnMobileFacilityApp */,
+				B20000000000000000000003 /* xpnMobileFacilityAppTests */,
 				A10000000000000000000062 /* Frameworks */,
 				A10000000000000000000063 /* Products */,
 			);
@@ -142,8 +142,8 @@
 		A10000000000000000000063 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				A10000000000000000000006 /* mobileFacilityApp.app */,
-				B20000000000000000000002 /* mobileFacilityAppTests.xctest */,
+				A10000000000000000000006 /* xpnMobileFacilityApp.app */,
+				B20000000000000000000002 /* xpnMobileFacilityAppTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -151,9 +151,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		A10000000000000000000071 /* mobileFacilityApp */ = {
+		A10000000000000000000071 /* xpnMobileFacilityApp */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A10000000000000000000072 /* Build configuration list for PBXNativeTarget "mobileFacilityApp" */;
+			buildConfigurationList = A10000000000000000000072 /* Build configuration list for PBXNativeTarget "xpnMobileFacilityApp" */;
 			buildPhases = (
 				A10000000000000000000073 /* Sources */,
 				A10000000000000000000051 /* Frameworks */,
@@ -165,19 +165,19 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				A10000000000000000000041 /* mobileFacilityApp */,
+				A10000000000000000000041 /* xpnMobileFacilityApp */,
 			);
-			name = mobileFacilityApp;
+			name = xpnMobileFacilityApp;
 			packageProductDependencies = (
 				C30000000000000000000003 /* CaptureSDK */,
 			);
 			productName = mobileFacilityApp;
-			productReference = A10000000000000000000006 /* mobileFacilityApp.app */;
+			productReference = A10000000000000000000006 /* xpnMobileFacilityApp.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B20000000000000000000005 /* mobileFacilityAppTests */ = {
+		B20000000000000000000005 /* xpnMobileFacilityAppTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B20000000000000000000006 /* Build configuration list for PBXNativeTarget "mobileFacilityAppTests" */;
+			buildConfigurationList = B20000000000000000000006 /* Build configuration list for PBXNativeTarget "xpnMobileFacilityAppTests" */;
 			buildPhases = (
 				B20000000000000000000007 /* Sources */,
 				B20000000000000000000004 /* Frameworks */,
@@ -189,11 +189,11 @@
 				B20000000000000000000009 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				B20000000000000000000003 /* mobileFacilityAppTests */,
+				B20000000000000000000003 /* xpnMobileFacilityAppTests */,
 			);
-			name = mobileFacilityAppTests;
+			name = xpnMobileFacilityAppTests;
 			productName = mobileFacilityAppTests;
-			productReference = B20000000000000000000002 /* mobileFacilityAppTests.xctest */;
+			productReference = B20000000000000000000002 /* xpnMobileFacilityAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
@@ -215,7 +215,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A10000000000000000000082 /* Build configuration list for PBXProject "mobileFacilityApp" */;
+			buildConfigurationList = A10000000000000000000082 /* Build configuration list for PBXProject "xpnMobileFacilityApp" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -233,8 +233,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A10000000000000000000071 /* mobileFacilityApp */,
-				B20000000000000000000005 /* mobileFacilityAppTests */,
+				A10000000000000000000071 /* xpnMobileFacilityApp */,
+				B20000000000000000000005 /* xpnMobileFacilityAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -276,7 +276,7 @@
 /* Begin PBXTargetDependency section */
 		B20000000000000000000009 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A10000000000000000000071 /* mobileFacilityApp */;
+			target = A10000000000000000000071 /* xpnMobileFacilityApp */;
 			targetProxy = B20000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -311,7 +311,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_TESTABILITY = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = mobileFacilityApp/Info.plist;
+				INFOPLIST_FILE = xpnMobileFacilityApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "qTechnical Asset Manager";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to the RFID scanner to read RFID tags on technical objects.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan QR codes and take photos to document maintenance work and defects.";
@@ -348,7 +348,7 @@
 				DEVELOPMENT_TEAM = 33DF4FPL9Z;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = mobileFacilityApp/Info.plist;
+				INFOPLIST_FILE = xpnMobileFacilityApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "qTechnical Asset Manager";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Connect to the RFID scanner to read RFID tags on technical objects.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Scan QR codes and take photos to document maintenance work and defects.";
@@ -390,7 +390,7 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 2;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mobileFacilityApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mobileFacilityApp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/xpnMobileFacilityApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/xpnMobileFacilityApp";
 			};
 			name = Debug;
 		};
@@ -408,14 +408,14 @@
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 2;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/mobileFacilityApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/mobileFacilityApp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/xpnMobileFacilityApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/xpnMobileFacilityApp";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A10000000000000000000072 /* Build configuration list for PBXNativeTarget "mobileFacilityApp" */ = {
+		A10000000000000000000072 /* Build configuration list for PBXNativeTarget "xpnMobileFacilityApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A10000000000000000000093 /* Debug */,
@@ -424,7 +424,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		A10000000000000000000082 /* Build configuration list for PBXProject "mobileFacilityApp" */ = {
+		A10000000000000000000082 /* Build configuration list for PBXProject "xpnMobileFacilityApp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A10000000000000000000091 /* Debug */,
@@ -433,7 +433,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B20000000000000000000006 /* Build configuration list for PBXNativeTarget "mobileFacilityAppTests" */ = {
+		B20000000000000000000006 /* Build configuration list for PBXNativeTarget "xpnMobileFacilityAppTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B20000000000000000000010 /* Debug */,

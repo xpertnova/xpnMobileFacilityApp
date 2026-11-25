@@ -355,7 +355,7 @@ private struct SAPOnboardingConfiguration {
             return nil
         }
 
-        let endpoint = "sap/opu/odata/ezo/daex4tu"
+        let endpoint = ""
         let normalizedPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !normalizedPath.hasSuffix(endpoint) else {
             return "/" + normalizedPath

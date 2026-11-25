@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>Application Identifier</key>
-	<string>com.eon.pm.mtfm.sdk</string>
+	<string>de.xpertnova.pm.mtfm.sdk</string>
 	<key>Application Type</key>
 	<string>Online</string>
 	<key>Destinations</key>
 	<dict>
 		<key>AuthenticationPath</key>
-		<string>CEO_100_MTFM</string>
+		<string>de.xpertnova.pm.mtfm.sdk</string>
 		<key>XPNMTFMODDAEXSRVEntities</key>
-		<string>CEO_100_MTFM/sap/opu/odata/ezo/daex4tu</string>
+		<string>de.xpertnova.pm.mtfm.sdk</string>
 	</dict>
 	<key>Digital Signature Public Key</key>
 	<string>DigitalSignaturePublicKey.pem</string>

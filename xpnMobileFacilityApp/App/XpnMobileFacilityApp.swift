@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MobileFacilityApp: App {
+struct XpnMobileFacilityApp: App {
     @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.resolved(from: nil).rawValue
 
     var body: some Scene {

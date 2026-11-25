@@ -48,7 +48,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 extension Bundle {
     /// Pass as `bundle:` to every `String(localized:)`, so strings built in
     /// code use the in-app language like SwiftUI `Text` (which follows the
-    /// `\.locale` environment set in `MobileFacilityApp`).
+    /// `\.locale` environment set in `xpnMobileFacilityApp`).
     static var appLanguage: Bundle {
         AppLanguage.current.bundle
     }

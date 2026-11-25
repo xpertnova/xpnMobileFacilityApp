@@ -897,9 +897,9 @@ struct SAPReadAuthorization {
 }
 
 enum SAPLegacyDataExchangeCodec {
-    private static let parameterStructureName = "/EZO/MTFMS_PARAMETER"
-    private static let synchronizationStructureName = "/EZO/MTFMS_IP4SYNCH"
-    private static let notificationDocumentStructureName = "/EZO/MTFMT_0282"
+    private static let parameterStructureName = "/XPN/PMS_MTFM_PARAMETER"
+    private static let synchronizationStructureName = "/XPN/PMS_MTFM_IP4SYNCH"
+    private static let notificationDocumentStructureName = "/XPN/PMT_0282"
 
     static func cachedNotificationPayload(fromFeldwert feldwert: String) -> [String: Any]? {
         notificationData(fromFeldwert: feldwert)
